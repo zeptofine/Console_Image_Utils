@@ -33,7 +33,7 @@ for /r %%i in (*) do (
     if not exist "%convertedfolder%\!filepath!" mkdir "%convertedfolder%\!filepath!"
     set outputview=%convertedfolder%!filepath!!outfile!
     if not exist "%convertedfolder%\!filepath!\!outfile!" (
-        if !timer! GTR 12 (
+        if !timer! GTR 24 (
             set wait=/WAIT
             set timer=0
         )
