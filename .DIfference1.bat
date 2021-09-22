@@ -34,14 +34,17 @@ for /d %%i in (*) do (
     cd "%source2%\%%i"
     for /r %%a in (*) do (
         set file=%%~nxa
+        set file2=%%a
+        set file3=%%~dpa
+        set file3=!file3:%source2%=!
+        set file2=!file2:%source2%=!
         set file=!file: =-!
-        set file2=%%~nxa
-        set file2=!file2: =%%20!
         if not exist "%convertedfolder%\!path!\!file!" (
         if !timer! GTR 12 set wait=/WAIT
         echo !path! !wait! "%source2%\%%i\%%~nxa"
-        if %%~xa==.jpg start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\%%i\%%~nxa" 80 "%convertedfolder%\!path!\!file!"
-        if %%~xa==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\%%i\%%~nxa" 90 "%convertedfolder%\!path!\!file!" 
+        if not exist "%convertedfolder%\!file3!" mkdir "%convertedfolder%\!file3!"
+        if %%~xa==.jpg start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\!file2!" 80 "%convertedfolder%\!file3!\!file!"
+        if %%~xa==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\!file2!" 90 "%convertedfolder%\!file3!\!file!" 
         if %%~xi==.webm copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL
         if %%~xi==.gif copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL 
         if %%~xi==.swf copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL 
@@ -53,7 +56,7 @@ for /d %%i in (*) do (
     )
     for %%i in (*) do (
         if %%~xi==.jpg start /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat %%i 80 "%convertedfolder%\%%i"
-        if %%~xi==.png start /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat %%i 100 "%convertedfolder%\%%i"
+        if %%~xi==.png start /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat %%i 90 "%convertedfolder%\%%i"
         )
 exit /b
 for /r %%i in (*.jpg *.png) do (
