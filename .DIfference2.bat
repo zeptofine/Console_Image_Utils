@@ -46,7 +46,7 @@ for /r %%i in (*.jpg *.png *.webm *.gif) do (
     set /a finishedcount+=1
     set /a Percent="((finishedcount*100)/totalfilecount)"
     set percentview=000!percent!
-    set percentview=!percentview:~-3!
+    set percentview=!percentview:~-3!%%
 )
 :VideoCopy
 for /r %%i in (*.webm *.gif *swf) do (
