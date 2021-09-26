@@ -17,7 +17,7 @@ if not exist "%appdata%\ffmpeg-release-essentials" (
     set Ffmpegpath=%appdata%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe
 if not exist %~pd0\FFmpegConvertImage.bat (
     ( echo %%appdata%%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe -i %%1 -n -compression_level %%2 -vf "scale='min(1920,iw)':-1" %%3 
-      echo exit
+        echo exit
     ) >> %~pd0\FFmpegConvertImage.bat
     )
 set sourcemod=%source2: =-%
@@ -34,14 +34,17 @@ for /d %%i in (*) do (
     cd "%source2%\%%i"
     for /r %%a in (*) do (
         set file=%%~nxa
+        set file2=%%a
+        set file3=%%~dpa
+        set file3=!file3:%source2%=!
+        set file2=!file2:%source2%=!
         set file=!file: =-!
-        set file2=%%~nxa
-        set file2=!file2: =%%20!
         if not exist "%convertedfolder%\!path!\!file!" (
         if !timer! GTR 12 set wait=/WAIT
         echo !path! !wait! "%source2%\%%i\%%~nxa"
-        if %%~xa==.jpg start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\%%i\%%~nxa" 80 "%convertedfolder%\!path!\!file!"
-        if %%~xa==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\%%i\%%~nxa" 100 "%convertedfolder%\!path!\!file!" 
+        if not exist "%convertedfolder%\!file3!" mkdir "%convertedfolder%\!file3!"
+        if %%~xa==.jpg start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\!file2!" 80 "%convertedfolder%\!file3!\!file!"
+        if %%~xa==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\!file2!" 100 "%convertedfolder%\!file3!\!file!" 
         if %%~xi==.webm copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL
         if %%~xi==.gif copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL 
         if %%~xi==.swf copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL 
