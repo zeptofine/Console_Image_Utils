@@ -16,7 +16,7 @@ if not exist "%appdata%\ffmpeg-release-essentials" (
     )
     set Ffmpegpath=%appdata%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe
 if not exist %~pd0\FFmpegConvertImage.bat (
-    ( echo %%appdata%%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe -i %%1 -n -compression_level %%2 -vf "scale='min(1920,iw)':-1" %%3 
+    ( echo %%appdata%%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe -i %%1 -n -compression_level %%2 -vf "scale='min(1280,iw)':-1" %%3 
       echo exit
     ) >> %~pd0\FFmpegConvertImage.bat
     )
@@ -41,7 +41,7 @@ for /d %%i in (*) do (
         if !timer! GTR 12 set wait=/WAIT
         echo !path! !wait! "%source2%\%%i\%%~nxa"
         if %%~xa==.jpg start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\%%i\%%~nxa" 80 "%convertedfolder%\!path!\!file!"
-        if %%~xa==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\%%i\%%~nxa" 100 "%convertedfolder%\!path!\!file!" 
+        if %%~xa==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%source2%\%%i\%%~nxa" 90 "%convertedfolder%\!path!\!file!" 
         if %%~xi==.webm copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL
         if %%~xi==.gif copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL 
         if %%~xi==.swf copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL 
