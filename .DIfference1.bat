@@ -15,7 +15,7 @@ if not exist "%appdata%\ffmpeg-release-essentials" (
     Powershell -Command "Expand-Archive -LiteralPath %appdata%/ffmpeg-release-essentials.zip" -DestinationPath "%appdata%\ffmpeg-release-essentials"
     )
     set Ffmpegpath=%appdata%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe
-    if not exist %~pd0\FFmpegConvertImage.bat (
+if not exist %~pd0\FFmpegConvertImage.bat (
     ( echo %%appdata%%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe -i "%%1" -n -compression_level %%2 -vf "scale='min(1920,iw)':-1" %%3 
       echo exit
     ) >> %~pd0\FFmpegConvertImage.bat
@@ -36,11 +36,17 @@ for /d %%i in (*) do (
         
         set file=%%~nxa
         set file=!file: =-!
+        set file2=%%~nxa
+        set file2=!file2: =%%20!
         if not exist "%convertedfolder%\!path!\!file!" (
         if !timer! GTR 12 set wait=/WAIT
-        echo !path! !wait! %%a
-        if %%~xa==.jpg start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat %%a 80 "%convertedfolder%\!path!\!file!"
-        if %%~xa==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat %%a 100 "%convertedfolder%\!path!\!file!" 
+        echo !path! !wait! "%convertedfolder%\!path!\!file!"
+
+        if %%~xa==.jpg start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "!file2!" 80 "%convertedfolder%\!path!\!file!"
+        if %%~xa==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "!file2!" 100 "%convertedfolder%\!path!\!file!" 
+        if %%~xi==.webm copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL
+        if %%~xi==.gif copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL 
+        if %%~xi==.swf copy "%%a" "%convertedfolder%\!path!\!file!"  > NUL 
         if !timer! GTR 12 set timer=0
         set /a timer+=1
         set wait=
