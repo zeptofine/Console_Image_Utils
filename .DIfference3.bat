@@ -31,7 +31,7 @@ for /r %%i in (*) do (
     set filepath=!filerel:%%~nxi=!
     set filepath=!filepath: =-!
     if not exist "%convertedfolder%\!filepath!" mkdir "%convertedfolder%\!filepath!"
-    set outputview="%convertedfolder%!filepath!!outfile!"
+    set outputview=%convertedfolder%!filepath!!outfile!
     if not exist "%convertedfolder%\!filepath!\!outfile!" (
         if !timer! GTR 12 (
             set wait=/WAIT
@@ -42,12 +42,12 @@ for /r %%i in (*) do (
         if %%~xi==.webm copy "%%i" "%convertedfolder%\!filepath!\!outfile!"  > NUL
         if %%~xi==.gif copy "%%i" "%convertedfolder%\!filepath!\!outfile!"  > NUL 
         if %%~xi==.swf copy "%%i" "%convertedfolder%\!filepath!\!outfile!"  > NUL 
-        set outputview=%convertedfolder%!filepath!!outfile!
-        echo [ !finishedcount!/%totalfilecount% - !percentview! ]      !filepath! !outputview:~-70! !wait!
+        
+        echo [ !finishedcount!/%totalfilecount% - !percentview! ]      !filepath! !outputview:~-37! !wait!
         set /a timer+=1
         set /a convertedcount+=1
     ) else (
-        echo [ !finishedcount!/%totalfilecount% - !percentview! ] skip !filepath! !outputview:~-70!
+        echo [ !finishedcount!/%totalfilecount% - !percentview! ] skip !filepath! !outputview:~-37!
         set /a skippedcount+=1
     )
     set wait=
