@@ -39,10 +39,11 @@ for /r %%i in (*) do (
         )
         if %%~xi==.jpg start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%%i" 80 "%convertedfolder%\!filepath!\!outfile!"
         if %%~xi==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%%i" 90 "%convertedfolder%\!filepath!\!outfile!"
-        if %%~xi==.webm copy "%%i" "%convertedfolder%\!filepath!\!outfile!"  > NUL
-        if %%~xi==.gif copy "%%i" "%convertedfolder%\!filepath!\!outfile!"  > NUL 
-        if %%~xi==.swf copy "%%i" "%convertedfolder%\!filepath!\!outfile!"  > NUL 
-        
+        if not %%~xi==.jpg (
+            if not %%~xi==.png (
+                copy "%%i" "%convertedfolder%\!filepath!\!outfile!"
+            )
+        )
         echo [ !finishedcount!/%totalfilecount% - !percentview! ]      !filepath! !outputview:~-37! !wait!
         set /a timer+=1
         set /a convertedcount+=1
