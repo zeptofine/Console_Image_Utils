@@ -15,7 +15,7 @@ if "%prefix%"=="" (
     echo no prefix detected^^!
     goto prefix 
     )
-if not exist "%source2%-Separated" mkdir "%source2%-Separated"
+if not exist "%source2%-%prefix%" mkdir "%source2%-%prefix%"
 for /r %%i in (*%prefix%*) do (
-    copy "%%i" "%source2%-Separated\%%~nxi"
+    copy "%%i" "%source2%-%prefix%\%%~nxi"
 )
