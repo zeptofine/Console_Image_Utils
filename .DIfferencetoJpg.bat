@@ -20,8 +20,8 @@ if not exist %~pd0\FFmpegConvertImageJpg.bat (
     ) >> %~pd0\FFmpegConvertImageJpg.bat
     )
 set sourcemod=%source2: =-%
-if not exist "%sourcemod%-Converted" mkdir "%sourcemod%-Converted"
-set convertedfolder=%sourcemod%-Converted
+if not exist "%sourcemod%-Converted-Jpg" mkdir "%sourcemod%-Converted-Jpg"
+set convertedfolder=%sourcemod%-Converted-Jpg
 for /f "tokens=*" %%i in ('dir/s/b/a-d "!source2!" ^| find /v /c "::"') do set totalfilecount=%%i
 for /r %%i in (*) do (
     set file=%%i
