@@ -41,7 +41,7 @@ for /r %%i in (*) do (
         if %%~xi==.png start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImage.bat "%%i" 90 "%convertedfolder%\!filepath!\!outfile!"
         if not %%~xi==.jpg (
             if not %%~xi==.png (
-                copy "%%i" "%convertedfolder%\!filepath!\!outfile!"
+                copy "%%i" "%convertedfolder%\!filepath!\!outfile!" > NUL
             )
         )
         echo [ !finishedcount!/%totalfilecount% - !percentview! ]      !filepath! !outputview:~-37! !wait!
