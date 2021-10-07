@@ -9,17 +9,13 @@ cd %source2%
 echo %source2%
 for /f "useback tokens=*" %%a in ('%source2%') do set source2=%%~a
 echo %source2%
-if not exist "%appdata%\ffmpeg-release-essentials" (
-    Powershell -Command "Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "%appdata%\ffmpeg-release-essentials.zip"
-    Powershell -Command "Expand-Archive -LiteralPath %appdata%/ffmpeg-release-essentials.zip" -DestinationPath "%appdata%\ffmpeg-release-essentials"
-    )
-    set Ffmpegpath=%appdata%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe
-if not exist %~pd0\FFmpegConvertImageJpg.bat (
-    ( echo %%appdata%%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe -i %%1 -n -compression_level %%2 %%3 
-      echo exit
-    ) >> %~pd0\FFmpegConvertImageJpg.bat
-    attrib +h "%~pd0\FFmpegConvertImageJpg.bat"
-    )
+if not exist "C:\Program Files\ImageMagick-7.1.0-Q16-HDRI" ( Winget install imagemagick -h )
+if exist "%~pd0\FFmpegConvertImageJpg.bat" del "%~pd0\FFmpegConvertImageJpg.bat"
+if exist "%~pd0\Compare.bat" del "%~pd0\Compare.bat"
+( echo "C:\Program Files\ImageMagick-7.1.0-Q16-HDRI\ffmpeg.exe" -i %%1 -n -compression_level %%2 -vf "scale='min(3840,iw)':-1" %%3 
+  echo exit 
+) >> "%~pd0\FFmpegConvertImageJpg.bat"
+
 set sourcemod=%source2: =-%
 if not exist "%sourcemod%-Converted-Jpg" mkdir "%sourcemod%-Converted-Jpg"
 set convertedfolder=%sourcemod%-Converted-Jpg
@@ -39,7 +35,7 @@ for /r %%i in (*) do (
             set wait=/WAIT
             set timer=0
         )
-        start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImageJpg.bat "%%i" 90 "%convertedfolder%\!filepath!\!outfile!.Jpg"
+        start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImageJpg.bat "%%i" 92 "%convertedfolder%\!filepath!\!outfile!.Jpg"
         echo [ !finishedcount!/%totalfilecount% - !percentview! ]      !filepath! !outputview:~-37! !wait!
         set /a timer+=1
         set /a convertedcount+=1
@@ -55,8 +51,9 @@ for /r %%i in (*) do (
 )
 
 set /a missing=totalfilecount-finishedcount
-echo !percentview! !finishedcount!/%totalfilecount%
-echo !convertedcount! files processed
-echo !skippedcount! files already processed
-echo !missing! files unknown
+if "%convertedcount%"=="" set convertedcount=0
+if "%skippedcount%"=="" set skippedcount=0
+echo [ !finishedcount!/%totalfilecount% - !percentview! ] 
+echo %convertedcount% files processed
+echo %skippedcount% files already processed
 exit /b
