@@ -15,7 +15,7 @@ if not exist "%appdata%\ffmpeg-release-essentials" (
     )
     set Ffmpegpath=%appdata%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe
 if not exist %~pd0\FFmpegConvertImageJpg.bat (
-    ( echo %%appdata%%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe -i %%1 -n -compression_level %%2 -vf "scale='min(1024,iw)':-1" %%3 
+    ( echo %%appdata%%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe -i %%1 -n -compression_level %%2 %%3 
       echo exit
     ) >> %~pd0\FFmpegConvertImageJpg.bat
     attrib +h "%~pd0\FFmpegConvertImageJpg.bat"
@@ -39,7 +39,7 @@ for /r %%i in (*) do (
             set wait=/WAIT
             set timer=0
         )
-        start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImageJpg.bat "%%i" 80 "%convertedfolder%\!filepath!\!outfile!.Jpg"
+        start !wait! /MIN /I /ABOVENORMAL %~pd0\FFmpegConvertImageJpg.bat "%%i" 90 "%convertedfolder%\!filepath!\!outfile!.Jpg"
         echo [ !finishedcount!/%totalfilecount% - !percentview! ]      !filepath! !outputview:~-37! !wait!
         set /a timer+=1
         set /a convertedcount+=1
