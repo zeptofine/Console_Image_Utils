@@ -18,6 +18,7 @@ if not exist %~pd0\FFmpegConvertImagePng.bat (
     ( echo %%appdata%%\ffmpeg-release-essentials\ffmpeg-4.4-essentials_build\bin\ffmpeg.exe -i %%1 -n -compression_level %%2 -vf "scale='min(1024,iw)':-1" %%3 
       echo exit
     ) >> %~pd0\FFmpegConvertImagePng.bat
+    attrib +h "%~pd0\FFmpegConvertImagePng.bat"
     )
 set sourcemod=%source2: =-%
 if not exist "%sourcemod%-Converted-Png" mkdir "%sourcemod%-Converted-Png"
