@@ -1,5 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion 
+echo make sure you have 'ffmpeg' on path.
 set /p source2="Folder:" || set source2=%~pd0
 cd /d %source2%
 cd ..\
@@ -9,12 +10,12 @@ cd %source2%
 echo %source2%
 for /f "useback tokens=*" %%a in ('%source2%') do set source2=%%~a
 echo %source2%
-if not exist "C:\Program Files\ImageMagick-7.1.0-Q16-HDRI" ( Winget install imagemagick -h )
 if exist "%~pd0\FFmpegConvertImageJpg.bat" del "%~pd0\FFmpegConvertImageJpg.bat"
 if exist "%~pd0\Compare.bat" del "%~pd0\Compare.bat"
-( echo "C:\Program Files\ImageMagick-7.1.0-Q16-HDRI\ffmpeg.exe" -i %%1 -n -compression_level %%2 -vf "scale='min(3840,iw)':-1" %%3 
+( echo ffmpeg -i %%1 -n -compression_level %%2 -vf "scale='min(3840,iw)':-1" %%3 
   echo exit 
 ) >> "%~pd0\FFmpegConvertImage.bat"
+
 set sourcemod=%source2: =-%
 if not exist "%sourcemod%-Converted" mkdir "%sourcemod%-Converted"
 set convertedfolder=%sourcemod%-Converted
