@@ -1,34 +1,75 @@
-parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
-cd "$parent_path"
-echo Hello, who am I speaking to?
-read NAME
-Ffmpegcheck=$(command -v ffmpeg)
-if [ -z "$Ffmpegcheck" ];
-then pacman -S ffmpeg
-fi
-if [ -z "$NAME" ];
-then (
-echo Name not detected!
-exit
-)
-else (
-echo $NAME
-)
-fi
-if [ -e "$parent_path/hello.sh" ];
-then ( rm "$parent_path/hello.sh"
-echo deleted hello.sh )
-fi
-(echo echo hello
- echo echo hello again
-) > $parent_path/hello.sh
-echo created hello.sh
-konsole -e sh $parent_path/hello.sh
-cd $NAME
+#create .sh path
+    parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+    cd "$parent_path"
 
-if [ -e "$parent_path/list.txt" ];
-then ( rm "$parent_path/list.txt"
-echo deleted list.txt )
-fi
-find -name '* *' > $parent_path/list.txt
-echo created list.txt
+
+#set workspace folder
+    echo Hello, who am I speaking to?
+    read NAME
+    if [ -z "$NAME" ];
+        then (
+        echo Name not detected!
+        exit
+        )
+        fi
+    cd $NAME
+    cd ..
+    origin=$PWD
+    nameshort=${NAME%*/}
+    if [[ -f $origin${nameshort/$origin}-Converted-Jpg ]]
+        then
+        mkdir $origin${nameshort/$origin}-Converted-Jpg
+        fi
+    convertedfolder=$origin${nameshort/$origin}-Converted-Jpg
+    echo $convertedfolder
+
+#check if ffmpeg is a valid command, if not install ffmpeg
+    Ffmpegcheck=$(command -v ffmpeg)
+    if [ -z "$Ffmpegcheck" ];
+        then pacman -S ffmpeg
+    else (
+    echo $NAME
+    )
+    fi
+#create ffmpeg executable
+    if [ -e "$parent_path/FFmpegjpg.sh" ];
+    then ( rm "$parent_path/FFmpegjpg.sh"
+    echo deleted FFmpegjpg.sh )
+    fi
+    (   echo echo ffmpeg -n -i \$1 -compression_level \$2 -vf "scale='min(3840,iw)':-1" \$3
+        echo ffmpeg -n -i \$1 -compression_level \$2 -vf "scale='min(3840,iw)':-1" \$3
+    ) > $parent_path/FFmpegjpg.sh
+#Run the commands
+    cd $NAME
+    
+    for file in $(find)
+    do (
+        
+        filefolder=${file%/*}
+        filefoldernoper=${filefolder#.*}
+            #if picture folder doesn't exist, create folder
+        if  [[ ! -d $convertedfolder$filefoldernoper ]]
+        then (
+            echo $convertedfolder/$filefoldernoper
+            mkdir $convertedfolder$filefoldernoper
+            )
+        fi
+            #separate the folder, name, and extension
+        filenam=${file%.*}
+        filename=${filenam/$filefoldernoper}
+        filename=${filename#.*}
+        filext=${file/$filenam}
+
+            #Execute ffmpeg
+            
+        if [[ ! -e $convertedfolder$filefoldernoper$filename.jpg ]]
+        then (
+        ffmpeg -n -i $NAME/$filefoldernoper$filename$filext -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfolder$filefoldernoper$filename.jpg &
+        )
+        else (
+            echo skip $NAME/$filefoldernoper$filename$filext
+        )
+        fi
+    )
+    done
+sleep 10
