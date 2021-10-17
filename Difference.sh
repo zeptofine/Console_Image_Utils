@@ -64,10 +64,8 @@
             
         if [[ ! -e $convertedfolder$filefoldernoper$filename.jpg ]]
         then (
-        ffmpeg -n -i $NAME/$filefoldernoper$filename$filext -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfolder$filefoldernoper$filename.jpg &
-        )
-        else (
-            echo skip $NAME/$filefoldernoper$filename$filext
+            cp "$NAME/$filefoldernoper$filename$filext" "$convertedfolder$filefoldernoper$filename$filext"
+        ffmpeg -y -i $NAME/$filefoldernoper$filename$filext -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfolder$filefoldernoper$filename.jpg &
         )
         fi
     )
