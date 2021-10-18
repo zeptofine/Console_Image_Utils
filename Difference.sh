@@ -61,19 +61,27 @@
             then (
                 if [ ! "$filext" == ".png" ];
                 then (
+                    if [[ ! -f "$convertedfilenoconv" ]];
+                    then 
                     echo $convertedfilenoconv
                     cp "$originalfile" "$convertedfilenoconv" > /dev/null 2>&1
+                    fi
                 )
                 else (
+                    if [[ ! -f "$convertedfile" ]];
+                    then
                     ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p $convertedfile > /dev/null 2>&1 &
                     echo $convertedfile
+                    fi
                 )
                 fi
             )
             else (
-                echo $convertedfile
-                ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p $convertedfile > /dev/null 2>&1 &
-
+                    if [[ ! -f "$convertedfile" ]];
+                    then
+                    ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p $convertedfile > /dev/null 2>&1 &
+                    echo $convertedfile
+                    fi
             )
             fi
     )
