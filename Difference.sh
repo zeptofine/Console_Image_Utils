@@ -4,7 +4,7 @@
 
 
 #set workspace folder
-    echo Hello, who am I speaking to?
+    echo Folder?
     read NAME
     if [ -z "$NAME" ];
         then (
@@ -42,7 +42,7 @@
             if  [[ ! -d $convertedfolder$filefoldernoper ]]
             then (
                 echo $convertedfolder/$filefoldernoper
-                mkdir $convertedfolder$filefoldernoper
+                mkdir $convertedfolder$filefoldernoper 
                 )
             fi
         #separate the folder, name, and extension
@@ -55,25 +55,26 @@
             convertedfilenoconv=$convertedfolder$filefoldernoper$filename$filext
         #Execute ffmpeg
 
-        #ffmpeg -y -i $NAME/$filefoldernoper$filename$filext -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfolder$filefoldernoper$filename.jpg &
+            #ffmpeg -y -i $NAME/$filefoldernoper$filename$filext -compression_level 80 -vf "scale='min(3840,iw)':-1" -pix_fmt yuv420p $convertedfolder$filefoldernoper$filename.jpg > /dev/null 2>&1 &
         
-        if [ ! "$filext" == ".jpg" ];
-        then (
-            if [ ! "$filext" == ".png" ];
+            if [ ! "$filext" == ".jpg" ];
             then (
-                echo $convertedfilenoconv
-                cp "$originalfile" "$convertedfilenoconv"
+                if [ ! "$filext" == ".png" ];
+                then (
+                    echo $convertedfilenoconv
+                    cp "$originalfile" "$convertedfilenoconv" > /dev/null 2>&1
+                )
+                else (
+                    ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p $convertedfile > /dev/null 2>&1 &
+                    echo $convertedfile
+                )
+                fi
             )
             else (
-                ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfile &
+                echo $convertedfile
+                ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p $convertedfile > /dev/null 2>&1 &
+
             )
             fi
-        )
-        else (
-            ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfile &
-
-        )
-        fi
     )
     done
-sleep 10
