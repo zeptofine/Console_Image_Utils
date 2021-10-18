@@ -31,41 +31,47 @@
     echo $NAME
     )
     fi
-#create ffmpeg executable
-    if [ -e "$parent_path/FFmpegjpg.sh" ];
-    then ( rm "$parent_path/FFmpegjpg.sh"
-    echo deleted FFmpegjpg.sh )
-    fi
-    (   echo echo ffmpeg -n -i \$1 -compression_level \$2 -vf "scale='min(3840,iw)':-1" \$3
-        echo ffmpeg -n -i \$1 -compression_level \$2 -vf "scale='min(3840,iw)':-1" \$3
-    ) > $parent_path/FFmpegjpg.sh
 #Run the commands
     cd $NAME
     
     for file in $(find)
     do (
-        
-        filefolder=${file%/*}
-        filefoldernoper=${filefolder#.*}
-            #if picture folder doesn't exist, create folder
-        if  [[ ! -d $convertedfolder$filefoldernoper ]]
-        then (
-            echo $convertedfolder/$filefoldernoper
-            mkdir $convertedfolder$filefoldernoper
-            )
-        fi
-            #separate the folder, name, and extension
-        filenam=${file%.*}
-        filename=${filenam/$filefoldernoper}
-        filename=${filename#.*}
-        filext=${file/$filenam}
+        #if picture folder doesn't exist, create folder
+            filefolder=${file%/*}
+            filefoldernoper=${filefolder#.*} 
+            if  [[ ! -d $convertedfolder$filefoldernoper ]]
+            then (
+                echo $convertedfolder/$filefoldernoper
+                mkdir $convertedfolder$filefoldernoper
+                )
+            fi
+        #separate the folder, name, and extension
+            filenam=${file%.*}
+            filename=${filenam/$filefoldernoper}
+            filename=${filename#.*}
+            filext=${file/$filenam}
+            originalfile=$NAME/$filefoldernoper$filename$filext
+            convertedfile=$convertedfolder$filefoldernoper$filename.jpg
+            convertedfilenoconv=$convertedfolder$filefoldernoper$filename$filext
+        #Execute ffmpeg
 
-            #Execute ffmpeg
-            
-        if [[ ! -e $convertedfolder$filefoldernoper$filename.jpg ]]
+        #ffmpeg -y -i $NAME/$filefoldernoper$filename$filext -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfolder$filefoldernoper$filename.jpg &
+        
+        if [ ! "$filext" == ".jpg" ];
         then (
-            cp "$NAME/$filefoldernoper$filename$filext" "$convertedfolder$filefoldernoper$filename$filext"
-        ffmpeg -y -i $NAME/$filefoldernoper$filename$filext -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfolder$filefoldernoper$filename.jpg &
+            if [ ! "$filext" == ".png" ];
+            then (
+                echo $convertedfilenoconv
+                cp "$originalfile" "$convertedfilenoconv"
+            )
+            else (
+                ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfile &
+            )
+            fi
+        )
+        else (
+            ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(3840,iw)':-1" $convertedfile &
+
         )
         fi
     )
