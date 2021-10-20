@@ -16,12 +16,12 @@
     cd ..
     origin=$PWD
     nameshort=${NAME%*/}
-    if [[ -f $origin${nameshort/$origin}-Converted-Jpg ]]
+    if [[ ! -f "$origin${nameshort/$origin}-Converted-Jpg" ]]
         then
-        mkdir $origin${nameshort/$origin}-Converted-Jpg
+        mkdir $origin${nameshort/$origin}-Converted-Jpg > /dev/null 2>&1 
         fi
     convertedfolder=$origin${nameshort/$origin}-Converted-Jpg
-    echo $convertedfolder
+    echo $convertedfolder/
 
 #check if ffmpeg is a valid command, if not install ffmpeg
     Ffmpegcheck=$(command -v ffmpeg)
@@ -33,26 +33,44 @@
     fi
 #Run the commands
     cd $NAME
-    
-    for file in $(find)
-    do (
+
+# save and change IFS
+OLDIFS=$IFS
+IFS=$'\n'
+ 
+# read all file name into an array
+fileArray=($(find $NAME -type f))
+ 
+# restore it
+IFS=$OLDIFS
+ 
+# get length of an array
+tLen=${#fileArray[@]}
+ 
+# use for loop read all filenames
+for (( i=0; i<${tLen}; i++ ));
+do (
         #if picture folder doesn't exist, create folder
+            file="${fileArray[$i]}"
             filefolder=${file%/*}
-            filefoldernoper=${filefolder#.*} 
-            if  [[ ! -d $convertedfolder$filefoldernoper ]]
+            filefolder=${filefolder##*/}
+            convertfolder=${convertedfolder%*/}
+            if  [[ ! -d "$convertfolder/$filefolder" ]]
             then (
-                echo $convertedfolder/$filefoldernoper
-                mkdir $convertedfolder$filefoldernoper 
+                mkdir "$convertfolder/$filefolder"
                 )
             fi
         #separate the folder, name, and extension
             filenam=${file%.*}
-            filename=${filenam/$filefoldernoper}
+            filenam=${filenam##*/}
+            filename=${filenam/$filefolder}
             filename=${filename#.*}
-            filext=${file/$filenam}
-            originalfile=$NAME/$filefoldernoper$filename$filext
-            convertedfile=$convertedfolder$filefoldernoper$filename.jpg
-            convertedfilenoconv=$convertedfolder$filefoldernoper$filename$filext
+            filext=${file##*.}
+            filext=.$filext
+            originalfile=$NAME/$filefolder/$filename$filext
+            convertedfile=$convertedfolder/$filefolder/$filename.jpg
+            convertedfilenoconv=$convertedfolder/$filefolder/$filename$filext
+            #echo $convertfolder/$filefolder/$filenam$filext
         #Execute ffmpeg
 
             #ffmpeg -y -i $NAME/$filefoldernoper$filename$filext -compression_level 80 -vf "scale='min(3840,iw)':-1" -pix_fmt yuv420p $convertedfolder$filefoldernoper$filename.jpg > /dev/null 2>&1 &
@@ -70,7 +88,7 @@
                 else (
                     if [[ ! -f "$convertedfile" ]];
                     then
-                    ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p $convertedfile > /dev/null 2>&1 &
+                    ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
                     echo $convertedfile
                     fi
                 )
@@ -79,10 +97,11 @@
             else (
                     if [[ ! -f "$convertedfile" ]];
                     then
-                    ffmpeg -y -i $originalfile -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p $convertedfile > /dev/null 2>&1 &
+                    ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
                     echo $convertedfile
                     fi
             )
             fi
     )
     done
+    #  /dev/null 2>&1 
