@@ -43,7 +43,6 @@ IFS=$OLDIFS
 # get length of an array
 tLen=${#fileArray[@]}
 
-fileArray=( $(shuf -e "${fileArray[@]}") )
 # use for loop read all filenames
 for (( i=0; i<${tLen}; i++ ));
 do (
@@ -67,11 +66,6 @@ do (
             originalfile=$NAME/$filefolder/$filename$filext
             convertedfile=$convertedfolder/$filefolder/$filename.jpg
             convertedfilenoconv=$convertedfolder/$filefolder/$filename$filext
-            #echo $convertfolder/$filefolder/$filenam$filext
-        #Execute ffmpeg
-
-            #ffmpeg -y -i $NAME/$filefoldernoper$filename$filext -compression_level 80 -vf "scale='min(3840,iw)':-1" -pix_fmt yuv420p $convertedfolder$filefoldernoper$filename.jpg > /dev/null 2>&1 &
-        
             if [ ! "$filext" == ".jpg" ];
             then (
                 if [ ! "$filext" == ".png" ];
