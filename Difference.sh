@@ -16,18 +16,9 @@
     cd ..
     origin=$PWD
     nameshort=${NAME%*/}
-    if [[ ! -f "$origin${nameshort/$origin}-Converted-Jpg" ]]
-        then
-        mkdir $origin${nameshort/$origin}-Converted-Jpg > /dev/null 2>&1 
-        fi
+    mkdir $origin${nameshort/$origin}-Converted-Jpg > /dev/null 2>&1
     convertedfolder=$origin${nameshort/$origin}-Converted-Jpg
     echo $convertedfolder/
-    if [[ ! -f "$origin${nameshort/$origin}-Converted-Jpg-heatmap" ]]
-        then
-        mkdir $origin${nameshort/$origin}-Converted-Jpg-heatmap > /dev/null 2>&1 
-        fi
-    heatedfolder=$origin${nameshort/$origin}-Converted-Jpg-heatmap
-    echo $heatedfolder/
 
 #check if ffmpeg is a valid command, if not install ffmpeg
     Ffmpegcheck=$(command -v ffmpeg)
@@ -52,6 +43,7 @@ IFS=$OLDIFS
 # get length of an array
 tLen=${#fileArray[@]}
 
+fileArray=( $(shuf -e "${fileArray[@]}") )
 # use for loop read all filenames
 for (( i=0; i<${tLen}; i++ ));
 do (
@@ -60,15 +52,9 @@ do (
             filefolder=${file%/*}
             filefolder=${filefolder##*/}
             convertfolder=${convertedfolder%*/}
-            heatfolder=${heatedfolder%*/}
             if  [[ ! -d "$convertfolder/$filefolder" ]]
             then (
                 mkdir "$convertfolder/$filefolder"
-                )
-            fi
-            if  [[ ! -d "$heatfolder/$filefolder" ]]
-            then (
-                mkdir "$heatfolder/$filefolder"
                 )
             fi
         #separate the folder, name, and extension
@@ -81,7 +67,6 @@ do (
             originalfile=$NAME/$filefolder/$filename$filext
             convertedfile=$convertedfolder/$filefolder/$filename.jpg
             convertedfilenoconv=$convertedfolder/$filefolder/$filename$filext
-            heatedfile=$heatedfolder/$filefolder/$filename.jpg
             #echo $convertfolder/$filefolder/$filenam$filext
         #Execute ffmpeg
 
@@ -101,7 +86,6 @@ do (
                     if [[ ! -f "$convertedfile" ]];
                     then
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
-                    butteraugli "$originalfile" "$convertedfile" "$heatedfile" > /dev/null 2>&1 &
                     echo $convertedfile
                     fi
                 )
@@ -111,7 +95,6 @@ do (
                     if [[ ! -f "$convertedfile" ]];
                     then
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2560,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
-                    butteraugli "$originalfile" "$convertedfile" "$heatedfile" > /dev/null 2>&1 &
                     echo $convertedfile
                     fi
             )
