@@ -80,7 +80,7 @@ do (
                     if [[ ! -f "$convertedfile" ]];
                     then
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
-                    echo $filefolder     /     $filename$filext
+                    echo $filefolder $filext /     $filename$filext
                     fi
                 )
                 fi
@@ -89,7 +89,7 @@ do (
                     if [[ ! -f "$convertedfile" ]];
                     then
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
-                    echo $filefolder     /     $filename$filext
+                    echo $filefolder .jpg /     $filename$filext
                     fi
             )
             fi
