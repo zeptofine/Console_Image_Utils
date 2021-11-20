@@ -16,17 +16,12 @@
     cd ..
     origin=$PWD
     nameshort=${NAME%*/}
-    mkdir $origin${nameshort/$origin}-Converted-Jpg > /dev/null 2>&1
     convertedfolder=$origin${nameshort/$origin}-Converted-Jpg
     echo $convertedfolder/
-
 #check if ffmpeg is a valid command, if not install ffmpeg
     Ffmpegcheck=$(command -v ffmpeg)
     if [ -z "$Ffmpegcheck" ];
         then pacman -S ffmpeg
-    else (
-    echo $NAME
-    )
     fi
 #Run the commands
     cd $NAME
@@ -34,18 +29,43 @@
 # save and change IFS
 OLDIFS=$IFS
 IFS=$'\n'
- 
-# read all file name into an array
 fileArray=($(find $NAME -type f))
- 
-# restore it
-IFS=$OLDIFS
-# get length of an array
-tLen=${#fileArray[@]}
+if [ -d "$convertedfolder" ]; then
+oldFileArray=($(find $convertedfolder -type f))
+else
+    oldFileArray=0
+fi
 
+IFS=$OLDIFS
+tLen=${#fileArray[@]}
+toldLen=${#oldFileArray[@]}
+if [ -d "$convertedfolder/" ]; then
+   echo estimating image ratio...
+echo $toldLen/$tLen $(awk 'BEGIN {print ('$toldLen'/'$tLen')*100}' | cut -c -5)%
+oldFileArray=( "${oldFileArray[@]/$convertedfolder/$NAME}" )
+echo collecting images...
+echo 
+newcount=0; totalcount=0
+for i in ${fileArray[@]}; do
+            if [[ ! "${oldFileArray[@]}" =~ "${i%.*}" ]]; then
+                newFileArray+=( "$i" )
+                newcount=($(($newcount+1)))
+            fi
+        totalcount=($(($totalcount+1)))
+    echo -e '\e[2A\e[K'$(awk 'BEGIN {print ('$totalcount'/'$tLen')*100}' | cut -c -5)% \| collecting new images... 
+    echo -e $(awk 'BEGIN {print (('$totalcount'-'$newcount')/'$totalcount')*100}' | cut -c -5)% \| $(($totalcount-$newcount))/$totalcount 
+    done
+else
+mkdir $convertedfolder
+fi
+tnewLen=${#newFileArray[@]}
+echo
+
+convcount=1
 # use for loop read all filenames
-for (( i=0; i<${tLen}; i++ ));
-do (
+for (( i=0; i<$tLen; i++ ));
+do
+    
         #if picture folder doesn't exist, create folder
             file="${fileArray[$i]}"
             filefolder=${file%/*}
@@ -72,7 +92,7 @@ do (
                 then (
                     if [[ ! -f "$convertedfilenoconv" ]];
                     then 
-                    echo $filefolder     /     $filename$filext
+                    echo -e '\e[1A\e[K'$displays $display copy $filefolder / ${filename: -10}$filext
                     cp "$originalfile" "$convertedfilenoconv" > /dev/null 2>&1
                     fi
                 )
@@ -80,7 +100,7 @@ do (
                     if [[ ! -f "$convertedfile" ]];
                     then
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
-                    echo $filefolder /     $filename$filext
+                    echo -e '\e[1A\e[K'$displays $display convert $filefolder / ${filename: -10}$filext
                     fi
                 )
                 fi
@@ -89,10 +109,13 @@ do (
                     if [[ ! -f "$convertedfile" ]];
                     then
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
-                    echo $filefolder /     $filename$filext
+                    echo -e '\e[1A\e[K'$displays $display convert $filefolder / ${filename: -10}$filext
                     fi
             )
             fi
-    )
+    convcount=($((convcount+1)))
+    displays=$convcount/$tLen
+    display=$(awk 'BEGIN {print ('$convcount'/'$tLen')*100}' | cut -c -5)%
     done
+    echo Done.
     #  /dev/null 2>&1 
