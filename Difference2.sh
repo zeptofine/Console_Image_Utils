@@ -31,34 +31,75 @@
     IFS=$'\n'
     FileArray=($(find $NAME -type f))
     if [ -d "$convertedfolder" ]; then
-        FileArrayExc=($(find $convertedfolder -type f))
+        FileArrayExclude=($(find $convertedfolder -type f))
         else
-        FileArrayExc=()
+        FileArrayExclude=()
         fi
     IFS=$OLDIFS
-#change file arrays to relative paths
+#change file arrays to relative paths, Make new array for new extension
     echo making paths relative...
-    for ((i=0; i<${#FileArray[@]}; i++)); do
-        FileArray[$i]=${FileArray[$i]/$NAME/}
-        done
-    for ((i=0; i<${#FileArrayExc[@]}; i++)); do
-        FileArrayExc[$i]=${FileArrayExc[$i]/$convertedfolder/}
-        done
-# make converted list from FileArray
-    echo making predicted convert list...
+    echo 
     for ((i=0; i<${#FileArray[@]}; i++)); do
         file="${FileArray[$i]}"; filenam=${file%.*}; filenam=${filenam##*/}
         filext=.${file##*.}; filefolder=${file%/*}; filefolder=${filefolder##*/}
-        if [ ! "$filext" == ".jpg" ]||[ ! "$filext" == ".jpeg" ]; then
+        FileArray[$i]=.${FileArray[$i]/$NAME/}
+            
+            if [ ! "$filext" == ".jpg" ]||[ ! "$filext" == ".jpeg" ]; then
                 extnew=$filext; else extnew=.jpg; fi
-        if [ "$filext" == ".png" ]||[ "$filext" == ".PNG" ]; then
+            if [ "$filext" == ".png" ]||[ "$filext" == ".PNG" ]; then
                 extnew=.jpg; fi
-        FileArrayConv[$i]=.$filefolder/$filenam$extnew
-       done
 
-#get list of new files in folders, excluding FileArrayExc
-for ((i=0; i<${#FileArrayConv[@]}; i++)); do
-    file=${FileArrayConv[$i]}
-    #???
-echo $file #????
-done
+        FileArrayNewExt[$i]=${FileArray[$i]/$filext/}$extnew
+        echo -e '\e[1A\e[K'${FileArray[$i]} $filext \>\>\> $extnew
+        
+        done
+    for ((i=0; i<${#FileArrayExclude[@]}; i++)); do
+        file="${FileArrayExclude[$i]}"; filenam=${file%.*}; filenam=${filenam##*/}
+        filext=.${file##*.}; filefolder=${file%/*}; filefolder=${filefolder##*/}
+        FileArrayExclude[$i]=.${FileArrayExclude[$i]/$convertedfolder/}
+            
+            if [ ! "$filext" == ".jpg" ]||[ ! "$filext" == ".jpeg" ]; then
+                extnew=$filext; else extnew=.jpg; fi
+            if [ "$filext" == ".png" ]||[ "$filext" == ".PNG" ]; then
+                extnew=.jpg; fi
+
+        echo -e '\e[1A\e[K'${FileArrayExclude[$i]}
+        done
+
+# make convert list from FileArray
+echo -e '\e[1A\e[K'making convert list...
+echo
+    for ((i=0; i<${#FileArray[@]}; i++)); do
+        file=${FileArrayNewExt[$i]}
+        if [[ ! "${FileArrayExclude[@]}" =~ "${file}" ]]; then
+            FileArrayConvert[$i]=$file
+            echo -e '\e[1A\e[K'$convcount/$filecount new ${FileArrayConvert[$i]}
+            convcount=$((convcount+1))
+            else 
+            echo -e '\e[1A\e[K'$convcount/$filecount old $file
+            
+            fi
+            filecount=$((filecount+1))
+        done
+        #-e '\e[1A\e[K' 
+
+            #FileArrayNewExt
+            #FileArray
+            #FileArrayExclude
+#echo ${FileArrayConvert[@]}
+# convert files
+echo -e '\e[1A\e[K'converting files...
+echo
+for i in ${!FileArrayConvert[@]}; do
+    file=${FileArray[$i]}
+    convertedfile=${FileArrayNewExt[$i]#.*}
+    
+    #echo -e '\e[1A\e[K'$convedcount/$convcount converting ${FileArray[$i]}
+    convedcount=$((convedcount+1))
+    echo ffmpeg -y -i "$file" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuvj420p "$convertedfolder$convertedfile" #> /dev/null 2>&1 &
+    #echo "${FileArray[$i]}" "${FileArrayNewExt[$i]}"
+
+    done
+
+
+exit
