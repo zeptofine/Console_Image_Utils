@@ -70,7 +70,6 @@
 
 # make convert list from FileArray
     echo -e '\e[1A\e[K'create convert list...
-    echo
         for ((i=0; i<${#FileArray[@]}; i++)); do
             file=${FileArrayNewExt[$i]}
             filename=${FileArray[$i]##*/}
@@ -80,10 +79,11 @@
                 convcount=$((convcount+1))
                 fi
                 filecount=$((filecount+1))
-                printf "%-8s : %s : %-30s : %-80s : %-10s\r" "$convcount/$filecount" "${ArrayAge[$i]}" "$filefolder" "$filename"
+                printf "\r%-8s : %s : %-30s : %-80s : %-10s" "$convcount/$filecount" "${ArrayAge[$i]}" "$filefolder" "$filename"
             done
             #-e '\e[1A\e[K'
-    echo separating convert files and copy files
+    echo
+    echo separating convert files and copy files...
     for i in ${!FileArrayConvert[@]}; do
         file=${FileArray[$i]}
         if [[ ! "$file" =~ ".jpg" ]]; then 
@@ -107,7 +107,7 @@ for i in ${!FileArrayConvert[@]}; do
         fi
         filecount=$((filecount+1))
     done
-    echo
+    echo 
             #FileArrayNewExt
             #FileArray
             #FileArrayExclude
@@ -123,13 +123,10 @@ for i in ${!FileArrayCoppie[@]}; do
             mkdir "$convertedfolder/$filefolder"
         fi
     echo -e '\e[1A\e[K'$convedcount/$convcount copying ${FileArray[$i]} 
+    printf "%-8s : copying : %-30s : %-80s:\r" "$convedcount/$convcount" "$filefolder" "$filename"
     cp "$file" "$convertedfolder/$convertedfile"
     convedcount=$((convedcount+1))
 done
-
-
-
-
 echo converting files...
 echo
 convcount=${#FileArrayConv[@]}
