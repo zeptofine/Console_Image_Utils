@@ -33,7 +33,7 @@
     if [ -d "$convertedfolder" ]; then
         FileArrayExclude=($(find $convertedfolder -type f))
         else
-        FileArrayExclude=()
+        mkdir $convertedfolder
         fi
     IFS=$OLDIFS
 #change file arrays to relative paths, Make new array for new extension
@@ -128,7 +128,7 @@ done
 
 
 
-echo -e '\e[1A\e[K'converting files...
+echo converting files...
 echo
 for i in ${!FileArrayConv[@]}; do
     file=${FileArray[$i]}
