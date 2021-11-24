@@ -29,9 +29,11 @@
     echo getting files...
     OLDIFS=$IFS
     IFS=$'\n'
-    FileArray=($(find $NAME -type f))
+    FileArray=($(find $NAME -type f -printf "%T+,%p\n" | sort -r | cut -d, -f2 ))
+    ArrayAge=($(find $NAME -type f -printf "%T+,%p\n" | sort -r | cut -d, -f1 ))
+   
     if [ -d "$convertedfolder" ]; then
-        FileArrayExclude=($(find $convertedfolder -type f))
+        FileArrayExclude=($(find $convertedfolder -type f -printf "%T+,%p\n" | sort -r | cut -d, -f2 ))
         else
         mkdir $convertedfolder
         fi
@@ -67,31 +69,32 @@
         done
 
 # make convert list from FileArray
-echo -e '\e[1A\e[K'create convert list...
-echo
-    for ((i=0; i<${#FileArray[@]}; i++)); do
-        file=${FileArrayNewExt[$i]}
-        if [[ ! "${FileArrayExclude[@]}" =~ "${file}" ]]; then
-            FileArrayConvert[$i]=$file
-            echo -e '\e[1A\e[K'$convcount/$filecount new ${FileArrayConvert[$i]}
-            convcount=$((convcount+1))
-            else 
-            echo -e '\e[1A\e[K'$convcount/$filecount old $file
-            fi
-            filecount=$((filecount+1))
-        done
-        #-e '\e[1A\e[K'
+    echo -e '\e[1A\e[K'create convert list...
+    echo
+        for ((i=0; i<${#FileArray[@]}; i++)); do
+            file=${FileArrayNewExt[$i]}
+            filename=${FileArray[$i]##*/}
+            filefolder=${FileArray[$i]%/*}
+            if [[ ! "${FileArrayExclude[@]}" =~ "${file}" ]]; then
+                FileArrayConvert[$i]=$file
+                convcount=$((convcount+1))
+                fi
+                filecount=$((filecount+1))
+                printf "%-8s : %s : %-30s : %-80s : %-10s\r" "$convcount/$filecount" "${ArrayAge[$i]}" "$filefolder" "$filename"
+            done
+            #-e '\e[1A\e[K'
     echo separating convert files and copy files
-for i in ${!FileArrayConvert[@]}; do
-    file=${FileArray[$i]}
-    if [[ ! "$file" =~ ".jpg" ]]; then 
-        if [[ ! "$file" =~ ".png" ]]; then
-            FileArrayCopy[$i]=$file
-            #else echo $i not jpg but png $file
+    for i in ${!FileArrayConvert[@]}; do
+        file=${FileArray[$i]}
+        if [[ ! "$file" =~ ".jpg" ]]; then 
+            if [[ ! "$file" =~ ".png" ]]; then
+                FileArrayCopy[$i]=$file
+                #else echo $i not jpg but png $file
+                fi
+            #else echo jpg $file
             fi
-        #else echo jpg $file
-        fi
-    done
+        done
+filecount=${#FileArrayConvert[@]}
 for i in ${!FileArrayConvert[@]}; do
     file=${FileArrayConvert[$i]}
     if [[ ! "${FileArrayCopy[@]}" =~ "${file}" ]]; then
@@ -108,9 +111,8 @@ for i in ${!FileArrayConvert[@]}; do
             #FileArrayNewExt
             #FileArray
             #FileArrayExclude
-#echo ${FileArrayConvert[@]}
 # convert files
-
+convcount=${#FileArrayCoppie[@]}
 for i in ${!FileArrayCoppie[@]}; do
     file=${FileArray[$i]}
     convertedfile=${FileArrayNewExt[$i]#.*}
@@ -130,6 +132,7 @@ done
 
 echo converting files...
 echo
+convcount=${#FileArrayConv[@]}
 for i in ${!FileArrayConv[@]}; do
     file=${FileArray[$i]}
     convertedfile=${FileArrayNewExt[$i]#.*}
