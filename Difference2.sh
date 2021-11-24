@@ -26,7 +26,7 @@
     fi
 
 # Get file array and exclusion array
-    echo getting new files and old files...
+    echo getting files...
     OLDIFS=$IFS
     IFS=$'\n'
     FileArray=($(find $NAME -type f))
@@ -37,7 +37,7 @@
         fi
     IFS=$OLDIFS
 #change file arrays to relative paths, Make new array for new extension
-    echo making paths relative...
+    echo converting paths relative...
     echo 
     for ((i=0; i<${#FileArray[@]}; i++)); do
         file="${FileArray[$i]}"; filenam=${file%.*}; filenam=${filenam##*/}
@@ -67,7 +67,7 @@
         done
 
 # make convert list from FileArray
-echo -e '\e[1A\e[K'making convert list...
+echo -e '\e[1A\e[K'create convert list...
 echo
     for ((i=0; i<${#FileArray[@]}; i++)); do
         file=${FileArrayNewExt[$i]}
@@ -77,29 +77,82 @@ echo
             convcount=$((convcount+1))
             else 
             echo -e '\e[1A\e[K'$convcount/$filecount old $file
-            
             fi
             filecount=$((filecount+1))
         done
-        #-e '\e[1A\e[K' 
-
+        #-e '\e[1A\e[K'
+    echo separating convert files and copy files
+for i in ${!FileArrayConvert[@]}; do
+    file=${FileArray[$i]}
+    if [[ ! "$file" =~ ".jpg" ]]; then 
+        if [[ ! "$file" =~ ".png" ]]; then
+            FileArrayCopy[$i]=$file
+            #else echo $i not jpg but png $file
+            fi
+        #else echo jpg $file
+        fi
+    done
+for i in ${!FileArrayConvert[@]}; do
+    file=${FileArrayConvert[$i]}
+    if [[ ! "${FileArrayCopy[@]}" =~ "${file}" ]]; then
+        FileArrayConv[$i]=$file
+        echo -e '\e[1A\e[K'$convcount/$filecount Convert ${FileArrayConvert[$i]}
+        convcount=$((convcount+1))
+        else
+        FileArrayCoppie[$i]=$file
+        echo -e '\e[1A\e[K'$convcount/$filecount Copy ${FileArrayConvert[$i]}
+        fi
+        filecount=$((filecount+1))
+    done
+    echo
             #FileArrayNewExt
             #FileArray
             #FileArrayExclude
 #echo ${FileArrayConvert[@]}
 # convert files
-echo -e '\e[1A\e[K'converting files...
-echo
-for i in ${!FileArrayConvert[@]}; do
+
+for i in ${!FileArrayCoppie[@]}; do
     file=${FileArray[$i]}
     convertedfile=${FileArrayNewExt[$i]#.*}
-    
-    #echo -e '\e[1A\e[K'$convedcount/$convcount converting ${FileArray[$i]}
+        filefolder=${file%/*}
+    filefolder=${filefolder##*/}
+    if  [[ ! -d "$convertedfolder/$filefolder" ]]
+        then 
+            mkdir "$convertedfolder/$filefolder"
+        fi
+    echo -e '\e[1A\e[K'$convedcount/$convcount copying ${FileArray[$i]} 
+    cp "$file" "$convertedfolder/$convertedfile"
     convedcount=$((convedcount+1))
-    echo ffmpeg -y -i "$file" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuvj420p "$convertedfolder$convertedfile" #> /dev/null 2>&1 &
-    #echo "${FileArray[$i]}" "${FileArrayNewExt[$i]}"
+done
 
-    done
+
+
+
+echo -e '\e[1A\e[K'converting files...
+echo
+for i in ${!FileArrayConv[@]}; do
+    file=${FileArray[$i]}
+    convertedfile=${FileArrayNewExt[$i]#.*}
+    filext=.${file##*.}
+    filefolder=${file%/*}
+    filefolder=${filefolder##*/}
+    if  [[ ! -d "$convertedfolder/$filefolder" ]]
+        then 
+            mkdir "$convertedfolder/$filefolder"
+        fi
+
+    echo -e '\e[1A\e[K'$convedcount/$convcount converting ${FileArray[$i]}
+    convedcount=$((convedcount+1))
+    if [ $timer == 2 ]; then
+        ffmpeg -y -i "$file" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfolder$convertedfile" > /dev/null 2>&1 
+        timer=0
+        else 
+        ffmpeg -y -i "$file" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfolder$convertedfile" > /dev/null 2>&1 &
+        fi
+    #ffmpeg -y -i "$file" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfolder$convertedfile" > /dev/null 2>&1 &
+    #echo "${FileArray[$i]}" "${FileArrayNewExt[$i]}"
+    timer=$((timer+1))
+done
 
 
 exit
