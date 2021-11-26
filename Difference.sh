@@ -81,7 +81,7 @@ do (
                     then
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1
                     #echo ${ArrayAge[$i]} \| $filefolder \| $i \| $filename$filext
-                    printf "\r%s | %-30s | %-80s | $filext" "${ArrayAge[$i]}" "$filefolder" "$filename"
+                    printf "\r%s | %-30s | %-60s | $filext" "${ArrayAge[$i]}" "${filefolder:0:30}" "${filename:0:60}"
                     fi
                 )
                 fi
@@ -91,7 +91,7 @@ do (
                     then
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1
                     #echo ${ArrayAge[$i]} \| $filefolder \| $i \| $filename$filext
-                    printf "\r%s | %-30s | %-80s | .jpg" "${ArrayAge[$i]}" "$filefolder" "$filename"
+                    printf "\r%s | %-30s | %-60s | .jpg" "${ArrayAge[$i]}" "${filefolder:0:30}" "${filename:0:60}"
                     fi
             )
             fi
