@@ -143,15 +143,10 @@ for i in ${!FileArrayConv[@]}; do
 
     echo -e '\e[1A\e[K'$convedcount/$convcount converting ${FileArray[$i]}
     convedcount=$((convedcount+1))
-    if [ $timer == 2 ]; then
-        ffmpeg -y -i "$file" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfolder$convertedfile" > /dev/null 2>&1 
-        timer=0
-        else 
-        ffmpeg -y -i "$file" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfolder$convertedfile" > /dev/null 2>&1 &
-        fi
+        ffmpeg -y -i "$file" -compression_level 80 -vf "scale=min(2048,iw):-1" -pix_fmt yuv420p "$convertedfolder$convertedfile" > /dev/null 2>&1 
+        ffmpeg -y -i "$file" -compression_level 80 -vf "scale=min(2048,iw):-1" -pix_fmt yuv420p "$convertedfolder$convertedfile" > /dev/null 2>&1 &
     #ffmpeg -y -i "$file" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfolder$convertedfile" > /dev/null 2>&1 &
     #echo "${FileArray[$i]}" "${FileArrayNewExt[$i]}"
-    timer=$((timer+1))
 done
 
 
