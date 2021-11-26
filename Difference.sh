@@ -66,35 +66,30 @@ do (
             originalfile=$NAME/$filefolder/$filename$filext
             convertedfile=$convertedfolder/$filefolder/$filename.jpg
             convertedfilenoconv=$convertedfolder/$filefolder/$filename$filext
+            printf "\r%s | %-30s | %-60s | %-6s |" "${ArrayAge[$i]}" "${filefolder:0:30}" "${filename:0:60}" "${filext:0:6}"
             if [ ! "$filext" == ".jpg" ];
             then (
                 if [ ! "$filext" == ".png" ];
                 then (
-                    if [[ ! -f "$convertedfilenoconv" ]];
-                    then 
-                    echo $filefolder \| $i \| $filename$filext
+                    if [[ ! -f "$convertedfilenoconv" ]]; then
                     cp "$originalfile" "$convertedfilenoconv" > /dev/null 2>&1
                     fi
                 )
                 else (
-                    if [[ ! -f "$convertedfile" ]];
-                    then
+                    if [[ ! -f "$convertedfile" ]]; then
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1
                     #echo ${ArrayAge[$i]} \| $filefolder \| $i \| $filename$filext
-                    printf "\r%s | %-30s | %-60s | $filext" "${ArrayAge[$i]}" "${filefolder:0:30}" "${filename:0:60}"
                     fi
                 )
                 fi
             )
             else (
-                    if [[ ! -f "$convertedfile" ]];
-                    then
+                    if [[ ! -f "$convertedfile" ]]; then  
                     ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale='min(2048,iw)':-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1
                     #echo ${ArrayAge[$i]} \| $filefolder \| $i \| $filename$filext
-                    printf "\r%s | %-30s | %-60s | .jpg" "${ArrayAge[$i]}" "${filefolder:0:30}" "${filename:0:60}"
                     fi
             )
-            fi
+            fi   
     )
     done
     #  /dev/null 2>&1 
