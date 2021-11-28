@@ -2,7 +2,7 @@
     parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
     cd "$parent_path"
 
-
+    echo for the record, I don\'t necessarily think this version is the best, but I like to keep it around to learn from.
 # set workspace folder
     echo Folder?
     read NAME

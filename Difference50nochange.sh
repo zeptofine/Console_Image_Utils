@@ -16,8 +16,8 @@
     cd ..
     origin=$PWD
     nameshort=${NAME%*/}
-    mkdir $origin${nameshort/$origin}-Converted-Jpg-50percent > /dev/null 2>&1
-    convertedfolder=$origin${nameshort/$origin}-Converted-Jpg-50percent
+    mkdir $origin${nameshort/$origin}-Converted-Jpg-25percent > /dev/null 2>&1
+    convertedfolder=$origin${nameshort/$origin}-Converted-Jpg-25percent
     echo $convertedfolder/
 
 #check if ffmpeg is a valid command, if not install ffmpeg
@@ -36,9 +36,8 @@ OLDIFS=$IFS
 IFS=$'\n'
  
 # read all file name into an array
-fileArray=($(find $NAME -type f -printf "%T+,%p\n" | cut -d, -f2 ))
-ArrayAge=($(find $NAME -type f -printf "%T+,%p\n" | cut -d, -f1 ))
-#find $NAME -type f -printf "%T+,%p\n" | sort -r | cut -d, -f2
+fileArray=($(find $NAME -type f -printf "%T+,%p\n" | sort -r | cut -d, -f2 ))
+ArrayAge=($(find $NAME -type f -printf "%T+,%p\n" | sort -r | cut -d, -f1 ))
  
 # restore it
 IFS=$OLDIFS
@@ -74,13 +73,15 @@ do (
                 then (
                     if [[ ! -f "$convertedfilenoconv" ]];
                     then 
+                    echo ${ArrayAge[$i]} $filefolder / $filename$filext
                     cp "$originalfile" "$convertedfilenoconv" > /dev/null 2>&1
                     fi
                 )
                 else (
                     if [[ ! -f "$convertedfile" ]];
                     then
-                    ffmpeg -n -i "$originalfile" -compression_level 80 -vf "scale=iw/2:-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
+                    ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale=iw/2:-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
+                    echo ${ArrayAge[$i]} $filefolder \| $i \| $filename$filext
                     fi
                 )
                 fi
@@ -88,11 +89,11 @@ do (
             else (
                     if [[ ! -f "$convertedfile" ]];
                     then
-                    ffmpeg -n -i "$originalfile" -compression_level 80 -vf "scale=iw/2:-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
+                    ffmpeg -y -i "$originalfile" -compression_level 80 -vf "scale=iw/2:-1" -pix_fmt yuv420p "$convertedfile" > /dev/null 2>&1 &
+                    echo ${ArrayAge[$i]} $filefolder / $filename$filext
                     fi
             )
             fi
-            echo ${ArrayAge[$i]} $filefolder \| $i \| $filename$filext
     )
     done
     #  /dev/null 2>&1 
