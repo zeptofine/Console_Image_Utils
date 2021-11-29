@@ -1,3 +1,10 @@
+echo Hi\! this script was made to help me create large folder of thousands of images. They needed to be divisible by 8 because the project i was working on needed the images to be an even conversion for accuracy. it's not div 4 or 2 because when i set them to be div 4 or 2 I still got the errors for "images not divisible by 4. resizing blah blah blah." sorry about that.
+echo Oh, also they can't be videos or gifs or swfs or anything like that. pngs, and jpegs are the only ones allowed so far.
+echo If you want to change that to allow bmps or smth, around line 31 is where the extension check occurs. simply add "|| [[ $filext =~ .newextension" to the end before the 'then.'
+echo upcoming features: Low res set processing.
+echo
+echo ---------------------------------------------------------------------
+echo
 echo folder?
 read folder
     if [ -z "$folder" ];
