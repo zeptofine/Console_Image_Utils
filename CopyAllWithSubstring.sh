@@ -39,6 +39,17 @@ IFS=$OLDIFS
 # get length of an array
 tLen=${#fileArray[@]}
 # use for loop read all filenames
+convertfolder=${convertedfolder%*/}
+copyfunc() {
+        
+        cp "$1" "$2"
+        echo "$1" "copied to" "$2"
+        
+}
+export -f copyfunc
+find $NAME -type f -name "*$PREFIX*" -print0 | parallel -0 copyfunc
+
+exit 
 for (( i=0; i<${tLen}; i++ ));
 do (
         #if picture folder doesn't exist, create folder
