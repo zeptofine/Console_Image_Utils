@@ -49,6 +49,10 @@ you can also use command line arguments! use the -h flag for more context. most 
    Ffmpegcheck=$(command -v ffmpeg)
    if [ -z "$Ffmpegcheck" ];
       then echo "ffmpeg is not installed, exiting"; exit 1;fi
+#check if ffmpeg is a valid command
+   Ffmpegcheck=$(command -v identify)
+   if [ -z "$Ffmpegcheck" ];
+      then echo "imagemagick is not installed, imagemagick identify will not work properly"; exit 1;fi
 
 #get list of files
    if [[ -z "$sort" ]]; then
