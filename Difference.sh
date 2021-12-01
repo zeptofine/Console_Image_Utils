@@ -1,4 +1,4 @@
-#!/bin/bash\
+#!/bin/bash
 echo -e "\033[1;37mHi! this script was made to convert thousands of files to another format.
 Oh, also they can't be videos or gifs or swfs or anything like that. pngs, and jpegs are the only ones converted so far. the rest will be copied.
 If you want to change that to allow bmps or smth, around line 82 is where the extension check occurs. simply add || [[ $filext =~ .??? ]] to the end before ';then'.
