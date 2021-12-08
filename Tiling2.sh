@@ -1,6 +1,7 @@
+#!/bin/bash
 #create .sh path
-    parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
-    cd "$parent_path"
+    parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" || exit ; pwd -P )
+    cd "$parent_path" || exit
 
     echo You need Imagemagick before you run this.
     echo To do: add a check for Imagemagick.
@@ -37,7 +38,7 @@ done
 if [ "$Workspace" == "0" ]; then
 echo creating tiles...
 mkdir ${file/$(basename $file)}/Output
-cd ${file/$(basename $file)}/Output
+cd ${file/$(basename $file)}/Output || exit
     if [ "$Padding" == "0" ]; then
         for y in $(seq "$ytile"); do 
                 for x in $(seq "$xtile"); do
