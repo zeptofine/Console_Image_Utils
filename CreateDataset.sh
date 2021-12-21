@@ -11,7 +11,7 @@ I reccomend using the ramdisk script in the same folder as this script to speed 
 
 
 # check for arguments
-   while getopts ":hs:i:p:t:o:" opt; do
+   while getopts ":hs:i:p:t:o:x:" opt; do
       case $opt in
          h) echo ""; help=1; break;;
          s) sort=$OPTARG; if [[ $sort = 1 ]]; then echo "sorting by age";elif [[ $sort = 2 ]]; then echo "sorting by name";fi ;;
@@ -19,6 +19,7 @@ I reccomend using the ramdisk script in the same folder as this script to speed 
          p) parallel="$OPTARG"; echo "parallel=$parallel";;
          t) tmpdir="$OPTARG"; echo "tmpdir=$tmpdir";;
          o) output="$OPTARG"; echo "output=$output";;
+         x) scale="$OPTARG"; echo "scale=$scale";;
          *) echo "invalid option: $OPTARG";;
       esac
       done
@@ -39,7 +40,8 @@ I reccomend using the ramdisk script in the same folder as this script to speed 
          -i:        input folder, skip prompt
          -p: [0],1  enable parallel processing, skip prompt. (parallel is *much* faster, and it's my focus right now)
          -t:        tmpdir for parallel processing, skip prompt
-         -o:        output folder, instead of HR"
+         -o:        output folder, instead of HR
+         -x:        scale factor, skip prompt"
          exit 1
       fi
 
@@ -53,6 +55,9 @@ I reccomend using the ramdisk script in the same folder as this script to speed 
       echo -e "parallel processing:([0],1):"; read -r parallel; fi
    if [ -z "$parallel" ]; then echo "No parallel entered, default is 0"; parallel=0; fi
 
+   if [ -z "$scale" ]; then
+      echo -e "Enter the scale factor: "; read -r scale; fi
+   if [ -z "$scale" ]; then echo "No scale entered, default is 4"; scale=4; fi
    cd "$input" || exit
    nameshort=${input%*/}
    nameshort=$(dirname "$nameshort")
@@ -65,7 +70,7 @@ I reccomend using the ramdisk script in the same folder as this script to speed 
    echo "$convertedfolder/"
    declare -x convertedfolder
    declare -x input
-
+   declare -x scale
 # sort prompt
    if [[ -z "$sort" ]]; then
       echo -e "Sort by age or name? [1]age [2]name: "; read -r sort; fi
@@ -82,14 +87,14 @@ function ffmpegconv() {
    fileAge=${fileAge:0:19}
    paddi="$(echo "$i" | sed -e :a -e 's/^.\{1,4\}$/_&/;ta')"
    if [[ $filext =~ .jpg ]] || [[ $filext =~ .png ]] || [[ $filext =~ .jpeg ]] || [[ $filext =~ .PNG ]]; then
-      if [[ ! -f "$convertedfolder/$filename$filext" ]]; then
+      if [[ ! -f "$convertedfolder/$filename.png" ]]; then
          imagewidth=$(identify -ping -format "%w" "$file") && imageheight=$(identify -ping -format "%h" "$file")
-         if ! (( imagewidth % 4 )); then
-            if ! (( imageheight % 4 )); then
-               magick convert "$file" -strip -alpha off -define png:color-type=2 "$convertedfolder/$filename$filext" > /dev/null 2>&1
+         if ! (( imagewidth % scale )); then
+            if ! (( imageheight % scale )); then
+               magick convert "$file" -strip -alpha off -define png:color-type=2 "$convertedfolder/$filename.png" > /dev/null 2>&1
                echo -e "${white}${fileAge} |${green} ---- conv ${white}|${green} ./$filename$filext"
-               else echo -e "${white}${fileAge} |${yellow} -/%8 ---- ${white}|${yellow} ./$filename$filext"; fi
-            else echo -e "${white}${fileAge} |${yellow} -/%8 ---- ${white}|${yellow} ./$filename$filext"; fi
+               else echo -e "${white}${fileAge} |${yellow} -/%$scale ---- ${white}|${yellow} ./$filename$filext"; fi
+            else echo -e "${white}${fileAge} |${yellow} -/%$scale ---- ${white}|${yellow} ./$filename$filext"; fi
          else echo -e "${white}${fileAge} |${yellow} exis ---- ${white}|${red} ./$filename$filext"; fi; 
          else echo -e "${white}${fileAge} |${yellow} /img ---- ${white}|${red} ./$filename$filext";fi
 }; export -f ffmpegconv
@@ -137,15 +142,15 @@ IFS=$OLDIFS
       if  [[ ! -d "$convertedfolder/$subfolder" ]]; then mkdir "$convertedfolder/$subfolder"; fi
       paddi="$(echo "$i" | sed -e :a -e 's/^.\{1,4\}$/_&/;ta')"
    if [[ $filext =~ .jpg ]] || [[ $filext =~ .png ]] || [[ $filext =~ .jpeg ]] || [[ $filext =~ .PNG ]]; then
-      if [[ ! -f "./HR/$filename$filext" ]]; then
+      if [[ ! -f "$convertedfolder/$filename.png" ]]; then
          paddi=$(echo "$i" | sed -e :a -e 's/^.\{1,4\}$/_&/;ta')
          imagewidth=$(identify -ping -format "%w" "$file") && imageheight=$(identify -ping -format "%h" "$file")
-         if ! (( imagewidth % 4 )); then
-            if ! (( imageheight % 4 )); then
+         if ! (( imagewidth % scale )); then
+            if ! (( imageheight % scale )); then
                magick convert "$file" -strip -alpha off -define png:color-type=2 "$convertedfolder/$filename$filext" > /dev/null 2>&1
                echo -e "${white}${ArrayAge[$i]%.*} |${lightblue} $paddi ${white}|${green} ---- conv ${white}|${green} ./$filename$filext"
-               else echo -e "${white}${ArrayAge[$i]%.*} |${lightblue} $paddi ${white}|${yellow} -/%4 ---- ${white}|${red} ./$filename$filext"; fi
-            else echo -e "${white}${ArrayAge[$i]%.*} |${lightblue} $paddi ${white}|${yellow} -/%4 ---- ${white}|${red} ./$filename$filext"; fi
+               else echo -e "${white}${ArrayAge[$i]%.*} |${lightblue} $paddi ${white}|${yellow} -/%$scale ---- ${white}|${red} ./$filename$filext"; fi
+            else echo -e "${white}${ArrayAge[$i]%.*} |${lightblue} $paddi ${white}|${yellow} -/%$scale ---- ${white}|${red} ./$filename$filext"; fi
          else echo -e "${white}${ArrayAge[$i]%.*} |${lightblue} $paddi ${white}|${yellow} exis ---- ${white}|${yellow} ./$filename$filext"; fi; fi
    ) done
 ) else ( echo parallel is not set to [0] or 1); fi # end of parallelization
@@ -161,10 +166,10 @@ if [[ $check = y ]]; then
             echo -e "pngcheck |${lightblue} keep | ${i%.*}"
             else echo -e "pngcheck |${red} del  | ${i%.*}"; rm "$i"; return; fi
          if identify "$i"> /dev/null 2>&1; then
-            echo -e "identify |${lightblue} keep | ${i%.*}${white} is not corrupted"
+            echo -e "identify |${lightblue} keep | ${i%.*}${white}"
             else echo -e "identify |${red} del  | ${i%.*}"; rm "$i"; return; fi
    }; export -f checkfiles
-   find "$convertedfolder" -type f | parallel checkfiles {}
+   find "$convertedfolder" -type f | sort -r | parallel checkfiles {} 
 elif [[ $parallel = 1 ]]; then
    echo "checking for corrupted files..."
    echo "alright, this part is a bit of a workaround and isn't as pretty as the rest of this script, but it works"
