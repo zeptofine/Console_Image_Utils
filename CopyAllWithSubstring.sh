@@ -20,9 +20,9 @@ you can use command line arguments! use the -h flag for more context. most of my
    if [[ $help = 1 ]]; then
       echo -e "These arguments are optional. They can be used to speed up the process *very* slightly.
          -h:        display this help!
-         -s: [1],2  sort by age or name, skip prompt
-         -i:        input folder, skip prompt
-         -p: [0],1  enable parallel processing, skip prompt. (parallel is *much* faster, but i haven't tested it as much)"
+         -S: [1],2  sort by age or name, skip prompt
+         -s:        substring to search for in file names
+         -i:        input folder, skip prompt"
          exit 1
       fi
 
@@ -43,10 +43,7 @@ you can use command line arguments! use the -h flag for more context. most of my
          echo "No sort entered, defaulting to age"; sort=1; fi
 
 # parallel prompt
-   if [[ -z "$parallel" ]]; then
-      echo -e "Do you want to enable parallel processing or stick to individual files? ([0],1)"
-      echo -e "parallel processing:([0],1):"; read -r parallel; fi
-   if [ -z "$parallel" ]; then echo "No parallel entered, default is 0"; parallel=0; fi
+
 
    cd "$input" || exit
    nameshort=${input%*/}
@@ -64,11 +61,11 @@ function ffmpegconv() {
       filename=$(basename "$file")
       filename=${filename%.*}
       subfolder=$(basename "$filefolder")
-      fileAge=$(stat -c %y "$file")
+      # get file age then replace whitespace with underscore
+      fileAge=$(stat -c %y "$file"); fileAge=${fileAge// /_}
       fileAge=${fileAge:0:19}
       if  [[ ! -d "$convertedfolder/$subfolder" ]]; then mkdir "$convertedfolder/$subfolder"; fi
       convertedfile="$convertedfolder/$subfolder/$filename$filext"
-      paddi="$(echo "$i" | sed -e :a -e 's/^.\{1,4\}$/_&/;ta')"
          if [[ ! -f "$convertedfile" ]]; then
             cp "$file" "$convertedfile" > /dev/null 2>&1
             echo -e "${white} ${fileAge} ${white}|${green} copy ---- ${white}|${green} $convertedfile"
@@ -77,8 +74,6 @@ function ffmpegconv() {
             fi
 }
 export -f ffmpegconv
-
-if [[ $parallel = 0 ]]; then (
    OLDIFS=$IFS; IFS=$'\n'
    if [[ $sort = 1 ]]; then 
       find "$input" -type f -name "*$substring*" -printf "%T+,%p\n" | sort -r | cut -d, -f2 | parallel ffmpegconv
@@ -86,29 +81,3 @@ if [[ $parallel = 0 ]]; then (
          find "$input" -type f -name "*$substring*" -printf "%p,%T+\n" | sort | cut -d, -f1 | parallel ffmpegconv 
       fi 
    IFS=$OLDIFS
-) elif [[ $parallel = 1 ]]; then (
-OLDIFS=$IFS; IFS=$'\n'
-   if [[ $sort = 1 ]]; then 
-      mapfile -t fileArray < <(find "$input" -type f -name "*$substring*" -printf "%T+,%p\n" | sort -r | cut -d, -f2 ) && mapfile -t ArrayAge < <(find "$input" -type f -name "*$substring*" -printf "%T+,%p\n" | sort -r | cut -d, -f1 ) # create array of files and array of ages in order of age
-      elif [[ $sort = 2 ]]; then 
-         mapfile -t fileArray < <(find "$input" -type f -name "*$substring*" -printf "%p,%T+\n" | sort | cut -d, -f1 ) && mapfile -t ArrayAge < <(find "$input" -type f -name "*$substring*" -printf "%p,%T+\n" | sort | cut -d, -f2 ); # create array of files and array of ages in order of name
-      fi 
-IFS=$OLDIFS
-   for (( i=0; i<${#fileArray[@]}; i++ )); do (
-      file="${fileArray[$i]}"; filext=.${file##*.}
-      filefolder=$(dirname "$file")
-      filename=$(basename "$file")
-      filename=${filename%.*}
-      subfolder=$(basename "$filefolder")
-      if  [[ ! -d "$convertedfolder/$subfolder" ]]; then mkdir "$convertedfolder/$subfolder"; fi
-      convertedfile="$convertedfolder/$subfolder/$filename$filext"
-      paddi="$(echo "$i" | sed -e :a -e 's/^.\{1,4\}$/_&/;ta')"
-         if [[ ! -f "$convertedfile" ]]; then
-            cp "$file" "$convertedfile" > /dev/null 2>&1
-            echo -e "${white} ${ArrayAge[$i]%.*} |${lightblue} $paddi ${white}|${green} copy ---- ${white}|${green} $convertedfile"
-            else
-               echo -e "${white} ${ArrayAge[$i]%.*} |${lightblue} $paddi ${white}|${yellow} ---- skip ${white}|${yellow} $convertedfile"
-            fi
-   ) done
-) else ( echo parallel is not set to [0] or 1; exit 1; ) fi 
-exit 1

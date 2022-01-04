@@ -31,12 +31,6 @@ if [[ -z $size ]]; then
 fi
 
 sudo mount -t tmpfs -o size="$size"g tmpfs "$path"
-if [[ $? -eq 0 ]]; then
-   echo -e "\033[1;32mSuccessfully mounted the ram to $path!\033[0m"
-   else
-   echo -e "\033[1;31mSomething went wrong when mounting. Possible fix: Make sure the path is valid\033[0m"
-   exit 1
-fi
 echo -e "\033[1;37mmounted to $path. Continue to unmount.\033[0m"
 read -n 1 -s -r -p "Press any key to continue"
 sudo umount "$path"
