@@ -1,5 +1,5 @@
 # Bat-Image-Utils
-a bunch of batch files i have
+a bunch of bash files i have
 
 gimme ideas. im too lazy to think of htem myself
 
