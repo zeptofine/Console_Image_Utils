@@ -1,4 +1,5 @@
-# Bat-Image-Utils
+# Console-Image-Utils
+
 a bunch of bash files i have
 
 gimme ideas. im too lazy to think of htem myself
