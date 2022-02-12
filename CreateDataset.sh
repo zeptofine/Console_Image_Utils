@@ -7,30 +7,29 @@ echo -e "${white}${bold}Hi! this script was made to convert thousands of files t
 Oh, also they can't be videos or gifs or swfs or anything like that. pngs, and jpegs are the only ones converted so far. the rest will be ignored.
 ${underline}you can also use command line arguments!${default} use the -h flag for more context.
 ${brown}requirements: Imagemagick, GNU parallel.${default}
-I reccomend using the ramdisk script in the same folder as this script to speed up the process.
+I reccomend using the ramdisk script in the same folder as this script to speed up the process. ${red}(make a dedicated folder for it)${default}
 ---------------------------------------------------------------------"
 
 # check for arguments
-while getopts "hi:o:s:t:x:c:" opt; do
+while getopts "hi:o:t:x:c:d:" opt; do
    case $opt in
    h) echo -e "These arguments are optional. They can be used to automate the process so you don't have to input them every time.${bold}${underline}${white}
-     commands       defaults               description          ${default}${white}
-${white}|${default} -h  ${white}▏${default}             ${white}▏${default}display current help         
-${white}|${default} -i  ${white}▏${default}             ${white}▏${default}input folder, skip prompt
-${white}|${default} -o  ${white}▏${default} (scale)xHR  ${white}▏${default}output folder
-${white}|${default} -s  ${white}▏${default} [1],2       ${white}▏${default}sort by age/name, skip prompt
-${white}|${default} -t  ${white}▏${default} default     ${white}▏${default}tmpdir for parallel processing
-${white}|${default} -x  ${white}▏${default} 1,2,[4],8   ${white}▏${default}scale factor, skip prompt
-${white}|${default} -c  ${white}▏${default} [y]/n       ${white}▏${default}convert files, skip prompt${default}"; exit 0;;
-   i) input="$OPTARG";; o) output="$OPTARG";; s) sort="$OPTARG";; t) tmpdir="$OPTARG";;
+prefix   defaults               description          ${default}${white}
+${white}|${default} -h  ${white}|${default}             ${white}|${default}display current help         
+${white}|${default} -i  ${white}|${default}             ${white}|${default}input folder, skip prompt
+${white}|${default} -o  ${white}|${default} (scale)xHR  ${white}|${default}output folder
+${white}|${default} -t  ${white}|${default} default     ${white}|${default}tmpdir for parallel processing
+${white}|${default} -x  ${white}|${default} 1,2,[4],8   ${white}|${default}scale factor, skip prompt
+${white}|${default} -d  ${white}|${default} [y]/n       ${white}|${default}delete corrupted files, skip prompt
+${white}|${default} -c  ${white}|${default} [y]/n       ${white}|${default}convert files, skip prompt${default}"; exit 0;;
+   i) input="$OPTARG";; o) output="$OPTARG";; t) tmpdir="$OPTARG";; d) corrupt="$OPTARG";;
    x) scale="$OPTARG";; c) convert="$OPTARG";; \?) echo "Invalid option -$OPTARG" >&2;;
 esac; done
 #check if imagemagick & pngcheck is a valid command
-   if ! magick >/dev/null 2>&1; then   echo "imagemagick is not installed, imagemagick identify & convert will not work properly"; exit 1; fi
-   if ! pngcheck >/dev/null 2>&1; then echo "pngcheck is not installed, checking corrupt files will not work properly"; fi
-   if ! parallel >/dev/null 2>&1; then echo "parallel is not installed, this script will not work properly"; exit 127; fi
+   if ! command -v magick >/dev/null 2>&1;then echo "imagemagick is not installed, identify & convert will not work properly"; exit 127; fi
+   if ! command -v pngcheck >/dev/null 2>&1;then echo "pngcheck is not installed, checking corrupt pngs will not work properly"; fi
+   if ! command -v parallel >/dev/null 2>&1;then echo "parallel is not installed, this script will not work properly"; exit 127; fi
 #check if any inputs are unnacounted for
-   if [ -z "$input" ]||[ -z "$sort" ]||[ -z "$scale" ]; then echo -e "\n\n\n"; fi
    if [ -z "$input" ]; then echo -e "Folder:"; read -r input; fi
    if [ -z "$input" ]; then echo "No folder entered, exiting"; exit 1; fi
    if [ -z "$scale" ]; then echo -e "Enter the scale factor:"; read -r -n 1 scale; export scale; fi
@@ -38,81 +37,93 @@ esac; done
       cd "$input" || exit; nameshort=$(dirname "$input")
    if [[ -z $output ]]; then convertedfolder=$nameshort/${scale}xHR; output=$convertedfolder; else convertedfolder=$output; fi
       mkdir "$convertedfolder" >/dev/null 2>&1
-   if [ -z "$sort" ]; then echo -ne "Sort by age or name? [1]age [2]name:\n"; read -r -n 1 sort; fi
-   if [ -z "$sort" ]; then echo "No sort entered, defaulting to age"; sort=1; fi
+   if [[ -z $tmpdir ]]; then tmpdir=$(dirname "$0"); fi
 # create ffmpegconv command (it doesnt use ffmpeg lol, i just havent change the name yet)
 declare -x convertedfolder input scale
+echo -e "Linking to HR...\n"
 function ffmpegconv {
-file="$1"; filext=.${file##*.}
-filename=$(basename "$file"); filename=${filename%.*}
-fileAge=$(find "$1" -printf '%T+')
-if [[ $filext =~ .jpg ]] || [[ $filext =~ .png ]] || [[ $filext =~ .jpeg ]] || [[ $filext =~ .PNG ]]
-then if [[ ! -f "$convertedfolder/$filename.png" ]]; then
-imagewidth=$(identify -ping -format "%w" "$file") && imageheight=$(identify -ping -format "%h" "$file")
-if [ ! ((imagewidth % scale)) ]||[ ! ((imageheight % scale)) ]; then # this change is untested, may break the script lol
-echo -e "${white}▏${fileAge} ▏${green} ---- conv ${white}▏${green} ./$filename$filext${red}"
-magick convert "$file" -strip -alpha off -define png:color-type=2 "$convertedfolder/$filename.png" 
-else echo -e "${white}▏${fileAge} ▏${yellow} -/%$scale ---- ${white}▏${yellow} ./$filename$filext"; fi
-else echo -e "${white}▏${fileAge} ▏${yellow} exis ---- ${white}▏${cyan} ./$filename$filext"; fi
-else echo -e "${white}▏${fileAge} ▏${yellow} /img ---- ${white}▏${red} ./$filename$filext"; fi
-}; export -f ffmpegconv
-IFS=$OLDIFS; OLDIFS=$IFS; IFS=$'\n'
-#run copy function through input
-if [[ $sort == 1 ]]; then   # sort by age
-   if [[ -z $tmpdir ]]; then find "$input" -type f -printf "%T+,%p\n" | sort -r | cut -d, -f2 | parallel ffmpegconv
-      else find "$input" -type f -printf "%T+,%p\n" | sort -r | cut -d, -f2 | parallel --tmpdir "$tmpdir" ffmpegconv; fi
-elif [[ $sort == 2 ]]; then   # sort by full name
-   if [[ -z $tmpdir ]]; then find "$input" -type f -printf "%p,%T+\n" | sort | cut -d, -f1 | parallel ffmpegconv
-      else find "$input" -type f -printf "%p,%T+\n" | sort | cut -d, -f1 | parallel --tmpdir "$tmpdir" ffmpegconv; fi
-   fi
-if [ -z "$convert" ]; then echo -ne "${default}would you like to check the converted files for convertion? ([y]/n)"; read -r -n 1 convert; fi
-if [ -z "$convert" ]; then echo -e "\e[1A\033[2KNothing entered, default is y"; convert=y; fi
-echo
-if [ -f "$(dirname "$0")/.yes.tmp" ]; then rm "$(dirname "$0")/.yes.tmp"; fi
-if [ -f "$(dirname "$0")/.yes2.tmp" ]; then rm "$(dirname "$0")/.yes2.tmp"; fi
-# conversion initially grabs a list of all the images in the directory of which one works and which don't using pngcheck and identify, then sends the result to ./.yes.tmp
-# i do not remember if this is why so many .jpgs aren't let through, due to pngcheck
-if [[ $convert == y ]]; then
-mkdir "$(dirname "$input")/${scale}xLR" >/dev/null 2>&1
-function checkfiles {
-	file="$2"; filext=.${file##*.}; filename=$(basename "$file"); filename=${filename%.*}
-	if [[ ! -f "$LRfolder/$filename$filext" ]]; then
-		if pngcheck "$file" >/dev/null 2>&1; then
-     	echo -e "${lightblue} pngcheck | conv  ${white}| $LRfolder/$filename$filext"
-			echo conv : "$file" >> "$1/.yes.tmp"
-			else echo -e "${red} pngcheck | del   ${white}| $LRfolder/$filename$filext"
-   		echo del   : "$file" >> "$1/.yes.tmp"; return; fi
-		if identify "$file" >/dev/null 2>&1; then
-			echo -e "${lightblue} magick   | conv  ${white}| $LRfolder/$filename$filext"
-			echo conv : "$file" >> "$1/.yes.tmp"
-			else echo -e "${red} magick   | del   ${white}| $LRfolder/$filename$filext"
-   		echo del   : "$file" >> "$1/.yes.tmp"; fi
-else echo -e "${lightblue} skip     | skip  ${white}| $LRfolder/$filename$filext"; fi
-}; export -f checkfiles
-# run convcheck
-   LRfolder=$(dirname "$input")/${scale}xLR; export LRfolder
-   basedir=$(dirname "$0")
-   echo -e "${white}${italic}checking files using pngcheck and imagemagick...${default}\n"
-   if [[ -z $tmpdir ]]; then find "$convertedfolder" -type f | sort -r | parallel checkfiles "$basedir" {}
-   else find "$convertedfolder" -type f | sort -r | parallel --tmpdir "$tmpdir" checkfiles "$basedir" {}; fi
-   find "$convertedfolder" -type f | sort -r | parallel checkfiles "$basedir" {}
-   OLDIFS=$IFS; IFS=$'\n'
-   < "$basedir/.yes.tmp" sort -r | uniq > "$basedir/.yes2.tmp"
-   echo -e "${white}${italic}processsing files with list...${default}\n"
+   file="$1"; filext=.${file##*.}; basename=$(basename "$file")
+   if [[ $filext =~ .jpg ]] || [[ $filext =~ .png ]] || [[ $filext =~ .jpeg ]] || [[ $filext =~ .PNG ]]; then
+   if [[ ! -f "$convertedfolder/$basename" ]]; then imagewidtheight=$(identify -ping -format "%w:%h" "$file")
+   if ! ((${imagewidtheight##*:} % scale)) || ! ((${imagewidtheight%%:*} % scale)); then
+   ln -s "$file" "$convertedfolder/$basename" >/dev/null 2>&1
+   fi; fi; fi;}; export -f ffmpegconv
 
-	function processconv {
-	file="$(echo "$1" | cut -d: -f2)"; file=${file:1} 
-	if [[ $1 =~ .*conv.* ]]; then
-	scaled=$(bc -l <<< 100/$scale | sed -e 's/[0]*//g')%
-		echo -e "${green}${italic}$scaled converting ${file}${default}"
-		magick convert "$file" -strip -alpha off -define png:color-type=2 -resize "$scaled" "$LRfolder/$(basename "$file")"
-	elif [[ $1 =~ .*del.* ]]; then echo -e "${red} deleting ${file}"; rm "$file"; fi
-	}; export -f processconv
-# run conversion
-if [[ -z $tmpdir ]]; then < "$basedir/.yes2.tmp" parallel processconv
-else < "$basedir/.yes2.tmp" parallel --tmpdir "$tmpdir" processconv {}; fi
-# delete temp files
-if [ -f "$basedir/.yes.tmp" ]; then rm "$basedir/.yes.tmp"; fi
-if [ -f "$basedir/.yes2.tmp" ]; then rm "$basedir/.yes2.tmp"; fi
-else echo -e "${white}${italic}skipping conversion...${default}"; fi
-echo -e '\ndone'
+IFS=$'\n'
+#run copy function through input
+   find "$input" -type f,l -printf "%T+,%p\n" | sort -r | cut -d, -f2 | parallel --bar --tmpdir "$tmpdir" ffmpegconv {}
+if [ -z "$convert" ]; then echo -e "${default}would you like to check the converted files for conversion? ([y]/n)"; read -r -n 1 convert; fi
+if [ -z "$convert" ]; then echo -e "\e[1A\033[2KNothing entered, default is y"; convert=y; fi
+
+if [[ $convert == y ]]; then {
+LRfolder="$(dirname "$input")/${scale}xLR"; export LRfolder
+
+# find images that are corrupt
+   function checkfilespng { file="$2"; if [[ ! -f "$LRfolder/$(basename "$file")" ]]
+   then { pngcheck "$file" >> "$1/.png.tmp";};fi }; export -f checkfilespng
+   function checkfilesmagick { file="$2"; if [[ ! -f "$LRfolder/$(basename "$file")" ]]
+   then { identify "$file" >> "$1/.identify.tmp";};fi }; export -f checkfilesmagick
+
+   echo -e "${white}${italic}checking files using pngcheck...${default}"
+   if [ -f "$tmpdir/.png.tmp" ]; then rm "$tmpdir/.png.tmp"; fi
+   find "$convertedfolder" -type f,l | grep .png | sort -r | parallel --bar --tmpdir "$tmpdir" checkfilespng "$tmpdir" {}
+   echo -e "${white}${italic}checking files using imagemagick...${default}"
+   if [ -f "$tmpdir/.identify.tmp" ]; then rm "$tmpdir/.identify.tmp"; fi
+   find "$convertedfolder" -type f,l | sort -r | parallel --bar --tmpdir "$tmpdir" checkfilesmagick "$tmpdir" {}
+
+# sort corrupted files
+   echo -e "${white}${italic}sorting...${default}"
+   if [ -f "$tmpdir/.png_errors.tmp" ]; then rm "$tmpdir/.png_errors.tmp"; fi
+   if [ -f "$tmpdir/.identify_errors.tmp" ]; then rm "$tmpdir/.identify_errors.tmp"; fi
+   if [ -f "$tmpdir/.png.tmp" ]; then < "$tmpdir/.png.tmp" grep ERROR | uniq | cut -d: -f2 | cut -c2- >> "$tmpdir/.png_errors.tmp"; fi
+   if [ -f "$tmpdir/.identify.tmp" ]; then < "$tmpdir/.identify.tmp" grep warning | uniq | cut -d\` -f2 | cut -d\' -f1 >> "$tmpdir/.identify_errors.tmp"; fi
+   if [ -f "$tmpdir/.errors.tmp" ]; then rm "$tmpdir/.errors.tmp"; fi
+   cat "$tmpdir/.png_errors.tmp" "$tmpdir/.identify_errors.tmp" | sort -r | uniq > "$tmpdir/.errors.tmp"
+
+# delete corrupted files
+   if [ -f "$tmpdir/.readlink.tmp" ]; then rm "$tmpdir/.readlink.tmp"; fi
+   function readlinkfunc { file=$(readlink "$2"); echo "${file#"$input"}" >> "$1/.readlink.tmp" ;}; export -f readlinkfunc
+   if [ -f "$tmpdir/.errors.tmp" ]; then < "$tmpdir/.errors.tmp" parallel --tmpdir "$tmpdir" readlinkfunc "$tmpdir" {}; fi
+   echo -e "${white} here's where all the corrupted files came from:${default}\n"
+   < "$tmpdir/.readlink.tmp" rev | cut -d/ -f2- | rev | sort | uniq -c
+
+if [ -z "$corrupt" ]; then echo -ne "${default}would you like to delete the corrupted files? ([y]/n)"; read -r -n 1 corrupt; fi
+if [ -z "$corrupt" ]; then echo -e "\e[1A\033[2KNothing entered, default is y"; corrupt=y; fi
+if [[ "$corrupt" == y ]]; then { echo -e "\n${white}${italic}deleting corrupted files... ${default}\n"
+      function delete { rm "$1";}; export -f delete
+      < "$tmpdir/.errors.tmp" parallel --tmpdir "$tmpdir" delete {}
+   } else { echo -ne "\n${white}${italic}skipping...${default}\n";}; fi
+      function readlinkfull { file=$(readlink "$2"); echo "${file}" >> "$1/.readlinkfull.tmp" ;}; export -f readlinkfull
+      if [ -f "$tmpdir/.readlinkfull.tmp" ]; then rm "$tmpdir/.readlinkfull.tmp"; fi
+      if [ -f "$(dirname "$input")/corrupted_files.txt" ]; then rm "$(dirname "$input")/corrupted_files.txt"; fi
+         if [ -f "$tmpdir/.errors.tmp" ]; then < "$tmpdir/.errors.tmp" parallel --tmpdir "$tmpdir" readlinkfull "$tmpdir" {}; fi
+         < "$tmpdir/.readlinkfull.tmp" sort | uniq> "$(dirname "$input")/corrupted_files.txt"
+         echo -e "${white}${italic}corrupted files list saved to $(dirname "$input")/corrupted_files.txt${default}"
+
+# Find files that do not have an LR version
+   echo -e "\nChecking for missing LR files...\n"
+   function findisolated { File=$(basename "$2"); if [[ ! -f "$LRfolder/$File" ]]; then echo -e "$2" >> "$1/.isolated.tmp"; fi; }; export -f findisolated
+   if [ -f "$tmpdir/.isolated.tmp" ]; then rm "$tmpdir/.isolated.tmp"; fi
+   if [ -d "$LRfolder" ]; then find "$convertedfolder" -type f,l | sort -r | parallel --bar --tmpdir "$tmpdir" findisolated "$tmpdir" {}
+      else echo -e "${white}${italic}LRFolder doesn't exist, skipping..\n"; find "$convertedfolder" -type f,l | sort -r >> "$tmpdir/.isolated.tmp"
+      fi
+# delete tmp files
+if [ -f "$tmpdir/.readlink.tmp" ]; then rm "$tmpdir/.readlink.tmp"; fi
+if [ -f "$tmpdir/.readlinkfull.tmp" ]; then rm "$tmpdir/.readlinkfull.tmp"; fi
+if [ -f "$tmpdir/.png.tmp" ]; then rm "$tmpdir/.png.tmp"; fi
+if [ -f "$tmpdir/.identify.tmp" ]; then rm "$tmpdir/.identify.tmp"; fi
+if [ -f "$tmpdir/.png_errors.tmp" ]; then rm "$tmpdir/.png_errors.tmp"; fi
+if [ -f "$tmpdir/.identify_errors.tmp" ]; then rm "$tmpdir/.identify_errors.tmp"; fi
+if [ -f "$tmpdir/.errors.tmp" ]; then rm "$tmpdir/.errors.tmp"; fi
+echo -e "\n${white}${italic}converting clean files...${default}\n"
+
+scaled=$(bc -l <<< 100/$scale | sed -e 's/[0]*//g' | sed 's/\.$//')%; export scaled
+function convertfunc { file=$(basename "$2"); magick convert "$2" -strip -resize "$scaled" "$LRfolder/$file"; }; export -f convertfunc
+mkdir "$(dirname "$input")/${scale}xLR" >/dev/null 2>&1
+< "$tmpdir/.isolated.tmp" sort -r | parallel --bar --tmpdir "$tmpdir" convertfunc "$tmpdir" {}
+if [ -f "$tmpdir/.isolated.tmp" ]; then rm "$tmpdir/.isolated.tmp"; fi
+
+} else echo -e "${white}${italic}skipping conversion...${default}"; fi
+echo -e "\n${white}${italic}done!${default}\n"
+
+exit
