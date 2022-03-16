@@ -2,3 +2,8 @@ FFmpegjpg.sh
 special/Imgbrd-grabbergen.igl
 special/prefixes.txt
 .yes.tmp
+special/settings.txt
+*.par
+.Grabber*
+*xHR/*
+*xLR/*
