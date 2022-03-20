@@ -43,6 +43,7 @@ echo -ne ",
             \"path\": \"${folder:-EnterDefaultHere}\",
             \"perpage\": 60,
             \"postFiltering\": [
+                \"-grabber:downloaded\"
             ],
             \"query\": {
                 \"tags\": [
