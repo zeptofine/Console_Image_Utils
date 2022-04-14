@@ -34,8 +34,7 @@ fi
     cd "$in" || exit
 # move input directory to output directory
     echo -e "Moving directory..."
-    mv "*" "$out"
-    rm -rf "$in"
+    mv ./* "$out"
 # link output directory to input directory
     echo -e "Linking directory..."
     ln -s "$out" "${in%/*}"
