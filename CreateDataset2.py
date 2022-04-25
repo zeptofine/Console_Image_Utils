@@ -49,13 +49,10 @@ def intoLR(i, o):
 #custom progress bar (slightly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
 def printProgressBar (iteration, total, length = 100, fill = '#', color1 = '\033[93m', color2 = '\033[92m'):
     """
-    Call in a loop to create terminal progress bar
-    @params:
         iteration   - Required  : current iteration (Int)
         total       - Required  : total iterations (Int)
         length      - Optional  : character length of bar (Int)
         fill        - Optional  : bar fill character (Str)
-        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
     """
     filledLength = int(length * iteration // total)
     bar = fill * filledLength + '-' * (length - filledLength)
