@@ -10,11 +10,11 @@ Oh, also they can't be videos or gifs or swfs or anything like that. pngs, and j
 ${underline}you can also use command line arguments!${default} use the -h flag for more context.
 I reccomend using the ramdisk script in the same folder as this script to speed up the process. ${red}(make a dedicated folder for it)${default}
 ---------------------------------------------------------------------"
-echo -e "${red}${bold}This script is broken at the moment and I do not have any plan to fix it.${default}"
+echo -e "\n\n\n\n${red}${bold}This script is broken at the moment and I do not have any plan to fix it due to pythons options.${default}"
 echo -e "${white}${bold}Use the python script in the same folder to create a dataset instead.${default}"
 exit
 # check for arguments
-while getopts "hi:o:t:x:c:m:zp" opt; do
+while getopts "hi:o:t:x:c:m:z" opt; do
    case $opt in
    h) echo -e "These arguments are optional. They can be used to automate the process so you don't have to input them every time.
    ${bold}${underline}${white}
@@ -29,7 +29,7 @@ prefix | default |description          ${default}${white}
  -z               simulate, create list"; exit 0;;
    i) input="$OPTARG";; o) output="$OPTARG";; t) tmpdir="$OPTARG";;
    x) scale="$OPTARG";; c) convert="$OPTARG";; m) minres="$OPTARG" ;; 
-   z) simulate="true";; p) pngcrush="true";;
+   z) simulate="true";;
    \?) echo "Invalid option -$OPTARG" >&2;;
 esac; done
 #check if imagemagick & pngcheck is a valid command
@@ -37,7 +37,7 @@ esac; done
    if ! command -v pngcheck >/dev/null 2>&1;then echo "pngcheck is not installed, checking corrupt pngs will not work properly"; fi
    if ! command -v jpeginfo >/dev/null 2>&1;then echo "jpeginfo is not installed, checking corrupt jpegs will not work properly"; fi
    
-   if ! command -v pngcrush >/dev/null 2>&1;then echo "pngcrush is not installed, crushing will not work properly"; fi
+
    if ! command -v magick >/dev/null 2>&1;then echo "imagemagick is not installed, identify & convert will not work properly"; exit 127; fi
    if ! command -v parallel >/dev/null 2>&1;then echo "parallel is not installed, this script will not work properly"; exit 127; fi
 #check if any inputs are unnacounted for
@@ -88,7 +88,6 @@ mapfile -t wksp < <(cat "$(dirname "$input")/${scale}xHR.txt")
 fi
 
 # functions from: https://github.com/dylanaraps/pure-sh-bible
-# links to inspect how the functions work
    # https://github.com/dylanaraps/pure-sh-bible#get-the-directory-name-of-a-file-path
       dirname() {
          dir=${1:-.}

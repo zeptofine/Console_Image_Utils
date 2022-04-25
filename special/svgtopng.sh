@@ -1,25 +1,13 @@
 #!/bin/bash
 # parse arguments, input, resolution
+if [ -z "$(command -v inkscape)" ]; then echo "Inkscape is not found. please install it xwx"; exit 127; fi
 while getopts ":i:r:h" opt; do
   case $opt in
-    i)
-      input=$OPTARG
-      ;;
-    r)
-      resolution=$OPTARG
-      ;;
-    \?)
-      echo "Invalid option: -$OPTARG" >&2
-      exit 1
-      ;;
-    :)
-      echo "Option -$OPTARG requires an argument." >&2
-      exit 1
-      ;;
-    h)
-      echo "Usage: svgtopng.sh -i <input> -r <resolution>"
-      exit 0
-      ;;
+    i) input=$OPTARG;;
+    r) resolution=$OPTARG;;
+    \?) echo "Invalid option: -$OPTARG" >&2; exit 1;;
+    :) echo "Option -$OPTARG requires an argument." >&2; exit 1;;
+    h) echo "Usage: svgtopng.sh -i <input> -r <resolution>"; exit 0;;
   esac
 done
 # check if any arguments are missing
@@ -28,12 +16,6 @@ if [ -z "$input" ] || [ -z "$resolution" ]; then
   echo "Usage: svgtopng.sh -i <input> -r <resolution>"
   exit 1
 fi
-if [ -z "$resolution" ]; then
-  echo "Missing resolution"
-  echo "Usage: svgtopng.sh -i <input> -r <resolution>"
-  exit 1
-fi
-
 cd "$input" || exit
 
 mapfile -t svglist < <(find . -name "*.svg")

@@ -14,6 +14,7 @@ try:
 except:
     print('OpenCV is not installed. Please install it first.')
     exit()
+
 usext = 'same'
 parser=argparse.ArgumentParser()
 parser.add_argument('-i','--input',help='input directory',required=True)
@@ -25,6 +26,7 @@ parser.add_argument('-m', '--minsize', help='minimum size of image', type=int, d
 parser.add_argument('-b', '--bar', help='show custom progress bar. Already enabled if tqdm is not found.', action='store_true', required=False)
 parser.add_argument('-e', '--extension', help='extension of files to import. [same], jpeg, png, webp, etc.', default='same', required=False)
 args=parser.parse_args()
+
 if args.bar:
     use_custom_bar=True
 if args.duplicate==0:
@@ -39,12 +41,13 @@ if args.extension:
         if args.extension[0]=='.':
             args.extension=args.extension[1:]
         usext = args.extension
-print(f"extension: .{usext}")
+        print(f"extension: .{usext}")
+
 def intoLR(i, o):
     # downscale by args.scale
     cv2.imwrite(o, cv2.resize(cv2.imread(i), (0,0), fx=1/args.scale, fy=1/args.scale))
 #custom progress bar (slightly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
-def printProgressBar (iteration, total, length = 100, fill = '#', printEnd = "\r"):
+def printProgressBar (iteration, total, length = 100, fill = '#', color1 = '\033[93m', color2 = '\033[92m'):
     """
     Call in a loop to create terminal progress bar
     @params:
@@ -56,7 +59,7 @@ def printProgressBar (iteration, total, length = 100, fill = '#', printEnd = "\r
     """
     filledLength = int(length * iteration // total)
     bar = fill * filledLength + '-' * (length - filledLength)
-    print(f'\r\033[92m<\033[93m{bar}\033[92m>\033[0m', end = printEnd)
+    print(f'\r{color2}<{color1}{bar}{color2}>\033[0m', end = "\r")
     # Print New Line on Complete
     if iteration == total: 
         print()
@@ -95,8 +98,7 @@ import_list2=sorted(import_list2)
 import_list=[]
 for f in import_list2:
     import_list.insert(0, f[1]+'/'+f[0])
-
-
+import_list2.clear()
 def inputparse(f):
 # for f in import_list:
     # parse f 
@@ -114,8 +116,8 @@ def inputparse(f):
     else: 
         HRout = HRFolder+filename
         LRout = LRFolder+filename
-    HRout = HRout+'.'+filext
-    LRout = LRout+'.'+filext
+    HRout +='.'+filext
+    LRout +='.'+filext
     if not os.path.exists(HRout) or not os.path.exists(LRout):
         
         image = cv2.imread(f)
@@ -143,7 +145,7 @@ def inputparse(f):
             if len(divitimput+' '+divitimputpercent+' '+HRFolderandpath+' ')>termwidth:
                 difference=len(divitimput+' '+divitimputpercent+' '+HRFolderandpath+' ')-termwidth
                 HRFolderandpath='...'+HRout[difference:]
-            # print progress with bar 
+            # print progress bar 
             print(f'\033[2A\033[2K{divitimput} {divitimputpercent} {HRFolderandpath}\n\033[2K', end = '')
             printProgressBar(index, len(import_list), length = termwidth)
             print("")
