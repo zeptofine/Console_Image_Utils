@@ -22,19 +22,15 @@ fi
         printf '%s\n' "${1##"$2"}"
     }
 #check if output contains files
-    if [ -d "$out" ]; then
-    echo -e "Output directory already exists."
-    echo -e "Please choose an output directory that does not exist."
-    exit 1
-    else 
+if [ -d "$out" ]; then
     mkdir "$out"
-    fi
+  fi
 
 # cd to input directory
-    cd "$in" || exit
+    cd "$in" || exit 1
 # move input directory to output directory
     echo -e "Moving directory..."
-    mv ./* "$out"
+    cp -r "$in" "$out"
 # link output directory to input directory
     echo -e "Linking directory..."
     ln -s "$out" "${in%/*}"

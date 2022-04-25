@@ -51,7 +51,7 @@ echo -ne ",
                 ]
             },
             \"site\": \"${website:-EnterDefaultHere}\",
-            \"total\": ${downum:-1000}
+            \"total\": ${downum:-5000}
         }"
 } >> "$(dirname "$0")/Imgbrd-grabbergen.igl"
 done

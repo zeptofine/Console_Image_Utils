@@ -2,15 +2,11 @@ import os
 import os
 import glob
 import argparse
-try:
-    from PIL import Image
-except ImportError:
-    print("PIL not installed, verifying will not work")
-use_custom_bar=False
+use_custom_bar = False
 try:
     from tqdm import tqdm
 except:
-    print('tqdm not found, using simple progress bar...')
+    print('tqdm not found, using custom progress bar...')
     use_custom_bar=True
 from multiprocessing import Pool
 try:
@@ -18,7 +14,7 @@ try:
 except:
     print('OpenCV is not installed. Please install it first.')
     exit()
-
+usext = 'same'
 parser=argparse.ArgumentParser()
 parser.add_argument('-i','--input',help='input directory',required=True)
 parser.add_argument('-x','--scale',help='scale',type=int, required=True)
@@ -27,6 +23,7 @@ parser.add_argument('-r','--no_recursive', help='disables recursive', action='st
 parser.add_argument('-p','--power', help='number of cores to use. default is \'os.cpu_count()\'.', type=int, default=12, required=False)
 parser.add_argument('-m', '--minsize', help='minimum size of image', type=int, default=0, required=False)
 parser.add_argument('-b', '--bar', help='show custom progress bar. Already enabled if tqdm is not found.', action='store_true', required=False)
+parser.add_argument('-e', '--extension', help='extension of files to import. [same], jpeg, png, webp, etc.', default='same', required=False)
 args=parser.parse_args()
 if args.bar:
     use_custom_bar=True
@@ -36,6 +33,13 @@ if args.duplicate==0:
 elif args.duplicate==1:
     def IntoHR(i, o):
         cv2.imwrite(o, cv2.imread(i))
+if args.extension:
+    if not args.extension=='same':
+        # strip period if exists
+        if args.extension[0]=='.':
+            args.extension=args.extension[1:]
+        usext = args.extension
+print(f"extension: .{usext}")
 def intoLR(i, o):
     # downscale by args.scale
     cv2.imwrite(o, cv2.resize(cv2.imread(i), (0,0), fx=1/args.scale, fy=1/args.scale))
@@ -57,8 +61,13 @@ def printProgressBar (iteration, total, length = 100, fill = '#', printEnd = "\r
     if iteration == total: 
         print()
 
-HRFolder=os.path.dirname(args.input)+'/'+str(args.scale)+'xHR/'
-LRFolder=os.path.dirname(args.input)+'/'+str(args.scale)+'xLR/'
+HRFolder=os.path.dirname(args.input)+'/'+str(args.scale)+'xHR'
+LRFolder=os.path.dirname(args.input)+'/'+str(args.scale)+'xLR'
+if not usext=='same':
+    HRFolder=HRFolder+'-.'+usext
+    LRFolder=LRFolder+'-.'+usext
+HRFolder=HRFolder+'/'
+LRFolder=LRFolder+'/'
 if not os.path.exists(HRFolder):
     os.makedirs(HRFolder)
 if not os.path.exists(LRFolder):
@@ -66,6 +75,7 @@ if not os.path.exists(LRFolder):
 
 # for every recursive directory in the input directory, create a folder in HR and Lr
 # unless no_recursive is set
+print('gathering files...')
 if not args.no_recursive:
     for i in tqdm(glob.glob(args.input+'**/*', recursive=True)):
         if os.path.isdir(i):
@@ -73,22 +83,39 @@ if not args.no_recursive:
                 os.makedirs(HRFolder+str.replace(i, args.input, ''))
             if not os.path.exists(LRFolder+str.replace(i, args.input, '')):
                 os.makedirs(LRFolder+str.replace(i, args.input, ''))
-print('gathering files...')
+
 import_list = glob.glob(args.input+'/**/*.png', recursive=True)
 import_list+= glob.glob(args.input+'/**/*.jpg', recursive=True)
 import_list = sorted(import_list)
+import_list2=[]
+for f in import_list:
+    fname=f.rsplit('/', 1)
+    import_list2.insert(0, (fname[-1], fname[0]))
+import_list2=sorted(import_list2)
+import_list=[]
+for f in import_list2:
+    import_list.insert(0, f[1]+'/'+f[0])
+
+
 def inputparse(f):
 # for f in import_list:
     # parse f 
     file = f.rsplit('/', 1)
     filename = file[-1]
+    filename = filename.rsplit('.', 1)
+    filext = filename[-1]
+    filename = filename[0]
     relpath = str.replace(f, args.input, '')
+    if not usext=='same':
+        filext = usext
     if not args.no_recursive:
         HRout = HRFolder+relpath
         LRout = LRFolder+relpath
     else: 
         HRout = HRFolder+filename
         LRout = LRFolder+filename
+    HRout = HRout+'.'+filext
+    LRout = LRout+'.'+filext
     if not os.path.exists(HRout) or not os.path.exists(LRout):
         
         image = cv2.imread(f)
@@ -104,37 +131,25 @@ def inputparse(f):
                 return
         else:
             return
-        # print(f'creating {HRout} and {LRout}')
-
-    # check if file is already in HR or LR
     
-        
-        # if os.path.exists(LRFolder+relpath) or os.path.exists(HRFolder+relpath):
-        #     print(HRFolder+relpath)
-        #     print(LRFolder+relpath+'\n')
-        # if os.path.exists(LRFolder+filename) or os.path.exists(HRFolder+filename):
-        #     print(HRFolder+filename)
-        #     print(LRFolder+filename+'\n')
-    if use_custom_bar:
-        index=import_list.index(f)
-        divitimput=str(index)+'/'+str(len(import_list))
-        # percent of progress, with 1 decimal
-        divitimputpercent=str(round(index/len(import_list)*100, 1))+'%'
-        terminalsize=os.get_terminal_size()
-        termwidth=int(terminalsize.columns/10*9)
-        HRFolderandpath=HRFolder+filename
-        if len(divitimput+' '+divitimputpercent+' '+HRFolderandpath+' ')>termwidth:
-            difference=len(divitimput+' '+divitimputpercent+' '+HRFolderandpath+' ')-termwidth
-            HRFolderandpath='...'+HRFolderandpath[difference:]
-        # print progress with bar 
-        print(f'\033[2A\033[2K{divitimput} {divitimputpercent} {HRFolderandpath}')
-        print('\033[2K', end= '')
-        printProgressBar(index, len(import_list), length = termwidth)
-        print("")
-        # print("\033[1A\033[2K", divitimput, divitimputpercent, '->', HRFolderandpath)
+        if use_custom_bar:
+            index=import_list.index(f)
+            divitimput=str(index)+'/'+str(len(import_list))
+            # percent of progress, with 1 decimal
+            divitimputpercent=str(round(index/len(import_list)*100, 1))+'%'
+            terminalsize=os.get_terminal_size()
+            termwidth=int(terminalsize.columns/5*4)
+            HRFolderandpath=HRout
+            if len(divitimput+' '+divitimputpercent+' '+HRFolderandpath+' ')>termwidth:
+                difference=len(divitimput+' '+divitimputpercent+' '+HRFolderandpath+' ')-termwidth
+                HRFolderandpath='...'+HRout[difference:]
+            # print progress with bar 
+            print(f'\033[2A\033[2K{divitimput} {divitimputpercent} {HRFolderandpath}\n\033[2K', end = '')
+            printProgressBar(index, len(import_list), length = termwidth)
+            print("")
+            # print("\033[1A\033[2K", divitimput, divitimputpercent, '->', HRFolderandpath)
 
-
-print('Starting')
+print('Starting...')
 # run through import_list unless backspace is pressed
 try:
     with Pool(args.power) as p:
@@ -147,10 +162,10 @@ except KeyboardInterrupt:
 # find empty folders in HR and Lr
 if not args.no_recursive:
     print("Removing empty folders in HR and Lr...")
-    for i in tqdm(glob.glob(HRFolder+'/*', recursive=True)):
+    for i in glob.glob(HRFolder+'/*', recursive=True):
         if not os.listdir(i):
             os.rmdir(i)
-    for i in tqdm(glob.glob(LRFolder+'/*', recursive=True)):
+    for i in glob.glob(LRFolder+'/*', recursive=True):
         if not os.listdir(i):
             os.rmdir(i)
-print("Done!")
+print("\n\nDone!")
