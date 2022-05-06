@@ -12,7 +12,6 @@ Edit the script to change the generation, pretty straightforward${default}"
    # To do
    # Introduce automatically downloading images from list gathered
    # Add cli arguments instead of relying on an external prefixes.txt
-if [[ ! -f $(dirname "$0")/settings.txt ]]; then echo -e "no settings.txt detected!"
 while getopts "si:w:d:" opt; do
    case $opt in
       s) sort="sort";;
@@ -21,10 +20,11 @@ while getopts "si:w:d:" opt; do
       d) downum="$OPTARG";;
       \?) echo "Invalid option -$OPTARG" >&2 ;;
    esac; done
+if [[ ! -f $(dirname "$0")/settings.txt ]]; then echo -e "no settings.txt detected!"
 else echo "settings.txt detected."
-website=$(sed -n 1p "${0%/*}/settings.txt")
-folder=$(sed -n 2p "${0%/*}/settings.txt")
-downum=$(sed -n 3p "${0%/*}/settings.txt")
+if [[ -z $website ]]; then website=$(sed -n 1p "${0%/*}/settings.txt"); fi
+if [[ -z $folder ]]; then folder=$(sed -n 2p "${0%/*}/settings.txt"); fi
+if [[ -z $downum ]]; then downum=$(sed -n 3p "${0%/*}/settings.txt"); fi
 fi
 if [[ ! -f $(dirname "$0")/prefixes.txt ]]; then echo -ne "no prefixes.txt detected!"; exit 1
 else echo "prefixes.txt detected."; fi
@@ -51,7 +51,7 @@ echo -ne ",
                 ]
             },
             \"site\": \"${website:-EnterDefaultHere}\",
-            \"total\": ${downum:-5000}
+            \"total\": ${downum:-200}
         }"
 } >> "$(dirname "$0")/Imgbrd-grabbergen.igl"
 done
