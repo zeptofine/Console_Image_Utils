@@ -41,7 +41,7 @@ echo -ne ",
             \"getBlacklisted\": false,
             \"page\": 1,
             \"path\": \"${folder:-EnterDefaultHere}\",
-            \"perpage\": 60,
+            \"perpage\": 10,
             \"postFiltering\": [
                 \"-grabber:downloaded\"
             ],
