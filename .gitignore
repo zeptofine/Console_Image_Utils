@@ -6,5 +6,6 @@ special/settings.txt
 *.par
 .Grabber*
 *xHR/*
-*xLR/**xLR/*
+*xLR/*
+special/prefixes.json
 special/prefixes2.json
