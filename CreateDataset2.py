@@ -27,63 +27,51 @@ if not emptymodules == []:
 
 useExt = "same"
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-i", "--input", 
+parser.add_argument("-i", "--input", 
     help="input directory", 
-    required=True
-)
-parser.add_argument(
-    "-x", "--scale", 
+    required=True)
+parser.add_argument("-x", "--scale", 
     help="scale", 
-    type=int, 
-    required=True
+    type=int, required=True
     )
-parser.add_argument(
-    "-d", "--duplicate",
+parser.add_argument("-d", "--duplicate",
     help="duplicate [0],1 ([copy] / link) copying is better since it naturally error checks",
-    type=int,
-    default=1,
+    type=int, default=1,
     required=False,
 )
-parser.add_argument(
-    "-r", "--no_recursive",
+parser.add_argument("-r", "--no_recursive",
     help="disables recursive",
     action="store_true",
     required=False,
 )
-parser.add_argument(
-    "-p", "--power",
+parser.add_argument("-p", "--power",
     help="number of cores to use. default is 'os.cpu_count()'.",
-    type=int,
-    default=12,
+    type=int, default=12,
     required=False,
 )
-parser.add_argument(
-    "-m", "--minsize", 
+parser.add_argument("-m", "--minsize", 
     help="minimum size of image", 
-    type=int, 
-    default=0, 
+    type=int, default=0, 
     required=False
 )
-parser.add_argument(
-    "-b", "--bar",
+parser.add_argument("-b", "--bar",
     help="show custom progress bar. Already enabled if tqdm is not found.",
     action="store_true",
     required=False,
 )
-parser.add_argument(
-    "-e", "--extension",
+parser.add_argument("-e", "--extension",
     help="extension of files to import. [same], jpeg, png, webp, etc.",
     default="same",
     required=False,
 )
-parser.add_argument(
-    "-s", "--simulate",
+parser.add_argument("-s", "--simulate",
     help="simulate running wihtout actually doing anything",
     action="store_true",
     required=False,
 )
 args = parser.parse_args()
+print(str(args))
+exit()
 if args.bar:
     USE_CUSTOM_BAR = True
 if args.duplicate == 0:
