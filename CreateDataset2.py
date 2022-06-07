@@ -2,7 +2,8 @@ import argparse
 import glob
 import os
 from multiprocessing import Pool
-emptymodules= []
+import cProfile
+emptymodules = []
 try:
     from PIL import Image
 except ImportError:
@@ -27,58 +28,64 @@ if not emptymodules == []:
 
 useExt = "same"
 parser = argparse.ArgumentParser()
-parser.add_argument("-i", "--input", 
-    help="input directory", 
-    required=True)
-parser.add_argument("-x", "--scale", 
-    help="scale", 
-    type=int, required=True
-    )
-parser.add_argument("-d", "--duplicate",
-    help="duplicate [0],1 ([copy] / link) copying is better since it naturally error checks",
-    type=int, default=1,
-    required=False,
-)
-parser.add_argument("-r", "--no_recursive",
-    help="disables recursive",
-    action="store_true",
-    required=False,
-)
-parser.add_argument("-p", "--power",
-    help="number of cores to use. default is 'os.cpu_count()'.",
-    type=int, default=12,
-    required=False,
-)
-parser.add_argument("-m", "--minsize", 
-    help="minimum size of image", 
-    type=int, default=0, 
-    required=False
-)
-parser.add_argument("-b", "--bar",
-    help="show custom progress bar. Already enabled if tqdm is not found.",
-    action="store_true",
-    required=False,
-)
-parser.add_argument("-e", "--extension",
-    help="extension of files to import. [same], jpeg, png, webp, etc.",
-    default="same",
-    required=False,
-)
-parser.add_argument("-s", "--simulate",
-    help="simulate running wihtout actually doing anything",
-    action="store_true",
-    required=False,
-)
+parser.add_argument("-i", "--input", help="input directory",
+                    required=True)
+parser.add_argument("-x", "--scale", help="scale",
+                    type=int, required=True)
+parser.add_argument("-d", "--duplicate", help="duplicate [0],1 ([copy] / link) copying is better since it naturally error checks",
+                    type=int, default=1, required=False)
+parser.add_argument("-r", "--no_recursive", help="disables recursive",
+                    action="store_true", required=False)
+parser.add_argument("-p", "--power", help="number of cores to use. default is 'os.cpu_count()'.",
+                    type=int, default=12, required=False)
+parser.add_argument("-m", "--minsize", help="minimum size of image",
+                    type=int, default=0, required=False)
+parser.add_argument("-b", "--bar", help="show custom progress bar. Already enabled if tqdm is not found.",
+                    action="store_true", required=False)
+parser.add_argument("-e", "--extension", help="extension of files to import. [same], jpeg, png, webp, etc.",
+                    default="same", required=False)
+parser.add_argument("-s", "--simulate", help="simulate running wihtout actually doing anything",
+                    action="store_true", required=False)
+parser.add_argument("-a", "--backend", help="backend to use for resizing. [cv2], PIL. cv2 is safer in my experience, due to most python projects using it.",
+                    default="cv2", required=False)
 args = parser.parse_args()
-print(str(args))
-exit()
+
+# for debugging
+# class args():
+#     input = "/home/xpsyc/Documents/HiddenStuff/.Grabber"
+#     scale = 4
+#     duplicate = 1
+#     no_recursive = True
+#     power = 12
+#     minsize = 400
+#     bar = False
+#     backend = "cv2"
+#     extension = "webp"
+#     simulate = False
+
+
 if args.bar:
     USE_CUSTOM_BAR = True
-if args.duplicate == 0:
+if args.duplicate == 1:
     def IntoHR(i, o): os.link(i, o)
-elif args.duplicate == 1:
-    def IntoHR(i, o): cv2.imwrite(o, i)
+if args.backend == "cv2":
+    def Imageread(i):
+        return cv2.imread(i)
+    if args.duplicate == 1:
+        def IntoHR(i, o): cv2.imwrite(o, i)
 
+    def intoLR(i, o):
+        cv2.imwrite(o, cv2.resize(i, (0, 0), fx=1 /
+                    args.scale, fy=1 / args.scale))
+elif args.backend == "PIL":
+    def Imageread(i):
+        return Image.open(i)
+    if args.duplicate == 0:
+        def IntoHR(i, o): i.save(o)
+
+    def intoLR(i, o):
+        i.resize((int(i.size[0] / args.scale),
+                 int(i.size[1] / args.scale))).save(o)
 
 if args.extension:
     if not args.extension == "same":
@@ -89,10 +96,9 @@ if args.extension:
         print(f"extension: .{useExt}")
 
 
-def intoLR(i, o):
-    cv2.imwrite(o, cv2.resize(i, (0, 0), fx=1 / args.scale, fy=1 / args.scale))
-
 # custom progress bar (slightly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
+
+
 def printProgressBar(
     iteration, total, length=100, fill="#", color1="\033[93m", color2="\033[92m"
 ):
@@ -134,44 +140,42 @@ if not args.no_recursive:
             if not os.path.exists(LRFolder + str.replace(i, args.input, "")):
                 os.makedirs(LRFolder + str.replace(i, args.input, ""))
 
-import_list = sorted(glob.glob(args.input + "/**/*.png", recursive=True) 
-                    + glob.glob(args.input + "/**/*.jpg", recursive=True))
-import_list = [
-    i[1] for i in sorted(
-        [(f.rsplit("/", 1)[-1], f) for f in sorted(
-                glob.glob(args.input + "/**/*.png", recursive=True) 
-                + glob.glob(args.input + "/**/*.jpg", recursive=True)
-            )],
-        reverse=True)]
+import_list = [i[1] for i in sorted(
+    [(f.rsplit("/", 1)[-1], f) for f in sorted(glob.glob(args.input + "/**/*.png", recursive=True)
+                                               + glob.glob(args.input + "/**/*.jpg", recursive=True))],
+    reverse=True)]
 # print(list(set([type(i) for i in import_list])))
-#print(import_list)
-#exit()
+# print(import_list)
+# exit()
+
+
 def inputparse(f):
-    # for f in import_list:
     # parse file path
-    filename = f.rsplit("/", 1)[-1]
-    filename = filename.rsplit(".", 1)
-    filext = filename[-1]
-    filename = filename[0]
-    relpath = f.replace(args.input, "")
+    filename = f.rsplit("/", 1)
+    filename = {
+        "name": filename[-1],
+        "ext": filename[-1].rsplit(".", 1)[-1],
+        "relpath": f.replace(args.input, ""),
+    }
     if args.simulate:
         image = Image.open(f)
         if image.size[0] < args.minsize or image.size[1] < args.minsize:
             image.small = str(args.minsize) + "> "
         else:
             image.small = str(args.minsize) + "< "
-        print(f"{image.small}{image.size[0]:05}:{image.size[1]:05} : {f}")
+        print(
+            f"{image.small}{image.size[0]:05}:{image.size[1]:05} : {f}")
     else:
         if not useExt == "same":
-            filext = useExt
+            filename['ext'] = useExt
         if not args.no_recursive:
-            HRout = HRFolder + relpath
-            LRout = LRFolder + relpath
+            HRout = HRFolder + filename['relpath']
+            LRout = LRFolder + filename['relpath']
         else:
-            HRout = HRFolder + filename
-            LRout = LRFolder + filename
-        HRout += "." + filext
-        LRout += "." + filext
+            HRout = HRFolder + filename['name']
+            LRout = LRFolder + filename['name']
+        HRout += "." + filename['ext']
+        LRout += "." + filename['ext']
         if not os.path.exists(HRout) or not os.path.exists(LRout):
             imagepil = Image.open(f)
             width, height = imagepil.size
@@ -179,7 +183,7 @@ def inputparse(f):
             if width % args.scale == 0 and height % args.scale == 0:
                 # check if image is large enough
                 if height >= args.minsize and width >= args.minsize:
-                    image = cv2.imread(f)
+                    image = Imageread(f)
                     time = os.path.getmtime(f)
                     IntoHR(image, HRout)
                     intoLR(image, LRout)
@@ -205,18 +209,13 @@ def inputparse(f):
                             > termwidth
                         ):
                             difference = (
-                                len(
-                                    divitimput
-                                    + divitimputpercent
-                                    + HRFolderandpath
-                                    +'   '
-                                    ) 
-                                    - termwidth
-                                    )
+                                len(divitimput + divitimputpercent + HRFolderandpath + '   ') - termwidth)
                             HRFolderandpath = "..." + HRout[difference:]
                         # print progress bar
-                        print(f"\033[2A\033[2K{divitimput} {divitimputpercent} {HRFolderandpath}\n\033[2K",end="")
-                        printProgressBar(index, len(import_list), length=termwidth)
+                        print(
+                            f"\033[2A\033[2K{divitimput} {divitimputpercent} {HRFolderandpath}\n\033[2K", end="")
+                        printProgressBar(index, len(
+                            import_list), length=termwidth)
                         print("")
                         # print("\033[1A\033[2K", divitimput, divitimputpercent, '->', HRFolderandpath)
 
@@ -229,10 +228,15 @@ try:
             r = list(p.imap(inputparse, import_list))
         else:
             r = list(tqdm(p.imap(inputparse, import_list), total=len(import_list)))
+
+
 except KeyboardInterrupt:
     print("\nKeyboardInterrupt detected, skipping...")
     print("\033[0;93m\033[1mWARNING: SOME IMAGES MAY BE CORRUPTED. check the newest files in the HR and LR folders")
-    print("( the modified times should be the same, but the creation times aren't transfered )\033[0m")
+
+# for debugging
+# for i in import_list:
+#     inputparse(i)
 # find empty folders in HR and Lr
 if not args.no_recursive:
     print("Removing empty folders in HR and Lr...")

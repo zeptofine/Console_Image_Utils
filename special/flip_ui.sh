@@ -7,13 +7,19 @@ if [ ! "$#" -eq 0 ]; then
         echo "Copied flip_ui.sh to ~/.flip.ui.sh"
         read -r -n 1 -p "write to ~/.zshrc? [Y/n]" response
         if [ "${response:=y}" == "y" ]; then
-            echo "source ~/.flip.ui.sh" >>~/.zshrc
-            echo "Added source ~/.flip.ui.sh to ~/.zshrc"
+            # check if line is already in ~/.zshrc
+            if ! grep -q "source ~/.flip.ui.sh" ~/.zshrc; then
+                echo "source ~/.flip.ui.sh" >> ~/.zshrc
+                echo "Added line to ~/.zshrc"
+            fi
         fi
         read -r -n 1 -p "write to ~/.bashrc? [Y/n]" response
         if [ "${response:=y}" == "y" ]; then
-            echo "source ~/.flip.ui.sh" >>~/.bashrc
-            echo "Added source ~/.flip.ui.sh to ~/.bashrc"
+            # check if line is already in ~/.bashrc
+            if ! grep -q "source ~/.flip.ui.sh" ~/.bashrc; then
+                echo "source ~/.flip.ui.sh" >> ~/.bashrc
+                echo "Added line to ~/.bashrc"
+            fi
         fi
         echo "source ~/.flip.ui.sh to get the commands now, or restart your terminal"
     fi
