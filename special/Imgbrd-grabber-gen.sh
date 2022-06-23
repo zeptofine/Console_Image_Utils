@@ -22,9 +22,9 @@ while getopts "si:w:d:" opt; do
    esac; done
 if [[ ! -f $(dirname "$0")/settings.txt ]]; then echo -e "no settings.txt detected!"
 else echo "settings.txt detected."
-if [[ -z $website ]]; then website=$(sed -n 1p "${0%/*}/settings.txt"); fi
-if [[ -z $folder ]]; then folder=$(sed -n 2p "${0%/*}/settings.txt"); fi
-if [[ -z $downum ]]; then downum=$(sed -n 3p "${0%/*}/settings.txt"); fi
+if [[ -z $website ]]; then website=$(sed -n 1p "$(dirname "$0")/settings.txt"); fi
+if [[ -z $folder ]]; then folder=$(sed -n 2p "$(dirname "$0")/settings.txt"); fi
+if [[ -z $downum ]]; then downum=$(sed -n 3p "$(dirname "$0")/settings.txt"); fi
 fi
 if [[ ! -f $(dirname "$0")/prefixes.txt ]]; then echo -ne "no prefixes.txt detected!"; exit 1
 else echo "prefixes.txt detected."; fi
@@ -41,7 +41,7 @@ echo -ne ",
             \"getBlacklisted\": false,
             \"page\": 1,
             \"path\": \"${folder:-EnterDefaultHere}\",
-            \"perpage\": 10,
+            \"perpage\": 60,
             \"postFiltering\": [
                 \"-grabber:downloaded\"
             ],
