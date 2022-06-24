@@ -101,21 +101,9 @@ existed_list = []
 for i in tqdm(existed_list1):
     if i in existed_list2:
         existed_list.append(i)
-
-# for i1, i2 in zip(existed_list1, existed_list2):
-#     if i1 == i2:
-#         existed_list.append(i1)
-# strip import_list of files that already exist in existed_list
-# print(existed_list)
 print("attempting to filter files that already exist in LRFolder...")
-# print(existed_list1[:10])
-# print("\n", existed_list2[:10])
-# print(existed_list[:10])
-# print([i.rsplit("/", 1)[-1].rsplit(".", 1)[0] for i in import_list][:10])
 import_list = [i for i in tqdm(import_list) if not i.rsplit(
     "/", 1)[-1].rsplit(".", 1)[0] in existed_list]
-# print(import_list)
-# exit()
 if not args.no_recursive:
     for i in glob.glob(args.input + "**/*", recursive=True):
         if os.path.isdir(i):
@@ -127,9 +115,7 @@ if not args.no_recursive:
 
 def multiprocessing_status(pid, listnum=0, inlist=["0"], extra=""):
     """Displays a status line for a specified process.
-    pid: process id
-    listnum: list index
-    inlist: list of items processing
+    pid: process id listnum: list index inlist: list of items processing
     extra: extra text to display before listed item, such as 'Processing' or 'Thinking'
     anonymous: if True, don't display process name and generate a random name
     ( anonymous requires modules 'random' and 'string' )
@@ -207,6 +193,7 @@ elif args.backend.lower() in ["pil", "pillow"]:
 def GetFileResolution(i):
     img_size = pymage_size.get_image_size(i).get_dimensions()
     return img_size[0], img_size[1]
+
 
 print("Starting...")
 if not args.no_status:
