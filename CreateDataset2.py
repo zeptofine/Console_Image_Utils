@@ -17,7 +17,6 @@ except ImportError:
     print("tqdm not found, it will not be available")
     USE_CUSTOM_BAR = True
 
-useExt = "same"
 parser = argparse.ArgumentParser()
 parser.add_argument("-i", "--input", help="input directory",
                     required=True)
@@ -54,8 +53,7 @@ if args.anonymous:
 if args.extension:  # strip period if exists
     if args.extension[0] == ".":
         args.extension = args.extension[1:]
-    useExt = args.extension
-    print(f"applying extension: .{useExt}")
+    print(f"applying extension: .{args.extension}")
 
 # strip slash from end of path if exists
 if args.input[-1] == "/":
@@ -65,9 +63,9 @@ if args.tqdm_bar:
     USE_CUSTOM_BAR = True
 
 HRFolder = os.path.dirname(args.input) + "/" + str(args.scale) + \
-    "xHR" + ("-."+useExt if useExt != "same" else "") + "/"
+    "xHR" + ("-."+args.extension if args.extension else "") + "/"
 LRFolder = os.path.dirname(args.input) + "/" + str(args.scale) + \
-    "xLR" + ("-."+useExt if useExt != "same" else "") + "/"
+    "xLR" + ("-."+args.extension if args.extension else "") + "/"
 if not os.path.exists(HRFolder):
     os.makedirs(HRFolder)
 if not os.path.exists(LRFolder):
@@ -79,33 +77,30 @@ if args.purge:
     for i in glob.glob(LRFolder + "*"):
         os.remove(i)
 
+def get_files(path):
+    return glob.glob(path, recursive=True) 
 
 # for every recursive directory in the input directory, create a folder in HR and Lr
 print("gathering files...")
-# get paths, split by "/" and reverse, sort and use second entry
-# i.e. sort by file name only
+
 import_list = [i[1] for i in sorted(
-    [(f.rsplit("/", 1)[-1], f) for f in sorted(
-        glob.glob(args.input + "/**/*.png", recursive=True)
-        + glob.glob(args.input + "/**/*.jpg", recursive=True)
-        + glob.glob(args.input + "/**/*.webp", recursive=True)
-    )
-    ],
-    reverse=True)]
+    [(f.rsplit("/", 1)[-1], f) for f in sorted(get_files(args.input + "/**/*.png")
+                                             + get_files(args.input + "/**/*.jpg")
+                                             + get_files(args.input + "/**/*.webp"))], reverse=True)]
+print("attempting to filter files that already exist in LRFolder...")
 existed_list1 = sorted([f.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                        for f in glob.glob(HRFolder + "**/*", recursive=True)])
+                        for f in get_files(HRFolder + "**/*")])
 existed_list2 = sorted([f.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                        for f in glob.glob(LRFolder + "**/*", recursive=True)])
+                        for f in get_files(LRFolder + "**/*")])
 existed_list = []
 # loop through both, and if the file name is in both, add it to existed_list
 for i in tqdm(existed_list1):
     if i in existed_list2:
         existed_list.append(i)
-print("attempting to filter files that already exist in LRFolder...")
 import_list = [i for i in tqdm(import_list) if not i.rsplit(
     "/", 1)[-1].rsplit(".", 1)[0] in existed_list]
 if not args.no_recursive:
-    for i in glob.glob(args.input + "**/*", recursive=True):
+    for i in get_files(args.input + "**/*"):
         if os.path.isdir(i):
             if not os.path.exists(HRFolder + str.replace(i, args.input, "")):
                 os.makedirs(HRFolder + str.replace(i, args.input, ""))
@@ -115,33 +110,33 @@ if not args.no_recursive:
 
 def multiprocessing_status(pid, listnum=0, inlist=["0"], extra=""):
     """Displays a status line for a specified process.
-    pid: process id listnum: list index inlist: list of items processing
+    pid: process id 
+    listnum: list index 
+    inlist: list of items processing
     extra: extra text to display before listed item, such as 'Processing' or 'Thinking'
-    anonymous: if True, don't display process name and generate a random name
-    ( anonymous requires modules 'random' and 'string' )
     """
     if args.no_status:
         return
     extra = extra.ljust(12)
     statusimage = inlist[listnum]
     command = f"\033[K"+str(pid).rjust(len(str(args.power)), " ")+": # " \
-        + f"{str(listnum).rjust(len(str(len(inlist))), ' ')}"  # process number
+        + f"{str(listnum).rjust(len(str(len(inlist))), ' ')}"                                   # process number
     if extra != "":
-        command += f" : {extra} | "  # extra text
+        command += f" : {extra} | "                                                             # extra text
     if args.anonymous:
         path = "/"+"".join(random.choice(
             string.ascii_letters+"/"*(len(string.ascii_letters)//10)) for _ in range(20)) \
-            + "." + \
-            statusimage.rsplit("/", 1)[-1].rsplit(".",
-                                                  1)[-1]  # generate random name
+            + "." + statusimage.rsplit("/", 1)[-1].rsplit(".", 1)[-1]                           # generate random name
     else:
-        path = statusimage  # use original path
+        path = statusimage                                                                      # use original path
     command += f"...{path[-os.get_terminal_size().columns+len(command)+5:]}" if len(
-        path) > os.get_terminal_size().columns-5 else path  # display path
-    print("\r"+("\033[A"*pid) + command + ("\n"*pid)+"\r", end="\r")
+        path) > os.get_terminal_size().columns-5 else path                                      # display path
+    command = "\r"+("\033[A"*pid) + command + ("\n"*pid)+"\r"
+    print(command, end="\r")
 
 
 if args.backend.lower() in ["cv2", "opencv", "opencv2", "opencv-python"]:
+    """Image Parser: cv2 edition"""
     class Imparser():
         def Imageread(i):
             return cv2.imread(i)
@@ -149,12 +144,12 @@ if args.backend.lower() in ["cv2", "opencv", "opencv2", "opencv-python"]:
         def ConvertImages(i, Ho, Lo, original_path, index, total_list, pid):
             if not os.path.exists(Ho):
                 multiprocessing_status(
-                    pid=pid, listnum=index, inlist=total_list, extra="Making HR...")
+                    pid=pid, listnum=index, inlist=total_list, extra="HR")
                 cv2.imwrite(Ho, i)
             difference = ""
             if not os.path.exists(Lo):
                 multiprocessing_status(
-                    pid=pid, listnum=index, inlist=total_list, extra="Making LR...")
+                    pid=pid, listnum=index, inlist=total_list, extra="LR")
                 LoRes = cv2.resize(i, (0, 0), fx=1/args.scale, fy=1/args.scale)
                 cv2.imwrite(Lo, LoRes)
                 # get difference between original and resized
@@ -168,6 +163,7 @@ if args.backend.lower() in ["cv2", "opencv", "opencv2", "opencv-python"]:
             return i[0:y, 0:x]
 
 elif args.backend.lower() in ["pil", "pillow"]:
+    """Image parser: Pillow edition"""
     class Imparser():
         def Imageread(i):
             return Image.open(i)
@@ -175,11 +171,11 @@ elif args.backend.lower() in ["pil", "pillow"]:
         def ConvertImages(i, Ho, Lo, original_path, index, total_list, pid):
             if not os.path.exists(Ho):
                 multiprocessing_status(
-                    pid=pid, listnum=index, inlist=total_list, extra="Making HR...")
+                    pid=pid, listnum=index, inlist=total_list, extra="HR")
                 i.save(Ho)
             if not os.path.exists(Lo):
                 multiprocessing_status(
-                    pid=pid, listnum=index, inlist=total_list, extra="Making LR...")
+                    pid=pid, listnum=index, inlist=total_list, extra="LR")
                 i.resize((int(i.width / args.scale),
                           int(i.height / args.scale))).save(Lo)
             time = os.path.getmtime(original_path)
@@ -198,19 +194,15 @@ def GetFileResolution(i):
 print("Starting...")
 if not args.no_status:
     print("\nSkipping files...", "\n"*(args.power-1),
-          end="")  # for multiprocessing_status space
+          end="")
 
 
 def inputparse(index):
     f = import_list[index]
 
-    filename = {
-        "name": f.rsplit("/", 1)[-1].rsplit(".", 1)[0],
+    filename = {"name": f.rsplit("/", 1)[-1].rsplit(".", 1)[0],
         "ext": args.extension if args.extension else f.rsplit("/", 1)[-1].rsplit(".", 1)[-1],
-        "relpath": f.replace(args.input, ""),
-    }
-    if useExt == "same":
-        filename["ext"] = f.rsplit(".", 1)[-1]
+        "relpath": f.replace(args.input, "")}
     HRout = (HRFolder + filename["relpath"] if not args.no_recursive else HRFolder +
              filename["name"]) + "." + filename["ext"]
     LRout = (LRFolder + filename["relpath"] if not args.no_recursive else LRFolder +
@@ -223,9 +215,8 @@ def inputparse(index):
 
             process_id = int(
                 multiprocessing.current_process().name.rsplit("-", 1)[-1])
-            if not width % args.scale == 0 or height % args.scale:
-                width = width - (width % args.scale)
-                height = height - (height % args.scale)
+            if not width % args.scale == 0 or not height % args.scale == 0:
+                width, height = width - (width % args.scale), height - (height % args.scale)
                 if not height >= args.minsize or width >= args.minsize:
                     return
                 image = Imparser.Imageread(f)
@@ -236,7 +227,7 @@ def inputparse(index):
                 return
             Imparser.ConvertImages(
                 image, HRout, LRout, f, index, import_list,
-                process_id)  # processing id
+                process_id)
 
     if USE_CUSTOM_BAR:
         if index != 0:  # index / total, %, elapsed, eta, average per second
@@ -252,33 +243,28 @@ def inputparse(index):
 
 
 start_time = time.time()
-with Pool(args.power) as p:
+with Pool(args.power) as pool:
     try:
         if USE_CUSTOM_BAR:
-            r = list(p.imap(inputparse, range(len(import_list))))
+            poolThreads = list(pool.imap(inputparse, range(len(import_list))))
         else:
-            r = list(tqdm(p.imap(inputparse, range(len(import_list))),
+            poolThreads = list(tqdm(pool.imap(inputparse, range(len(import_list))),
                           ncols=0,
                           total=len(import_list),
                           desc="Progress",
                           unit=" images"))
     except KeyboardInterrupt:
-        p.close()
-        p.terminate()
-        p.join()
+        pool.close()
+        pool.terminate()
+        pool.join()
         print("\nKeyboardInterrupt detected, skipping...")
         print("\033[0;93m\033[1mWARNING: SOME IMAGES MAY BE CORRUPTED. check the newest files in the HR and LR folders")
-# for debugging
-# for i in range(len(import_list)):
-#     inputparse(i)
-#     inputparse(i)
-# find empty folders in HR and Lr
-if not args.no_recursive:
+if not args.no_recursive: # find empty folders in HR and Lr
     print("Removing empty folders in HR and Lr...")
-    for i in glob.glob(HRFolder + "/*", recursive=True):
+    for i in get_files(HRFolder + "/*"):
         if not os.listdir(i):
             os.rmdir(i)
-    for i in glob.glob(LRFolder + "/*", recursive=True):
+    for i in get_files(LRFolder + "/*"):
         if not os.listdir(i):
             os.rmdir(i)
 print("\nDone!")
