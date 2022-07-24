@@ -8,7 +8,6 @@ from multiprocessing import Pool
 import cv2
 import pymage_size
 from PIL import Image
-from py import process
 
 try:
     from tqdm import tqdm
@@ -34,12 +33,8 @@ parser.add_argument("-e", "--extension", help="extension of files to export. jpe
                     default="same", required=False)
 parser.add_argument("--backend", help="backend to use for resizing. [cv2], PIL. cv2 is safer but slower in my experience.",
                     default="cv2", required=False)
-parser.add_argument("--anonymous", help="anonymous mode. generate random name for each file instead of using the original name",
-                                        default=False, action="store_true", required=False)
 parser.add_argument("--purge", help="purge all existing files in output directories before processing",
                     default=False, action="store_true", required=False)
-parser.add_argument("--no-status", help="disable process status bar. presumably faster.",
-                    action="store_true", required=False)
 args = parser.parse_args()
 
 
@@ -115,20 +110,15 @@ def multiprocessing_status(pid, listnum=0, inlist=["0"], extra=""):
     inlist: list of items processing
     extra: extra text to display before listed item, such as 'Processing' or 'Thinking'
     """
-    if args.no_status:
-        return
     extra = extra.ljust(12)
     statusimage = inlist[listnum]
-    command = f"\033[K"+str(pid).rjust(len(str(args.power)), " ")+": # " \
+    command = f"\033[K"+str(pid), " "+": # " \
         + f"{str(listnum).rjust(len(str(len(inlist))), ' ')}"                                   # process number
     if extra != "":
-        command += f" : {extra} | "                                                             # extra text
-    if args.anonymous:
-        path = "/"+"".join(random.choice(
-            string.ascii_letters+"/"*(len(string.ascii_letters)//10)) for _ in range(20)) \
-            + "." + statusimage.rsplit("/", 1)[-1].rsplit(".", 1)[-1]                           # generate random name
-    else:
-        path = statusimage                                                                      # use original path
+        # extra text
+        command += f" : {extra} | "
+    # use original path
+    path = statusimage
     command += f"...{path[-os.get_terminal_size().columns+len(command)+5:]}" if len(
         path) > os.get_terminal_size().columns-5 else path                                      # display path
     command = "\r"+("\033[A"*pid) + command + ("\n"*pid)+"\r"
