@@ -4,17 +4,21 @@ import glob
 import multiprocessing
 import os
 import sys
+import time
 from multiprocessing import Pool
 from pprint import pprint
 
 import cv2
+import imagesize
+import rich
 from PIL import Image
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-i", "--input", help="input directory", required=True)
 parser.add_argument("-x", "--scale", help="scale", type=int, required=True)
 parser.add_argument("-p", "--power", help="number of cores to use. default is 'os.cpu_count()'.",
-                    type=int, default=int((os.cpu_count()/2)), required=False)
+                    type=int, default=int(((os.cpu_count()/4)*3)), required=False)
 parser.add_argument("--minsize", help="minimum size of image",
                     type=int, default=0, required=False)
 parser.add_argument("-e", "--extension", help="extension of files to export. jpeg, png, webp, etc. it's the same as input by default.",
@@ -33,34 +37,60 @@ if args.input[-1] == "/":  # strip slash from end of path if exists
 def multiprocessing_status(pid, item, extra=""):
     """Displays a status line for a specified process.
     pid: process id
-    listnum: list index
-    inlist: list of items processing
+    item: long text to display
     extra: extra text to display before listed item, such as 'Processing' or 'Thinking'
     """
-    extra = extra.ljust(12)
-
-    command = f"\033[K"+str(pid)+" : # "
-    print(command)
-    command += f": {extra} | "
-    path = item
-    command += f"...{path[-os.get_terminal_size().columns+len(command)+5:]}" if len(
-        path) > os.get_terminal_size().columns-5 else path
-    if sys.platform == "linux":
-        command = "\r"+("\033[A"*pid) + command + ("\n"*pid)+"\r"
+    command = f"\033[K# {str(pid).rjust(len(str(args.power)))}: {str(extra).center(25)} | {item}"
+    command = ("\n"*pid) + command + ("\033[A"*pid)
     print(command, end="\r")
+
+
+def printProgressBar(printing=True, iteration=0, total=1000, length=100, fill="#", nullp="-", corner="[]", color=True, end="\r", pref='', suff=''):
+    """iteration   - Required  : current iteration (Int)
+    total       - Required  : total iterations (Int)
+    length      - Optional  : character length of bar (Int)
+    fill        - Optional  : bar fill character (Str)"""
+    # custom progress bar (slightly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
+    color1 = "\033[93m"
+    color2 = "\033[92m"
+    filledLength = int(length * iteration // total)
+    fill = (fill*length)[:filledLength]
+    nullp = (nullp*(length - filledLength))
+    bar = fill + nullp
+    command = f"{color2}{corner[0]}{color1}{bar}{color2}{corner[1]}\033[0m" if color else f"<{bar}>"
+    command = pref+command+suff
+    if printing:
+        print(command, end=end)
+    if iteration == total:
+        print()
+    return command
+
+
+def progressEvent(duration, length=0, fill="#", nullp="-", corner="[]", color=True, end="\r", pref='', suff=''):
+    if length == 0:
+        length = duration+2
+    for i in range(1, duration):
+        printProgressBar(iteration=i, length=length, total=duration, fill=fill, nullp=nullp,
+                         corner=corner, color=True, end=end, pref=pref, suff=f" {i} / {duration} ")
+        time.sleep(1)
 
 
 class path():
     def basename(path):
         return path.rsplit(os.sep, 1)[-1]
 
+    def basestname(path):
+        return path.rsplit(os.sep, 1)[-1].rsplit(".", 1)[0]
+
     def dirname(path):
         return path.rsplit(os.sep, 1)[0]
 
+    def extension(path):
+        return path.rsplit(".", 1)[-1]
 
-def quickResolution(path):
-    image = Image.open(path)
-    return image.size
+
+def quickResolution(file):
+    return imagesize.get(file)  # (width, height)
 
 
 if __name__ == "__main__":
@@ -69,49 +99,99 @@ if __name__ == "__main__":
         args.extension = args.extension[1:]
     if args.extension != "same":
         print(f"applying extension: .{args.extension}")
-        custom_extension = True
+        customExtension = True
     else:
-        custom_extension = False
+        customExtension = False
 
     def get_files(path):
         return glob.glob(path, recursive=True)
 
-    importList = [i[1] for i in sorted(
-        [(f.rsplit(os.sep, 1)[-1], f) for f in sorted(get_files(args.input + "/**/*.png")
-                                                      + get_files(args.input + "/**/*.jpg")
-                                                      + get_files(args.input + "/**/*.webp"))], reverse=True)]
-    print(os.path.dirname(args.input), args.scale, args.extension)
-    print(os.path.join(os.path.dirname(args.input), str(args.scale)+"x"))
+    importList = sorted(get_files(args.input + "/**/*.png")
+                        + get_files(args.input + "/**/*.jpg")
+                        + get_files(args.input + "/**/*.webp"))
     HRFolder = os.path.join(os.path.dirname(
         args.input), str(args.scale)+"x") + "HR"
     LRFolder = os.path.join(os.path.dirname(
         args.input), str(args.scale)+"x") + "LR"
-    if custom_extension:
+    if customExtension:
         HRFolder += "-"+args.extension
         LRFolder += "-"+args.extension
-    for file in range(len(importList)):
-        importList[file] = {'index': file,
-                            'path': importList[file],
-                            'HR': os.path.join(HRFolder, path.basename(importList[file])),
-                            'LR': os.path.join(LRFolder, path.basename(importList[file])),
-                            'res': quickResolution(importList[file])}
-    pprint(importList)
     if not os.path.exists(HRFolder):
         os.makedirs(HRFolder)
     if not os.path.exists(LRFolder):
         os.makedirs(LRFolder)
+    existList1 = sorted([path.basestname(f)
+                         for f in get_files(HRFolder + "**/*")])
+    existedList2 = sorted([path.basestname(f)
+                           for f in get_files(LRFolder + "**/*")])
+
+    print("attempting to filter files that already exist in LRFolder")
+    for i in importList:
+        name = path.basestname(i)
+        if name in existList1 and name in existedList2:
+            importList.remove(i)
+    importList.sort()
+
+    def getpid():
+        return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
+
+    def gatherPaths(index):
+        ext = f".{str(args.extension if customExtension else path.extension(importList[index]))}"
+        res = quickResolution(importList[index])
+        pid = getpid()
+        # printProgressBar(iteration=index, total=len(importList),
+        #                  corner="[]", length=48,
+        #                  suff=f" {index}/{len(importList)}")
+        extra = printProgressBar(iteration=index, total=len(importList),
+                                 printing=False, corner="[]", length=16,
+                                 suff=f" {index}/{len(importList)}")
+        multiprocessing_status(pid, path.basename(
+            importList[index]), extra=extra)
+        return {'index': index, 'path': importList[index],
+                'HR': os.path.join(HRFolder, path.basestname(importList[index])+ext),
+                'LR': os.path.join(LRFolder, path.basestname(importList[index])+ext),
+                'res': res}
+
+    def filterImages(index):
+        pid = getpid()-args.power
+        extra = printProgressBar(iteration=index, total=len(importDict),
+                                 printing=False, corner="[]", length=16,
+                                 suff=f" {index}/{len(importDict)}")
+        multiprocessing_status(
+            pid, item=path.basename(importDict[index]['path']), extra=extra)
+        width, height = importDict[index]['res']
+        if width % args.scale and width % args.scale:
+            if width >= args.minsize and height >= args.minsize:
+                return dict(importDict[index])
+            return importDict[index]['path'], "<ms", importDict[index]['res']
+        return importDict[index]['path'], f"!%{args.scale}", importDict[index]['res']
+
+    def nextStep(index, text):
+        print("\033[K"+str(index)+".", text, end="\n\033[K")
+    nextStep(1, "Gathering image information")
+    with Pool(processes=args.power) as p:
+        importDict = list(p.map(gatherPaths, range(len(importList))))
+    importList.clear()
+
+    nextStep(2, f"Filtering out bad images ( too small, not /{args.scale} )")
+    with Pool(processes=args.power) as p:
+        importList = p.map(filterImages, range(len(importDict)))
+        p.close()
+        p.join()
+    maxlist = len(importList)
+    importList = list([i for i in importList if isinstance(i, dict)])
+    importList.sort(key=lambda item: path.basename(item.get('path')))
+    nextStep(
+        "2a", f"{maxlist-len(importList)} invalid files, {len(importList)} valid files")
+    progressEvent(duration=3)
+
     if args.purge:
         print("purging all existing files in output directories...")
-        for i in glob.glob(HRFolder + "*"):
-            os.remove(i)
-        for i in glob.glob(LRFolder + "*"):
+        for i in sorted(glob.glob(HRFolder + "*")+glob.glob(LRFolder + "*")):
             os.remove(i)
 
-    # pprint(import_list)
 
 # image processing backends
-
-
 if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']:
 
     class imageHandler():
@@ -130,15 +210,24 @@ if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']:
             HR = imagedict['HR']
             LR = imagedict['LR']
             if not os.path.exists(HR):
+                extra = printProgressBar(
+                    printing=False, iteration=1, total=3, length=12)
+                multiprocessing_status(pid, path, extra=extra)
                 cv2.imwrite(HR, image)
             if not os.path.exists(LR):
+                extra = printProgressBar(
+                    printing=False, iteration=2, total=3, length=12)
+                multiprocessing_status(pid, path, extra=extra)
                 lowRes = cv2.resize(
                     image, (0, 0), fx=1/args.scale, fy=1/args.scale)
                 cv2.imwrite(LR, lowRes)
+            extra = printProgressBar(
+                printing=False, iteration=3, total=3, length=12)
+            multiprocessing_status(pid, path, extra=extra)
             time = os.path.getmtime(path)
             os.utime(HR, (time, time))
             os.utime(LR, (time, time))
-            multiprocessing_status(pid, path)
+
 
 elif args.backend.lower() in ['pil', 'pillow']:
 
@@ -157,35 +246,25 @@ elif args.backend.lower() in ['pil', 'pillow']:
             LR = imagedict['LR']
             path = imagedict['path']
             if not os.path.exists(HR):
+                extra = printProgressBar(
+                    printing=False, iteration=1, total=3, length=12)
+                multiprocessing_status(pid, path, extra=extra)
                 image.save(HR)
             if not os.path.exists(LR):
+                extra = printProgressBar(
+                    printing=False, iteration=2, total=3, length=12)
+                multiprocessing_status(pid, path, extra=extra)
                 image.resize((int(image.width / args.scale),
                               int(image.height / args.scale))).save(LR)
-            multiprocessing_status(pid, path)
+            extra = printProgressBar(
+                printing=False, iteration=3, total=3, length=12)
+            multiprocessing_status(pid, path, extra=extra)
 
 
 def fileparse(imagedict):
+    pid = getpid()-args.power*2
     if not os.path.exists(imagedict['HR']) or not os.path.exists(imagedict['LR']):
-        # get image resolution
-        if imagedict['res'] is None:
-            image = imageHandler.read(imagedict['path'])
-            width, height = imageHandler.resolution(image)
-        else:
-            image = None
-            width, height = imagedict['res']
-        width, height = int(width), int(height)
-        # check if it's large enough
-        if height >= args.minsize and width >= args.minsize:
-            if image is None:
-                image = imageHandler.read(imagedict['path'])
-            pid = int(
-                multiprocessing.current_process().name.rsplit("-", 1)[-1])
-            if not width % args.scale == 0 or not height % args.scale == 0:
-                width = width - (width % args.scale)
-                height = height - (height % args.scale)
-                if not height >= args.minsize or width >= args.minsize:
-                    return
-                image = imageHandler.cropImage(image, width, height)
+        image = imageHandler.read(imagedict['path'])
         imageHandler.convert(image, imagedict, pid)
 
 
