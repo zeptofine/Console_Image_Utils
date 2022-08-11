@@ -72,16 +72,18 @@ if args.purge:
     for i in glob.glob(LRFolder + "*"):
         os.remove(i)
 
+
 def get_files(path):
-    return glob.glob(path, recursive=True) 
+    return glob.glob(path, recursive=True)
+
 
 # for every recursive directory in the input directory, create a folder in HR and Lr
 print("gathering files...")
 
 import_list = [i[1] for i in sorted(
     [(f.rsplit("/", 1)[-1], f) for f in sorted(get_files(args.input + "/**/*.png")
-                                             + get_files(args.input + "/**/*.jpg")
-                                             + get_files(args.input + "/**/*.webp"))], reverse=True)]
+                                               + get_files(args.input + "/**/*.jpg")
+                                               + get_files(args.input + "/**/*.webp"))], reverse=True)]
 print("attempting to filter files that already exist in LRFolder...")
 existed_list1 = sorted([f.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                         for f in get_files(HRFolder + "**/*")])
@@ -142,8 +144,6 @@ if args.backend.lower() in ["cv2", "opencv", "opencv2", "opencv-python"]:
                     pid=pid, listnum=index, inlist=total_list, extra="LR")
                 LoRes = cv2.resize(i, (0, 0), fx=1/args.scale, fy=1/args.scale)
                 cv2.imwrite(Lo, LoRes)
-                # get difference between original and resized
-                LoRes = cv2.resize(LoRes, (0, 0), fx=args.scale, fy=args.scale)
 
             time = os.path.getmtime(original_path)
             os.utime(Ho, (time, time))
@@ -191,8 +191,8 @@ def inputparse(index):
     f = import_list[index]
 
     filename = {"name": f.rsplit("/", 1)[-1].rsplit(".", 1)[0],
-        "ext": args.extension if args.extension else f.rsplit("/", 1)[-1].rsplit(".", 1)[-1],
-        "relpath": f.replace(args.input, "")}
+                "ext": args.extension if args.extension else f.rsplit("/", 1)[-1].rsplit(".", 1)[-1],
+                "relpath": f.replace(args.input, "")}
     HRout = (HRFolder + filename["relpath"] if not args.no_recursive else HRFolder +
              filename["name"]) + "." + filename["ext"]
     LRout = (LRFolder + filename["relpath"] if not args.no_recursive else LRFolder +
@@ -206,7 +206,8 @@ def inputparse(index):
             process_id = int(
                 multiprocessing.current_process().name.rsplit("-", 1)[-1])
             if not width % args.scale == 0 or not height % args.scale == 0:
-                width, height = width - (width % args.scale), height - (height % args.scale)
+                width, height = width - \
+                    (width % args.scale), height - (height % args.scale)
                 if not height >= args.minsize or width >= args.minsize:
                     return
                 image = Imparser.Imageread(f)
@@ -239,17 +240,17 @@ with Pool(args.power) as pool:
             poolThreads = list(pool.imap(inputparse, range(len(import_list))))
         else:
             poolThreads = list(tqdm(pool.imap(inputparse, range(len(import_list))),
-                          ncols=0,
-                          total=len(import_list),
-                          desc="Progress",
-                          unit=" images"))
+                                    ncols=0,
+                                    total=len(import_list),
+                                    desc="Progress",
+                                    unit=" images"))
     except KeyboardInterrupt:
         pool.close()
         pool.terminate()
         pool.join()
         print("\nKeyboardInterrupt detected, skipping...")
         print("\033[0;93m\033[1mWARNING: SOME IMAGES MAY BE CORRUPTED. check the newest files in the HR and LR folders")
-if not args.no_recursive: # find empty folders in HR and Lr
+if not args.no_recursive:  # find empty folders in HR and Lr
     print("Removing empty folders in HR and Lr...")
     for i in get_files(HRFolder + "/*"):
         if not os.listdir(i):
