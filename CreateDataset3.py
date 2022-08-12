@@ -12,7 +12,44 @@ import cv2
 import imagesize
 import rich
 from PIL import Image
-from tqdm import tqdm
+
+
+def printProgressBar(printing=True, iteration=0, total=1000, length=os.get_terminal_size()[0]//2, fill="#", nullp="-", corner="[]", color=True, end="\r", pref='', suff=''):
+    """iteration   - Required  : current iteration (Int)
+    total       - Required  : total iterations (Int)
+    length      - Optional  : character length of bar (Int)
+    fill        - Optional  : bar fill character (Str)"""
+    # custom progress bar (slightly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
+    color1 = "\033[93m"
+    color2 = "\033[92m"
+    filledLength = int(length * iteration // total)
+    fill = (fill*length)[:filledLength]
+    nullp = (nullp*(length - filledLength))
+    bar = fill + nullp
+    command = f"\033[K{color2}{corner[0]}{color1}{bar}{color2}{corner[1]}\033[0m" if color else f"<{bar}>"
+    command = pref+command+suff
+    if printing:
+        print(command, end=end)
+    if iteration == total:
+        print()
+    return command
+
+
+def progressEvent(duration, length=0, fill="#", nullp="-", corner="[]", color=True, end="\r", pref='', suff=''):
+    if length == 0:
+        length = duration+2
+    for second in range(1, duration):
+        if suff != "":
+            suff = f" {second} / {duration} "
+        printProgressBar(iteration=second, length=length, total=duration, fill=fill, nullp=nullp,
+                         corner=corner, color=True, end=end, pref=pref, suff=f" {second} / {duration} ")
+        time.sleep(1)
+
+
+if sys.platform == "win32":
+    print("This application was made for linux/wsl. either use wsl or linux or this will not work. you have been warned.")
+    progressEvent(10, length=20)
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-i", "--input", help="input directory", required=True)
@@ -34,45 +71,15 @@ if args.input[-1] == "/":  # strip slash from end of path if exists
     args.input = args.input[:-1]
 
 
-def multiprocessing_status(pid, item, extra=""):
+def multiprocessing_status(pid, item, extra="", extraSize=30):
     """Displays a status line for a specified process.
     pid: process id
     item: long text to display
     extra: extra text to display before listed item, such as 'Processing' or 'Thinking'
     """
-    command = f"\033[K# {str(pid).rjust(len(str(args.power)))}: {str(extra).center(25)} | {item}"
+    command = f"\033[K# {str(pid).rjust(3)}: {str(extra).center(extraSize)} | {item}"
     command = ("\n"*pid) + command + ("\033[A"*pid)
     print(command, end="\r")
-
-
-def printProgressBar(printing=True, iteration=0, total=1000, length=100, fill="#", nullp="-", corner="[]", color=True, end="\r", pref='', suff=''):
-    """iteration   - Required  : current iteration (Int)
-    total       - Required  : total iterations (Int)
-    length      - Optional  : character length of bar (Int)
-    fill        - Optional  : bar fill character (Str)"""
-    # custom progress bar (slightly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
-    color1 = "\033[93m"
-    color2 = "\033[92m"
-    filledLength = int(length * iteration // total)
-    fill = (fill*length)[:filledLength]
-    nullp = (nullp*(length - filledLength))
-    bar = fill + nullp
-    command = f"{color2}{corner[0]}{color1}{bar}{color2}{corner[1]}\033[0m" if color else f"<{bar}>"
-    command = pref+command+suff
-    if printing:
-        print(command, end=end)
-    if iteration == total:
-        print()
-    return command
-
-
-def progressEvent(duration, length=0, fill="#", nullp="-", corner="[]", color=True, end="\r", pref='', suff=''):
-    if length == 0:
-        length = duration+2
-    for i in range(1, duration):
-        printProgressBar(iteration=i, length=length, total=duration, fill=fill, nullp=nullp,
-                         corner=corner, color=True, end=end, pref=pref, suff=f" {i} / {duration} ")
-        time.sleep(1)
 
 
 class path():
@@ -90,7 +97,14 @@ class path():
 
 
 def quickResolution(file):
-    return imagesize.get(file)  # (width, height)
+    try:
+        return imagesize.get(file)
+    except:
+        return Image.open(file).size
+
+
+def getpid():
+    return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
 
 
 if __name__ == "__main__":
@@ -122,27 +136,26 @@ if __name__ == "__main__":
         os.makedirs(LRFolder)
     existList1 = sorted([path.basestname(f)
                          for f in get_files(HRFolder + "**/*")])
-    existedList2 = sorted([path.basestname(f)
-                           for f in get_files(LRFolder + "**/*")])
+    existList2 = sorted([path.basestname(f)
+                         for f in get_files(LRFolder + "**/*")])
 
-    print("attempting to filter files that already exist in LRFolder")
-    maxlist = len(importList)
-    for i in reversed(range(len(importList))):
-        if i % 100 == 0:
-            printProgressBar(iteration=len(importList)-i, total=len(importList),
-                             length=60, suff=f" {i}/{len(importList)}/{maxlist}")
-        name = path.basestname(importList[i])
-        if name in existList1 and name in existedList2:
-            importList.remove(importList[i])
-    importList.sort()
+    def nextStep(index, text):
+        print("\033[K"+str(index)+".", text, end="\n\033[K")
 
-    def getpid():
-        return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
+    def filterSaved(index):
+        pid = getpid()
+        extra = printProgressBar(iteration=index, total=len(importList), length=16,
+                                 printing=False, suff=f" {index}/{len(importList)}")
+        multiprocessing_status(pid, path.basename(
+            importList[index]), extra=extra)
+        name = path.basestname(importList[index])
+        if name not in existList1 and name not in existList2:
+            return importList[index]
 
     def gatherPaths(index):
+        pid = getpid() - args.power
         ext = f".{str(args.extension if customExtension else path.extension(importList[index]))}"
         res = quickResolution(importList[index])
-        pid = getpid()
         # printProgressBar(iteration=index, total=len(importList),
         #                  corner="[]", length=48,
         #                  suff=f" {index}/{len(importList)}")
@@ -157,7 +170,7 @@ if __name__ == "__main__":
                 'res': res}
 
     def filterImages(index):
-        pid = getpid()-args.power
+        pid = getpid() - args.power*2
         extra = printProgressBar(iteration=index, total=len(importDict),
                                  printing=False, corner="[]", length=16,
                                  suff=f" {index}/{len(importDict)}")
@@ -168,28 +181,35 @@ if __name__ == "__main__":
             if width >= args.minsize and height >= args.minsize:
                 return importDict[index]
 
-    def nextStep(index, text):
-        print("\033[K"+str(index)+".", text, end="\n\033[K")
-    nextStep(1, "Gathering image information")
+    nextStep(1, "Attempting to filter files that already exist in LRFolder")
+    with Pool(processes=args.power) as p:
+        maxlist = len(importList)
+        importList = p.map(filterSaved, range(len(importList)))
+        importList = [i for i in importList if i is not None]
+        nextStep(
+            "2a", f"{maxlist-len(importList)} existing files, {len(importList)} upcoming files")
+
+    nextStep(2, "Gathering image information")
     with Pool(processes=args.power) as p:
         importDict = list(p.map(gatherPaths, range(len(importList))))
-    importList.clear()
+        importList = [i for i in importList if i is not None]
 
-    nextStep(2, f"Filtering out bad images ( too small, not /{args.scale} )")
+    nextStep(3, f"Filtering out bad images ( too small, not /{args.scale} )")
     with Pool(processes=args.power) as p:
         importList = p.map(filterImages, range(len(importDict)))
+        importList = [i for i in importList if i is not None]
         p.close()
         p.join()
     maxlist = len(importList)
     importList = [i for i in importList if i is not None]
     nextStep(
-        "2a", f"{maxlist-len(importList)} invalid files, {len(importList)} valid files")
+        "3a", f"{maxlist-len(importList)} invalid files, {len(importList)} valid files")
     progressEvent(duration=3)
 
     if args.purge:
         print("purging all existing files in output directories...")
-        for i in sorted(glob.glob(HRFolder + "*")+glob.glob(LRFolder + "*")):
-            os.remove(i)
+        for index in sorted(glob.glob(HRFolder + "*")+glob.glob(LRFolder + "*")):
+            os.remove(index)
 
 
 # image processing backends
@@ -240,7 +260,7 @@ elif args.backend.lower() in ['pil', 'pillow']:
             return (image.size)  # (width, height)
 
         def cropImage(image, x, y):
-            return image.crop((x, y, x+i.width, y+i.height))
+            return image.crop((x, y, x+index.width, y+index.height))
 
         def convert(image, imagedict, pid):
             HR = imagedict['HR']
@@ -263,7 +283,7 @@ elif args.backend.lower() in ['pil', 'pillow']:
 
 
 def fileparse(imagedict):
-    pid = getpid()-args.power*2
+    pid = getpid() - args.power*3
     if not os.path.exists(imagedict['HR']) or not os.path.exists(imagedict['LR']):
         image = imageHandler.read(imagedict['path'])
         imageHandler.convert(image, imagedict, pid)
@@ -271,6 +291,7 @@ def fileparse(imagedict):
 
 if __name__ == "__main__":
     try:
+        nextStep(4, "Processing...")
         with Pool(processes=args.power) as p:
             imdict = p.map(fileparse, importList)
     except KeyboardInterrupt:
