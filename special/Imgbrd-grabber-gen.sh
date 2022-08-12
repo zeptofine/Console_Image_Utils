@@ -36,7 +36,7 @@ else file=$(< "$(dirname "$0")/prefixes.txt" $sort); fi
 for i in $file; do { 
 echo -ne ",
         {
-            \"filename\": \"%search%/%date:format=yyyy-MM-dd-hh-mm-ss%_%md5%_%rating%.%ext%\",
+            \"filename\": \"%search%/%date:format=yyyy-MM-dd-hh-mm-ss%_%md5%_%rating:maxlength=1%.%ext%\",
             \"galleriesCountAsOne\": true,
             \"getBlacklisted\": false,
             \"page\": 1,

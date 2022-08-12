@@ -14,7 +14,9 @@ import rich
 from PIL import Image
 
 
-def printProgressBar(printing=True, iteration=0, total=1000, length=os.get_terminal_size()[0]//2, fill="#", nullp="-", corner="[]", color=True, end="\r", pref='', suff=''):
+def progressBar(iteration: int, total: int, length: int = os.get_terminal_size()[0]//2,
+                Print=False, fill="#", nullp="-", corner="[]", color=True,
+                end="\r", pref='', suff=''):
     """iteration   - Required  : current iteration (Int)
     total       - Required  : total iterations (Int)
     length      - Optional  : character length of bar (Int)
@@ -28,10 +30,8 @@ def printProgressBar(printing=True, iteration=0, total=1000, length=os.get_termi
     bar = fill + nullp
     command = f"\033[K{color2}{corner[0]}{color1}{bar}{color2}{corner[1]}\033[0m" if color else f"<{bar}>"
     command = pref+command+suff
-    if printing:
+    if Print:
         print(command, end=end)
-    if iteration == total:
-        print()
     return command
 
 
@@ -41,8 +41,9 @@ def progressEvent(duration, length=0, fill="#", nullp="-", corner="[]", color=Tr
     for second in range(1, duration):
         if suff != "":
             suff = f" {second} / {duration} "
-        printProgressBar(iteration=second, length=length, total=duration, fill=fill, nullp=nullp,
-                         corner=corner, color=True, end=end, pref=pref, suff=f" {second} / {duration} ")
+        progressBar(second, duration, length, fill=fill, nullp=nullp,
+                    corner=corner, color=True,
+                    end=end, pref=pref, suff=f" {second} / {duration} ")
         time.sleep(1)
 
 
@@ -111,7 +112,11 @@ def quickResolution(file):
     try:
         return imagesize.get(file)
     except:
-        return Image.open(file).size
+        try:
+            return Image.open(file).size
+        except:
+            height, width, color = cv2.imread(file).shape
+            return width, height
 
 
 def getpid():
@@ -128,12 +133,15 @@ if __name__ == "__main__":
     else:
         customExtension = False
 
-    def get_files(path):
-        return glob.glob(path, recursive=True)
+    def get_files(*args):
+        fileList = []
+        for path in args:
+            fileList += glob.glob(path, recursive=True)
+        return fileList
 
-    importList = sorted(get_files(args.input + "/**/*.png")
-                        + get_files(args.input + "/**/*.jpg")
-                        + get_files(args.input + "/**/*.webp"))
+    importList = sorted(get_files(args.input+"/**/*.png",
+                                  args.input+"/**/*.jpg",
+                                  args.input+"/**/*.webp"))
     HRFolder = os.path.join(os.path.dirname(
         args.input), str(args.scale)+"x") + "HR"
     LRFolder = os.path.join(os.path.dirname(
@@ -155,10 +163,9 @@ if __name__ == "__main__":
 
     def filterSaved(index):
         pid = getpid()
-        extra = printProgressBar(iteration=index, total=len(importList), length=16,
-                                 printing=False, suff=f" {index}/{len(importList)}")
         multiprocessing_status(pid, os_path.basename(
-            importList[index]), extra=extra)
+            importList[index]),
+            extra=progressBar(index, len(importList), 16, suff=f" {index}/{len(importList)}"))
         name = os_path.basestname(importList[index])
         if name not in existList1 and name not in existList2:
             return importList[index]
@@ -167,14 +174,8 @@ if __name__ == "__main__":
         pid = getpid() - args.power
         ext = f".{str(args.extension if customExtension else os_path.extension(importList[index]))}"
         res = quickResolution(importList[index])
-        # printProgressBar(iteration=index, total=len(importList),
-        #                  corner="[]", length=48,
-        #                  suff=f" {index}/{len(importList)}")
-        extra = printProgressBar(iteration=index, total=len(importList),
-                                 printing=False, corner="[]", length=16,
-                                 suff=f" {index}/{len(importList)}")
-        multiprocessing_status(pid, os_path.basename(
-            importList[index]), extra=extra)
+        multiprocessing_status(pid, os_path.basename(importList[index]),
+                               extra=progressBar(index, len(importList), 16, suff=f" {index}/{len(importList)}"))
         return {'index': index, 'path': importList[index],
                 'HR': os.path.join(HRFolder, os_path.basestname(importList[index])+ext),
                 'LR': os.path.join(LRFolder, os_path.basestname(importList[index])+ext),
@@ -182,11 +183,9 @@ if __name__ == "__main__":
 
     def filterImages(index):
         pid = getpid() - args.power*2
-        extra = printProgressBar(iteration=index, total=len(importDict),
-                                 printing=False, corner="[]", length=16,
-                                 suff=f" {index}/{len(importDict)}")
         multiprocessing_status(
-            pid, item=os_path.basename(importDict[index]['path']), extra=extra)
+            pid, item=os_path.basename(importDict[index]['path']),
+            extra=progressBar(index, len(importDict), 16, suff=f" {index}/{len(importDict)}"))
         width, height = importDict[index]['res']
         if width % args.scale and width % args.scale:
             if width >= args.minsize and height >= args.minsize:
@@ -198,8 +197,9 @@ if __name__ == "__main__":
         importList = p.map(filterSaved, range(len(importList)))
         importList = [i for i in importList if i is not None]
         nextStep(
-            "2a", f"{maxlist-len(importList)} existing files, {len(importList)} upcoming files")
+            "2a", f"{maxlist-len(importList)} existing files, {len(importList)} possible files")
 
+    maxlist = len(importList)
     nextStep(2, "Gathering image information")
     with Pool(processes=args.power) as p:
         importDict = list(p.map(gatherPaths, range(len(importList))))
@@ -209,12 +209,10 @@ if __name__ == "__main__":
     with Pool(processes=args.power) as p:
         importList = p.map(filterImages, range(len(importDict)))
         importList = [i for i in importList if i is not None]
-        p.close()
-        p.join()
-    maxlist = len(importList)
+
     importList = [i for i in importList if i is not None]
     nextStep(
-        "3a", f"{maxlist-len(importList)} invalid files, {len(importList)} valid files")
+        "3a", f"{maxlist-len(importList)} discarded files, {len(importList)} new files")
     progressEvent(duration=3)
 
     if args.purge:
@@ -226,69 +224,44 @@ if __name__ == "__main__":
 # image processing backends
 if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']:
 
-    class imageHandler():
-        def read(image):
-            return cv2.imread(image)
-
-        def convert(image, imagedict, pid):
-            path = imagedict['path']
-            HR = imagedict['HR']
-            LR = imagedict['LR']
-            printPath = os_path.basename(path)
-            time = os.path.getmtime(path)
-            if not os.path.exists(HR):
-                extra = printProgressBar(
-                    printing=False, iteration=1, total=3, length=6)
-                multiprocessing_status(pid, printPath, extra=extra)
-                cv2.imwrite(HR, image)
-                os.utime(HR, (time, time))
-            if not os.path.exists(LR):
-                extra = printProgressBar(
-                    printing=False, iteration=2, total=3, length=6)
-                multiprocessing_status(pid, printPath , extra=extra)
-                lowRes = cv2.resize(
-                    image, (0, 0), fx=1/args.scale, fy=1/args.scale)
-                cv2.imwrite(LR, lowRes)
-                os.utime(LR, (time, time))
-            extra = printProgressBar(
-                printing=False, iteration=3, total=3, length=6)
-            multiprocessing_status(pid, printPath, extra=extra)
-
-
+    def fileConvert(pid, path, HR, LR):
+        image = cv2.imread(path)
+        printPath = os_path.basename(path)
+        time = os.path.getmtime(path)
+        if not os.path.exists(HR):
+            multiprocessing_status(pid, printPath, extra=progressBar(1, 2, 6))
+            cv2.imwrite(HR, image)
+            os.utime(HR, (time, time))
+        if not os.path.exists(LR):
+            multiprocessing_status(pid, printPath, extra=progressBar(2, 2, 6))
+            lowRes = cv2.resize(
+                image, (0, 0), fx=1/args.scale, fy=1/args.scale)
+            cv2.imwrite(LR, lowRes)
+            os.utime(LR, (time, time))
 elif args.backend.lower() in ['pil', 'pillow']:
 
-    class imageHandler():
-        def read(image):
-            return Image.open(image)
+    def fileConvert(pid, path, HR, LR):
+        image = Image.open(path)
+        printPath = os_path.basename(path)
+        time = os.path.getmtime(path)
+        if not os.path.exists(HR):
+            multiprocessing_status(pid, printPath, extra=progressBar(1, 2, 6))
+            image.save(HR)
+            os.utime(HR, (time, time))
+        if not os.path.exists(LR):
+            multiprocessing_status(pid, printPath, extra=progressBar(2, 2, 6))
+            image.resize((int(image.width / args.scale),
+                          int(image.height / args.scale))).save(LR)
+            os.utime(LR, (time, time))
 
-        def convert(image, imagedict, pid):
-            HR = imagedict['HR']
-            LR = imagedict['LR']
-            path = imagedict['path']
-            printPath = os_path.basename(path)
-            time = os.path.getmtime(path)
-            if not os.path.exists(HR):
-                extra = printProgressBar(
-                    printing=False, iteration=1, total=3, length=6)
-                multiprocessing_status(pid, printPath, extra=extra)
-                image.save(HR)
-                os.utime(HR, (time, time))
-            if not os.path.exists(LR):
-                extra = printProgressBar(
-                    printing=False, iteration=2, total=3, length=6)
-                multiprocessing_status(pid, printPath, extra=extra)
-                image.resize((int(image.width / args.scale),
-                              int(image.height / args.scale))).save(LR)
-                os.utime(LR, (time, time))
-            extra = printProgressBar(
-                printing=False, iteration=3, total=3, length=6)
-            multiprocessing_status(pid, printPath, extra=extra)
 
 def fileparse(imagedict):
     pid = getpid() - args.power*3
+    multiprocessing_status(pid, os_path.basename(
+        imagedict['path']), extra=progressBar(0, 2, 6))
     if not os.path.exists(imagedict['HR']) or not os.path.exists(imagedict['LR']):
-        image = imageHandler.read(imagedict['path'])
-        imageHandler.convert(image, imagedict, pid)
+        fileConvert(pid, path=imagedict['path'],
+                    HR=imagedict['HR'], LR=imagedict['LR'])
 
 
 if __name__ == "__main__":
@@ -296,11 +269,10 @@ if __name__ == "__main__":
         nextStep(4, "Processing...")
         with Pool(processes=args.power) as p:
             imdict = p.map(fileparse, importList)
+        p.close()
+        p.join()
     except KeyboardInterrupt:
         p.close()
-        p.terminate()
         p.join()
-        print("Conversion cancelled")
-        # p.close()
-
-        print("\nDone!")
+        print("\n"*args.power+"Conversion cancelled")
+    print("\nDone!")
