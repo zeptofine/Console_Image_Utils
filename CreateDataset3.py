@@ -6,11 +6,11 @@ import os
 import sys
 import time
 from multiprocessing import Pool
-from pprint import pprint
+# from pprint import pprint
+# import rich
 
 import cv2
 import imagesize
-import rich
 from PIL import Image
 
 
