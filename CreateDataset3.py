@@ -126,10 +126,14 @@ if __name__ == "__main__":
                            for f in get_files(LRFolder + "**/*")])
 
     print("attempting to filter files that already exist in LRFolder")
-    for i in importList:
-        name = path.basestname(i)
+    maxlist = len(importList)
+    for i in reversed(range(len(importList))):
+        if i % 100 == 0:
+            printProgressBar(iteration=len(importList)-i, total=len(importList),
+                             length=60, suff=f" {i}/{len(importList)}/{maxlist}")
+        name = path.basestname(importList[i])
         if name in existList1 and name in existedList2:
-            importList.remove(i)
+            importList.remove(importList[i])
     importList.sort()
 
     def getpid():
