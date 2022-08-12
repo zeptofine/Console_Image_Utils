@@ -162,9 +162,7 @@ if __name__ == "__main__":
         width, height = importDict[index]['res']
         if width % args.scale and width % args.scale:
             if width >= args.minsize and height >= args.minsize:
-                return dict(importDict[index])
-            return importDict[index]['path'], "<ms", importDict[index]['res']
-        return importDict[index]['path'], f"!%{args.scale}", importDict[index]['res']
+                return importDict[index]
 
     def nextStep(index, text):
         print("\033[K"+str(index)+".", text, end="\n\033[K")
@@ -179,8 +177,7 @@ if __name__ == "__main__":
         p.close()
         p.join()
     maxlist = len(importList)
-    importList = list([i for i in importList if isinstance(i, dict)])
-    importList.sort(key=lambda item: path.basename(item.get('path')))
+    importList = [i for i in importList if i is not None]
     nextStep(
         "2a", f"{maxlist-len(importList)} invalid files, {len(importList)} valid files")
     progressEvent(duration=3)
