@@ -14,21 +14,16 @@ import rich
 from PIL import Image
 
 
-def progressBar(iteration: int, total: int, length: int = os.get_terminal_size()[0]//2,
+def progressBar(iteration: int, total: int, length: int = max(os.get_terminal_size()[0]//6, 10),
                 Print=False, fill="#", nullp="-", corner="[]", color=True,
                 end="\r", pref='', suff=''):
-    """iteration   - Required  : current iteration (Int)
-    total       - Required  : total iterations (Int)
-    length      - Optional  : character length of bar (Int)
-    fill        - Optional  : bar fill character (Str)"""
     # custom progress bar (slightly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
-    color1 = "\033[93m"
-    color2 = "\033[92m"
-    filledLength = int(length * iteration // total)
-    fill = (fill*length)[:filledLength]
-    nullp = (nullp*(length - filledLength))
-    bar = fill + nullp
-    command = f"\033[K{color2}{corner[0]}{color1}{bar}{color2}{corner[1]}\033[0m" if color else f"<{bar}>"
+    color1, color2 = "\033[93m", "\033[92m"
+    filledLength = length * iteration // total
+
+    #    [############################# --------------------------------]
+    bar = (fill*length)[:filledLength] + (nullp*(length - filledLength))
+    command = f"\033[K{color2}{corner[0]}{color1}{bar}{color2}{corner[1]}\033[0m" if color else f"{corner[0]}{bar}{corner[1]}"
     command = pref+command+suff
     if Print:
         print(command, end=end)
@@ -47,19 +42,19 @@ def progressEvent(duration, length=0, fill="#", nullp="-", corner="[]", color=Tr
         time.sleep(1)
 
 
-def multiprocessing_status(pid, item, extra="", extraSize=0):
+def multiprocessing_status(pid, item, extra="", extraSize=8):
     """Displays a status line for a specified process.
     pid: process id
     item: long text to display
     extra: extra text to display before listed item, such as 'Processing' or 'Thinking'
     """
-    command = f"\033[K# {str(pid).rjust(3)}: {str(extra).center(extraSize)} | {item}"
+    command = f"\033[K {str(pid).ljust(3)}| {str(extra).center(extraSize)} | {item}"
     command = ("\n"*pid) + command + ("\033[A"*pid)
     print(command, end="\r")
 
 
 if sys.platform == "win32":
-    print("This application was made for linux/wsl. either use wsl or linux or this will not work. you have been warned.")
+    print("This application was made for linux/wsl. either use wsl2 or linux or this will not work. you have been warned.")
     progressEvent(10, length=20)
 
 
@@ -81,17 +76,6 @@ args = parser.parse_args()
 
 if args.input[-1] == "/":  # strip slash from end of path if exists
     args.input = args.input[:-1]
-
-
-def multiprocessing_status(pid, item, extra="", extraSize=30):
-    """Displays a status line for a specified process.
-    pid: process id
-    item: long text to display
-    extra: extra text to display before listed item, such as 'Processing' or 'Thinking'
-    """
-    command = f"\033[K# {str(pid).rjust(3)}: {str(extra).center(extraSize)} | {item}"
-    command = ("\n"*pid) + command + ("\033[A"*pid)
-    print(command, end="\r")
 
 
 class os_path():
@@ -163,10 +147,14 @@ if __name__ == "__main__":
 
     def filterSaved(index):
         pid = getpid()
-        multiprocessing_status(pid, os_path.basename(
-            importList[index]),
-            extra=progressBar(index, len(importList), 16, suff=f" {index}/{len(importList)}"))
+        multiprocessing_status(pid, os_path.basename(importList[index]),
+                               progressBar(index, len(importList), suff=f" {index}/{len(importList)}"))
         name = os_path.basestname(importList[index])
+        # ex1 = True if name not in existList1 else False
+        # ex2 = True if name not in existList2 else False
+        # ex3 = ex1 + ex2
+        # if ex3 == 2:
+        #     return importList[index]
         if name not in existList1 and name not in existList2:
             return importList[index]
 
@@ -175,7 +163,7 @@ if __name__ == "__main__":
         ext = f".{str(args.extension if customExtension else os_path.extension(importList[index]))}"
         res = quickResolution(importList[index])
         multiprocessing_status(pid, os_path.basename(importList[index]),
-                               extra=progressBar(index, len(importList), 16, suff=f" {index}/{len(importList)}"))
+                               extra=progressBar(index, len(importList), suff=f" {index}/{len(importList)}"))
         return {'index': index, 'path': importList[index],
                 'HR': os.path.join(HRFolder, os_path.basestname(importList[index])+ext),
                 'LR': os.path.join(LRFolder, os_path.basestname(importList[index])+ext),
@@ -185,7 +173,7 @@ if __name__ == "__main__":
         pid = getpid() - args.power*2
         multiprocessing_status(
             pid, item=os_path.basename(importDict[index]['path']),
-            extra=progressBar(index, len(importDict), 16, suff=f" {index}/{len(importDict)}"))
+            extra=progressBar(index, len(importDict), suff=f" {index}/{len(importDict)}"))
         width, height = importDict[index]['res']
         if width % args.scale and width % args.scale:
             if width >= args.minsize and height >= args.minsize:
@@ -195,22 +183,21 @@ if __name__ == "__main__":
     with Pool(processes=args.power) as p:
         maxlist = len(importList)
         importList = p.map(filterSaved, range(len(importList)))
-        importList = [i for i in importList if i is not None]
+        importList = sorted([i for i in importList if i is not None])
         nextStep(
-            "2a", f"{maxlist-len(importList)} existing files, {len(importList)} possible files")
+            "1a", f"{maxlist-len(importList)} existing files, {len(importList)} possible files")
 
     maxlist = len(importList)
     nextStep(2, "Gathering image information")
     with Pool(processes=args.power) as p:
         importDict = list(p.map(gatherPaths, range(len(importList))))
-        importList = [i for i in importList if i is not None]
+        importList = sorted([i for i in importList if i is not None])
 
     nextStep(3, f"Filtering out bad images ( too small, not /{args.scale} )")
     with Pool(processes=args.power) as p:
         importList = p.map(filterImages, range(len(importDict)))
-        importList = [i for i in importList if i is not None]
+    importList = sorted([i for i in importList if i is not None])
 
-    importList = [i for i in importList if i is not None]
     nextStep(
         "3a", f"{maxlist-len(importList)} discarded files, {len(importList)} new files")
     progressEvent(duration=3)
@@ -224,32 +211,36 @@ if __name__ == "__main__":
 # image processing backends
 if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']:
 
-    def fileConvert(pid, path, HR, LR):
+    def fileConvert(pid, path, HR, LR, suffix):
         image = cv2.imread(path)
         printPath = os_path.basename(path)
         time = os.path.getmtime(path)
         if not os.path.exists(HR):
-            multiprocessing_status(pid, printPath, extra=progressBar(1, 2, 6))
+            multiprocessing_status(
+                pid, printPath, extra=progressBar(1, 2, 2, suff=suffix))
             cv2.imwrite(HR, image)
             os.utime(HR, (time, time))
         if not os.path.exists(LR):
-            multiprocessing_status(pid, printPath, extra=progressBar(2, 2, 6))
+            multiprocessing_status(
+                pid, printPath, extra=progressBar(2, 2, 2, suff=suffix))
             lowRes = cv2.resize(
                 image, (0, 0), fx=1/args.scale, fy=1/args.scale)
             cv2.imwrite(LR, lowRes)
             os.utime(LR, (time, time))
 elif args.backend.lower() in ['pil', 'pillow']:
 
-    def fileConvert(pid, path, HR, LR):
+    def fileConvert(pid, path, HR, LR, suffix):
         image = Image.open(path)
         printPath = os_path.basename(path)
         time = os.path.getmtime(path)
         if not os.path.exists(HR):
-            multiprocessing_status(pid, printPath, extra=progressBar(1, 2, 6))
+            multiprocessing_status(
+                pid, printPath, extra=progressBar(1, 2, 2, suff=suffix))
             image.save(HR)
             os.utime(HR, (time, time))
         if not os.path.exists(LR):
-            multiprocessing_status(pid, printPath, extra=progressBar(2, 2, 6))
+            multiprocessing_status(
+                pid, printPath, extra=progressBar(2, 2, 2, suff=suffix))
             image.resize((int(image.width / args.scale),
                           int(image.height / args.scale))).save(LR)
             os.utime(LR, (time, time))
@@ -257,11 +248,12 @@ elif args.backend.lower() in ['pil', 'pillow']:
 
 def fileparse(imagedict):
     pid = getpid() - args.power*3
+    suffix = f" {str(imagedict['index']).rjust(len(str(len(importList))))}"
     multiprocessing_status(pid, os_path.basename(
-        imagedict['path']), extra=progressBar(0, 2, 6))
+        imagedict['path']), extra=progressBar(0, 2, 2, suff=suffix))
     if not os.path.exists(imagedict['HR']) or not os.path.exists(imagedict['LR']):
         fileConvert(pid, path=imagedict['path'],
-                    HR=imagedict['HR'], LR=imagedict['LR'])
+                    HR=imagedict['HR'], LR=imagedict['LR'], suffix=suffix)
 
 
 if __name__ == "__main__":
@@ -270,7 +262,6 @@ if __name__ == "__main__":
         with Pool(processes=args.power) as p:
             imdict = p.map(fileparse, importList)
         p.close()
-        p.join()
     except KeyboardInterrupt:
         p.close()
         p.join()
