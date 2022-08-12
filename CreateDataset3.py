@@ -183,7 +183,7 @@ if __name__ == "__main__":
     with Pool(processes=args.power) as p:
         maxlist = len(importList)
         importList = p.map(filterSaved, range(len(importList)))
-        importList = sorted([i for i in importList if i is not None])
+        importList = [i for i in importList if i is not None]
         nextStep(
             "1a", f"{maxlist-len(importList)} existing files, {len(importList)} possible files")
 
@@ -191,12 +191,11 @@ if __name__ == "__main__":
     nextStep(2, "Gathering image information")
     with Pool(processes=args.power) as p:
         importDict = list(p.map(gatherPaths, range(len(importList))))
-        importList = sorted([i for i in importList if i is not None])
 
     nextStep(3, f"Filtering out bad images ( too small, not /{args.scale} )")
     with Pool(processes=args.power) as p:
         importList = p.map(filterImages, range(len(importDict)))
-    importList = sorted([i for i in importList if i is not None])
+        importList = [i for i in importList if i is not None]
 
     nextStep(
         "3a", f"{maxlist-len(importList)} discarded files, {len(importList)} new files")
@@ -207,7 +206,7 @@ if __name__ == "__main__":
         for index in sorted(glob.glob(HRFolder + "*")+glob.glob(LRFolder + "*")):
             os.remove(index)
 
-
+    # print(importList)
 # image processing backends
 if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']:
 
