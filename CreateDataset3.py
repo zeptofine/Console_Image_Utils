@@ -28,7 +28,13 @@ def progressBar(iteration: int, total: int, length: int = max(os.get_terminal_si
     if Print:
         print(command, end=end)
     return command
-
+# def progressBar(iteration, total, length=max(os.get_terminal_size()[0]//6, 10), fill="#", nullp="-"):
+#     # custom progress bar (slightly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
+#     filledLength = length * iteration // total
+#     #    [############################# --------------------------------]
+#     bar = (fill*length)[:filledLength] + (nullp*(length - filledLength))
+#     command = f"[{bar}]"
+#     return command
 
 def progressEvent(duration, length=0, fill="#", nullp="-", corner="[]", color=True, end="\r", pref='', suff=''):
     if length == 0:
