@@ -28,13 +28,7 @@ def progressBar(iteration: int, total: int, length: int = max(os.get_terminal_si
     if Print:
         print(command, end=end)
     return command
-# def progressBar(iteration, total, length=max(os.get_terminal_size()[0]//6, 10), fill="#", nullp="-"):
-#     # custom progress bar (slightly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
-#     filledLength = length * iteration // total
-#     #    [############################# --------------------------------]
-#     bar = (fill*length)[:filledLength] + (nullp*(length - filledLength))
-#     command = f"[{bar}]"
-#     return command
+
 
 def progressEvent(duration, length=0, fill="#", nullp="-", corner="[]", color=True, end="\r", pref='', suff=''):
     if length == 0:
@@ -181,7 +175,7 @@ if __name__ == "__main__":
             pid, item=os_path.basename(importDict[index]['path']),
             extra=progressBar(index, len(importDict), suff=f" {index}/{len(importDict)}"))
         width, height = importDict[index]['res']
-        if width % args.scale and width % args.scale:
+        if width % args.scale == 0 and height % args.scale == 0:
             if width >= args.minsize and height >= args.minsize:
                 return importDict[index]
 
