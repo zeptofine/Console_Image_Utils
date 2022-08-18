@@ -54,6 +54,8 @@ echo arranging files...
           echo "$( echo "${file%.*}" | sed -e :a -e 's/^.\{1,6\}$/0&/;ta'):file $*"
       }; export -f echolist
   find "$tmpinput" -type f,l | parallel echolist {} | sort -n | cut -d: -f2 >> "$tmpinput/${input##*/}_mylist.txt"
+  grep -v ".txt" "$tmpinput/${input##*/}_mylist.txt" > "$tmpinput/${input##*/}_mylist.txt.tmp"
+  mv "$tmpinput/${input##*/}_mylist.txt.tmp" "$tmpinput/${input##*/}_mylist.txt"
 echo converting with ffmpeg...
   ffmpeg -progress -hide_banner -safe 0 -loglevel error -stats -r 12 -f concat -i "$tmpinput/${input##*/}_mylist.txt" "$tmpinput/${input##*/}_temp.mkv"
   ffmpeg -hide_banner -loglevel panic -stats -i "$tmpinput/${input##*/}_temp.mkv" -vf minterpolate=fps=48:mi_mode=blend -vcodec libx264 -crf 16 -pix_fmt yuv420p "${input%/*}/$(date "+%D+%T"| tr "/" ":")_${input##*/}.mp4"
