@@ -6,7 +6,7 @@ import os
 import sys
 import time
 from multiprocessing import Pool
-# from pprint import pprint
+from pprint import pprint
 # import rich
 
 import cv2
@@ -65,7 +65,7 @@ parser.add_argument("-p", "--power", help="number of cores to use. default is 'o
                     type=int, default=int(((os.cpu_count()/4)*3)), required=False)
 parser.add_argument("--minsize", help="minimum size of image",
                     type=int, default=0, required=False)
-parser.add_argument("-e", "--extension", help="extension of files to export. jpeg, png, webp, etc. it's the same as input by default.",
+parser.add_argument("-e", "--extension", help="extension of files to export. [same], jpeg, png, webp, etc.",
                     default="same", required=False)
 parser.add_argument("--backend", help="backend to use for resizing. [cv2], PIL. cv2 is safer but slower in my experience.",
                     default="cv2", required=False)
@@ -74,11 +74,11 @@ parser.add_argument("--purge", help="purge all existing files in output director
 args = parser.parse_args()
 
 
-if args.input[-1] == "/":  # strip slash from end of path if exists
+if args.input[-1] == os.sep:  # strip slash from end of path if exists
     args.input = args.input[:-1]
 
 
-class os_path():
+class ospath():
     def basename(path):
         return path.rsplit(os.sep, 1)[-1]
 
@@ -90,6 +90,12 @@ class os_path():
 
     def extension(path):
         return path.rsplit(".", 1)[-1]
+
+    def join(*args):
+        pathlist = []
+        for i in args:
+            pathlist.append(i)
+        return os.sep.join(pathlist)
 
 
 def quickResolution(file):
@@ -117,6 +123,9 @@ if __name__ == "__main__":
     else:
         customExtension = False
 
+    def nextStep(index, text):
+        print("\033[K"+str(index)+".", text, end="\n\033[K")
+
     def get_files(*args):
         fileList = []
         for path in args:
@@ -137,42 +146,40 @@ if __name__ == "__main__":
         os.makedirs(HRFolder)
     if not os.path.exists(LRFolder):
         os.makedirs(LRFolder)
-    existList1 = sorted([os_path.basestname(f)
+    existList1 = sorted([ospath.basestname(f)
                          for f in get_files(HRFolder + "**/*")])
-    existList2 = sorted([os_path.basestname(f)
+    existList2 = sorted([ospath.basestname(f)
                          for f in get_files(LRFolder + "**/*")])
-
-    def nextStep(index, text):
-        print("\033[K"+str(index)+".", text, end="\n\033[K")
+# indexing
+    # existList_1 = {f[:4]: [i for i in existList1 if i[:4] == f[:4]]
+    #                for f in existList1}
+    # existList_2 = {f[:4]: [i for i in existList2 if i[:4] == f[:4]]
+    #                for f in existList2}
+    # exit()
 
     def filterSaved(index):
         pid = getpid()
-        multiprocessing_status(pid, os_path.basename(importList[index]),
+        multiprocessing_status(pid, ospath.basename(importList[index]),
                                progressBar(index, len(importList), suff=f" {index}/{len(importList)}"))
-        name = os_path.basestname(importList[index])
-        # ex1 = True if name not in existList1 else False
-        # ex2 = True if name not in existList2 else False
-        # ex3 = ex1 + ex2
-        # if ex3 == 2:
-        #     return importList[index]
+        name = ospath.basestname(importList[index])
         if name not in existList1 and name not in existList2:
             return importList[index]
 
     def gatherPaths(index):
         pid = getpid() - args.power
-        ext = f".{str(args.extension if customExtension else os_path.extension(importList[index]))}"
-        res = quickResolution(importList[index])
-        multiprocessing_status(pid, os_path.basename(importList[index]),
+        item = importList[index]
+        ext = f".{str(args.extension if customExtension else ospath.extension(item))}"
+        multiprocessing_status(pid, ospath.basename(importList[index]),
                                extra=progressBar(index, len(importList), suff=f" {index}/{len(importList)}"))
-        return {'index': index, 'path': importList[index],
-                'HR': os.path.join(HRFolder, os_path.basestname(importList[index])+ext),
-                'LR': os.path.join(LRFolder, os_path.basestname(importList[index])+ext),
-                'res': res}
+        return {'index': index, 'path': item,
+                'HR': ospath.join(HRFolder, ospath.basestname(item)+ext),
+                'LR': ospath.join(LRFolder, ospath.basestname(item)+ext),
+                'res': quickResolution(item)}
 
     def filterImages(index):
         pid = getpid() - args.power*2
         multiprocessing_status(
-            pid, item=os_path.basename(importDict[index]['path']),
+            pid, item=ospath.basename(importDict[index]['path']),
             extra=progressBar(index, len(importDict), suff=f" {index}/{len(importDict)}"))
         width, height = importDict[index]['res']
         if width % args.scale == 0 and height % args.scale == 0:
@@ -212,7 +219,7 @@ if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']:
 
     def fileConvert(pid, path, HR, LR, suffix):
         image = cv2.imread(path)
-        printPath = os_path.basename(path)
+        printPath = ospath.basename(path)
         time = os.path.getmtime(path)
         if not os.path.exists(HR):
             multiprocessing_status(
@@ -230,7 +237,7 @@ elif args.backend.lower() in ['pil', 'pillow']:
 
     def fileConvert(pid, path, HR, LR, suffix):
         image = Image.open(path)
-        printPath = os_path.basename(path)
+        printPath = ospath.basename(path)
         time = os.path.getmtime(path)
         if not os.path.exists(HR):
             multiprocessing_status(
@@ -248,8 +255,6 @@ elif args.backend.lower() in ['pil', 'pillow']:
 def fileparse(imagedict):
     pid = getpid() - args.power*3
     suffix = f" {str(imagedict['index']).rjust(len(str(len(importList))))}"
-    multiprocessing_status(pid, os_path.basename(
-        imagedict['path']), extra=progressBar(0, 2, 2, suff=suffix))
     if not os.path.exists(imagedict['HR']) or not os.path.exists(imagedict['LR']):
         fileConvert(pid, path=imagedict['path'],
                     HR=imagedict['HR'], LR=imagedict['LR'], suffix=suffix)
