@@ -2,27 +2,39 @@ import random
 from pprint import pprint
 import time
 DIM: int = 8
-tiles = {0: {'print': ["   ",
-                       "   ",
-                       "   "]},
-         1: {'print': [" # ",
-                       "###",
-                       "   "]},
-         2: {'print': ["   ",
-                       "###",
-                       " # "]},
-         3: {'print': [" # ",
-                       "## ",
-                       " # "]},
-         4: {'print': [" # ",
-                       " ##",
-                       " # "]},
-         5: {'print': [" # ",
-                       " # ",
-                       " # "]},
-         6: {'print': ["   ",
-                       "###",
-                       "   "]}
+tiles = {0: ["   ",
+             "   ",
+             "   "],
+         1: [" # ",
+             "###",
+             "   "],
+         2: ["   ",
+             "###",
+             " # "],
+         3: [" # ",
+             "## ",
+             " # "],
+         4: [" # ",
+             " ##",
+             " # "],
+         5: [" # ",
+             " # ",
+             " # "],
+         6: ["   ",
+             "###",
+             "   "],
+         7: [" # ",
+             " # ",
+             "   "],
+         8: ["   ",
+             " # ",
+             " # "],
+         9: ["   ",
+             "## ",
+             "   "],
+         10:["   ",
+             " ##",
+             "   "]
          }
 
 vOpt = {  # up, down, left, right
@@ -53,7 +65,7 @@ def pprintGrid(grid):
         for image in range(3):
             print(" ", end="")
             for x in y:
-                print(tiles[x]['print'][image]+" ", end="")
+                print(tiles[x][image]+" ", end="")
             print("")
         print("|"+"---|"*len(y))
 
