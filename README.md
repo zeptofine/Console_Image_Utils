@@ -1,6 +1,6 @@
 # Console-Image-Utils
 
-a bunch of bash files i have
+a bunch of cli files i have
 
 gimme ideas. im too lazy to think of htem myself
 
