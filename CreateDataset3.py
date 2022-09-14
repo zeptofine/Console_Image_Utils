@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from multiprocessing import Pool
+
 try: 
     import cv2
     import dateutil.parser as timeparser
@@ -160,6 +161,7 @@ if __name__ == "__main__":
 
     nextStep(0, "Getting images")
     imgList = get_files(args.input+"/**/*.png",args.input+"/**/*.jpg",args.input+"/**/*.webp")
+    
     HRList = [opath.basename_(f) for f in get_files(HRFolder + "/*")]
     LRList = [opath.basename_(f) for f in get_files(LRFolder + "/*")]
     existList = [i for i in HRList if i in LRList]
@@ -180,10 +182,10 @@ if __name__ == "__main__":
     def gatherInfo(inumerated):
         index, item = inumerated
         itemBname = opath.basename_(item)
+        if itemBname in indexedEList[itemBname[:4]]: return
         ext = f".{str(args.extension if args.extension else opath.extension(item))}"
         threadStatus(getpid(), opath.basename(item),
                      extra=pBar(index, len(imgList), suff=f" {index}/{len(imgList)}"))
-        if itemBname in indexedEList[itemBname[:4]]: return
         return {'path': item, 'res': quickResolution(item),
                 'HR': opath.join(HRFolder, itemBname+ext),
                 'LR': opath.join(LRFolder, itemBname+ext),
