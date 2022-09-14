@@ -119,7 +119,8 @@ if __name__ == "__main__":
     def nextStep(order, text): print(" "+f"\033[K{str(order)}. {text}", end="\n\033[K")
     # run glob.glob repeatedly and concatenate to one list
     def get_files(*args): return [y for x in [glob.glob(i, recursive=True) for i in args] for y in x]
-
+    def stripNone(inlist: list): return [i for i in inlist if i is not None]
+    
     # Get backend to use for conversion
     backend = None
     if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']: backend = imgBackend.cv2
@@ -157,7 +158,7 @@ if __name__ == "__main__":
     if not os.path.exists(LRFolder): os.makedirs(LRFolder)
     if args.purge:
         print("purging all existing files in output directories...")
-        for index in sorted(get_files(opath.join(HRFolder, "*"), opath.join(LRFolder, "*"))): os.remove(index)
+        for i in sorted(get_files(opath.join(HRFolder, "*"), opath.join(LRFolder, "*"))): os.remove(i)
 
     nextStep(0, "Getting images")
     imgList = get_files(args.input+"/**/*.png",args.input+"/**/*.jpg",args.input+"/**/*.webp")
@@ -213,14 +214,14 @@ if __name__ == "__main__":
     nextStep(1, "Gathering image information")
     with Pool(args.power) as p:
         imgDict = list(p.map(gatherInfo, enumerate(imgList)))
-        imgDict = [i for i in imgDict if i is not None]
+        imgDict = stripNone(imgDict)
         nextStep("2a", f"({len(imgDict)}, {len(imgList)-len(imgDict)}): possible, discarded")
     nextStep(2, f"Filtering out bad images")
     with Pool(args.power) as p:
         imgList = p.map(filterImages, enumerate(imgDict))
-        imgList = [i for i in imgList if i is not None]
+        imgList = stripNone(imgList)
     nextStep("2a", f"({len(imgList)}, {len(imgDict)-len(imgList)}): possible, discarded")
-
+    imgDict = sorted(imgDict, key=lambda x: x['res']) # sort by resolution
     if len(imgList) == 0: 
         print("No images left to process")
         exit()
