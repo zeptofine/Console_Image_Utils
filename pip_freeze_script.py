@@ -5,7 +5,7 @@ import subprocess
 def getPackages(pip='pip'):
     '''Gets every package available to a given python installation.
         Use a table for the pip argument if it contains multiple commands.'''
-    # to avoid errors when given something like "[['python/python', '-m' 'pip'], 'freeze']"
+    command = [pip]
     if isinstance(pip, list): command = pip 
     command.append('freeze')
     x0 = subprocess.check_output(command).decode('UTF-8').split()
