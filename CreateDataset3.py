@@ -91,7 +91,7 @@ if __name__ == "__main__":
         pEvent(5, length=20)
 
     # run glob.glob repeatedly and concatenate to one list
-    def get_files(*args): return [y for x in [glob.glob(i, recursive=True) for i in args] for y in x]
+    def getFiles(*args): return [y for x in [glob.glob(i, recursive=True) for i in args] for y in x]
     
     def getpid(): return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
     def nextStep(order, text): print(" "+f"\033[K{str(order)}. {text}", end="\n\033[K")
@@ -135,16 +135,17 @@ if __name__ == "__main__":
     if not os.path.exists(LRFolder): os.makedirs(LRFolder)
     if args.purge:
         print("purging all existing files in output directories...")
-        for i in sorted(get_files(opath.join(HRFolder, "*"), opath.join(LRFolder, "*"))): os.remove(i)
+        for i in sorted(getFiles(opath.join(HRFolder, "*"), opath.join(LRFolder, "*"))): os.remove(i)
 
     nextStep(0, "Getting images")
-    imgList = get_files(args.input+"/**/*.png",args.input+"/**/*.jpg",args.input+"/**/*.webp")
+    imgList = getFiles(args.input+"/**/*.png",args.input+"/**/*.jpg",args.input+"/**/*.webp")
     
-    HRList = [opath.basename_(f) for f in get_files(HRFolder + "/*")]
-    LRList = [opath.basename_(f) for f in get_files(LRFolder + "/*")]
+    HRList = [opath.basename_(f) for f in getFiles(HRFolder + "/*")]
+    LRList = [opath.basename_(f) for f in getFiles(LRFolder + "/*")]
     existList = [i for i in HRList if i in LRList]
-    indSet = set([opath.basename_(i)[:4] for i in imgList])
-    indexedEList = {f[:4]: [i for i in existList if i[:4] == f[:4]] for f in indSet}
+    indMax = 12
+    indSet = set([opath.basename_(i)[:indMax] for i in imgList])
+    indexedEList = {f[:indMax]: [i for i in existList if i[:indMax] == f[:indMax]] for f in indSet}
     nextStep("0a", f"({len(imgList)}): original")
     nextStep("0b", f"({len(existList)}, {len(HRList)}, {len(LRList)}): overlapping, HR, LR")
 
@@ -158,7 +159,7 @@ if __name__ == "__main__":
     def gatherInfo(inumerated):
         index, item = inumerated
         itemBname = opath.basename_(item)
-        if itemBname in indexedEList[itemBname[:4]]: return
+        if itemBname in indexedEList[itemBname[:indMax]]: return
         ext = f".{str(args.extension if args.extension else opath.extension(item))}"
         threadStatus(getpid(), opath.basename(item),
                      extra=pBar(index, len(imgList), suff=f" {index}/{len(imgList)}"))
