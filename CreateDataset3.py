@@ -43,18 +43,15 @@ def pBar(iteration: int, total: int, length=10,
 def pEvent(total, length=0, fill="#", nullp="-", corner="[]", pref=''):
     if length == 0: length = total
     for sec in range(1, total):
-        print(pBar(sec, total, length, fill=fill, nullp=nullp, corner=corner, pref=pref, suff=f" {sec} / {total} "), end="\r")
+        print(pBar(sec, total, length, fill, nullp, corner, pref, f" {sec} / {total} "), end="\r")
         time.sleep(1)
 
 def threadStatus(pid, item="", extra="", extraSize=8):
-    command = ('\n'*pid)+f"\033[K {str(pid).ljust(3)}| {str(extra).center(extraSize)} | {item}"+('\033[A'*pid)
-    print(command, end="\r")
+    print(('\n'*pid)+f"\033[K {str(pid).ljust(3)} | {str(extra).center(extraSize)} | {item}"+('\033[A'*pid), end="\r")
 
 def quickResolution(file):
-    try:
-        return imagesize.get(file)
-    except:
-        return Image.open(file).size
+    try: return imagesize.get(file)
+    except: return Image.open(file).size
 
 class opath():
     def basename(path): return path.rsplit(os.sep, 1)[-1]
@@ -64,23 +61,21 @@ class opath():
     def join(*args): return os.sep.join([i for i in args])
 
 class imgBackend:  # * image processing 
-
     def cv2(pid, pth, HR, LR, imtime, suffix):
-        image, ppath, = cv2.imread(pth), opath.basename(pth)
-        threadStatus(pid, ppath,extra=pBar(1, 2, 2, suff=suffix))
+        image, ppath = cv2.imread(pth), opath.basename(pth)
+        threadStatus(pid, ppath,extra=f"{pBar(1, 2, 2)} {suffix}")
         cv2.imwrite(HR, image)
-        threadStatus(pid, ppath,extra=pBar(2, 2, 2, suff=suffix))
+        threadStatus(pid, ppath,extra=f"{pBar(2, 2, 2)} {suffix}")
         cv2.imwrite(LR, cv2.resize(image, (0, 0), fx=1/args.scale, fy=1/args.scale))
         os.utime(LR, (imtime, imtime))
         os.utime(HR, (imtime, imtime))
-
     def image(pid, pth, HR, LR, imtime, suffix):
         image, ppath = Image.open(pth), opath.basename(pth)
-        threadStatus(pid, ppath,extra=pBar(1, 2, 2, suff=suffix))
+        threadStatus(pid, ppath,extra=f"{pBar(1, 2, 2)} {suffix}")
         image.save(HR)
-        threadStatus(pid, ppath,extra=pBar(2, 2, 2, suff=suffix))
+        threadStatus(pid, ppath,extra=f"{pBar(2, 2, 2)} {suffix}")
         image.resize((image.width // args.scale, image.height // args.scale)).save(LR)
-        os.utime(LR, (imtime, imtime))
+        os.utime(LR, (imtime, imtime)),
         os.utime(HR, (imtime, imtime))
 
 
@@ -92,11 +87,10 @@ if __name__ == "__main__":
 
     # run glob.glob repeatedly and concatenate to one list
     def getFiles(*args): return [y for x in [glob.glob(i, recursive=True) for i in args] for y in x]
-    
     def getpid(): return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
     def nextStep(order, text): print(" "+f"\033[K{str(order)}. {text}", end="\n\033[K")
     def stripNone(inlist: list): return [i for i in inlist if i is not None]
-    
+
     # Get backend to use for conversion
     backend = None
     if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']: backend = imgBackend.cv2
@@ -112,8 +106,7 @@ if __name__ == "__main__":
     # * args.Extension
     print(f"using {args.power} threads")
     if args.extension.startswith("."): args.extension = args.extension[1:]
-    if args.extension != "same":
-        print(f"applying extension: .{args.extension}")
+    if args.extension != "same": print(f"applying extension: .{args.extension}")
 
     # * args.before & args.after
     beforTime, afterTime = None, None
@@ -134,16 +127,19 @@ if __name__ == "__main__":
     if not os.path.exists(HRFolder): os.makedirs(HRFolder)
     if not os.path.exists(LRFolder): os.makedirs(LRFolder)
     if args.purge:
-        print("purging all existing files in output directories...")
-        for i in sorted(getFiles(opath.join(HRFolder, "*"), opath.join(LRFolder, "*"))): os.remove(i)
+        print("purging output directories...")
+        for i in sorted(getFiles(opath.join(HRFolder, "*"),
+                                 opath.join(LRFolder, "*"))): os.remove(i)
 
     nextStep(0, "Getting images")
-    imgList = getFiles(args.input+"/**/*.png",args.input+"/**/*.jpg",args.input+"/**/*.webp")
-    
+    imgList = getFiles(args.input+"/**/*.png",
+                       args.input+"/**/*.jpg",
+                       args.input+"/**/*.webp")
+
     HRList = [opath.basename_(f) for f in getFiles(HRFolder + "/*")]
     LRList = [opath.basename_(f) for f in getFiles(LRFolder + "/*")]
     existList = [i for i in HRList if i in LRList]
-    indMax = 12
+    indMax = 6
     indSet = set([opath.basename_(i)[:indMax] for i in imgList])
     indexedEList = {f[:indMax]: [i for i in existList if i[:indMax] == f[:indMax]] for f in indSet}
     nextStep("0a", f"({len(imgList)}): original")
@@ -162,7 +158,7 @@ if __name__ == "__main__":
         if itemBname in indexedEList[itemBname[:indMax]]: return
         ext = f".{str(args.extension if args.extension else opath.extension(item))}"
         threadStatus(getpid(), opath.basename(item),
-                     extra=pBar(index, len(imgList), suff=f" {index}/{len(imgList)}"))
+                     extra=f"{pBar(index, len(imgList))} {index}/{len(imgList)}")
         return {'path': item, 'res': quickResolution(item),
                 'HR': opath.join(HRFolder, itemBname+ext),
                 'LR': opath.join(LRFolder, itemBname+ext),
@@ -170,21 +166,20 @@ if __name__ == "__main__":
 
     def filterImages(inumerated):
         index, item = inumerated
-        threadStatus(getpid() - args.power, item=opath.basename(item['path']),
-                     extra=pBar(index, len(imgDict), suff=f" {index}/{len(imgList)}"))
-        width, height = item['res']
+        threadStatus(getpid() - args.power, opath.basename(item['path']),
+                     extra=f"{pBar(index, len(imgDict))} {index}/{len(imgList)}")
         if beforTime or afterTime:
             filetime = datetime.datetime.fromtimestamp(item['time'])
             if (beforTime) and (filetime > beforTime): return
             if (afterTime) and (filetime < afterTime): return
+        width, height = item['res']
         if (width < args.msize) or (height < args.msize) or ((width % args.scale) + (height % args.scale) != 0): return
         return item
 
     def fileparse(imgDict):
         index, imgDict, method = (imgDict[0], imgDict[1][0], imgDict[1][1])
-        method(pid=getpid() - args.power*2, pth=imgDict['path'], 
-               HR=imgDict['HR'], LR=imgDict['LR'], 
-               imtime=imgDict['time'], suffix=" "+str(index))
+        method(pid=getpid() - args.power*2, pth=imgDict['path'], HR=imgDict['HR'], LR=imgDict['LR'],
+               imtime=imgDict['time'], suffix=str(index))
 
 
     nextStep(1, "Gathering image information")
@@ -192,11 +187,13 @@ if __name__ == "__main__":
         imgDict = list(p.map(gatherInfo, enumerate(imgList)))
         imgDict = stripNone(imgDict)
         nextStep("2a", f"({len(imgDict)}, {len(imgList)-len(imgDict)}): possible, discarded")
+
     nextStep(2, f"Filtering out bad images")
     with Pool(args.power) as p:
         imgList = p.map(filterImages, enumerate(imgDict))
         imgList = stripNone(imgList)
     nextStep("2a", f"({len(imgList)}, {len(imgDict)-len(imgList)}): possible, discarded")
+
     imgDict = sorted(imgDict, key=lambda x: x['res']) # sort by resolution
     if len(imgList) == 0: 
         print("No images left to process")
