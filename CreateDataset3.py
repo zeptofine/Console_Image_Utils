@@ -157,17 +157,14 @@ if __name__ == "__main__":
         itemBname = opath.basename_(item)
         if itemBname in indexedEList[itemBname[:indMax]]: return
         ext = f".{str(args.extension if args.extension else opath.extension(item))}"
-        threadStatus(getpid(), opath.basename(item),
+        threadStatus(getpid(), opath.basename(item), 
                      extra=f"{pBar(index, len(imgList))} {index}/{len(imgList)}")
-        return {'path': item, 'res': quickResolution(item),
-                'HR': opath.join(HRFolder, itemBname+ext),
-                'LR': opath.join(LRFolder, itemBname+ext),
-                'time': os.path.getmtime(item)}
+        return {'path': item, 'res': quickResolution(item), 'time': os.path.getmtime(item),
+                'HR': opath.join(HRFolder, itemBname+ext), 'LR': opath.join(LRFolder, itemBname+ext)}
 
     def filterImages(inumerated):
         index, item = inumerated
-        threadStatus(getpid() - args.power, opath.basename(item['path']),
-                     extra=f"{pBar(index, len(imgDict))} {index}/{len(imgList)}")
+        threadStatus(getpid() - args.power, opath.basename(item['path']), extra=f"{pBar(index, len(imgDicts))} {index}/{len(imgList)}")
         if beforTime or afterTime:
             filetime = datetime.datetime.fromtimestamp(item['time'])
             if (beforTime) and (filetime > beforTime): return
@@ -184,17 +181,17 @@ if __name__ == "__main__":
 
     nextStep(1, "Gathering image information")
     with Pool(args.power) as p:
-        imgDict = list(p.map(gatherInfo, enumerate(imgList)))
-        imgDict = stripNone(imgDict)
-        nextStep("2a", f"({len(imgDict)}, {len(imgList)-len(imgDict)}): possible, discarded")
+        imgDicts = list(p.map(gatherInfo, enumerate(imgList)))
+        imgDicts = stripNone(imgDicts)
+        nextStep("2a", f"({len(imgDicts)}, {len(imgList)-len(imgDicts)}): possible, discarded")
 
     nextStep(2, f"Filtering out bad images")
     with Pool(args.power) as p:
-        imgList = p.map(filterImages, enumerate(imgDict))
+        imgList = p.map(filterImages, enumerate(imgDicts))
         imgList = stripNone(imgList)
-    nextStep("2a", f"({len(imgList)}, {len(imgDict)-len(imgList)}): possible, discarded")
+    nextStep("2a", f"({len(imgList)}, {len(imgDicts)-len(imgList)}): possible, discarded")
 
-    imgDict = sorted(imgDict, key=lambda x: x['res']) # sort by resolution
+    imgDicts = sorted(imgDicts, key=lambda x: x['res']) # sort by resolution
     if len(imgList) == 0: 
         print("No images left to process")
         exit()
