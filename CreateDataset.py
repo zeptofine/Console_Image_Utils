@@ -27,6 +27,8 @@ parser.add_argument("--purge",           help="purge all existing files in outpu
 parser.add_argument("--simulate",        help="Doesn't convert at the end.",                                                    action="store_true")
 parser.add_argument("--before",          help="Only converts files modified before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'",       )
 parser.add_argument("--after",           help="Only converts files modified after a given date.  ex. '2020', or '2009 sept 16th'",                 )
+parser.add_argument("--sort",            help="Sorts the files before running at the end by [path, time, [res]]", default="res")
+parser.add_argument("--reverse",         help="reverses the sort command.", action="store_true")
 args = parser.parse_args()
 
 def pBar(iteration: int, total: int, length=10,
@@ -128,8 +130,8 @@ if __name__ == "__main__":
     if not os.path.exists(LRFolder): os.makedirs(LRFolder)
     if args.purge:
         print("purging output directories...")
-        for i in sorted(getFiles(opath.join(HRFolder, "*"),
-                                 opath.join(LRFolder, "*"))): os.remove(i)
+        for i in getFiles(opath.join(HRFolder, "*"),
+                          opath.join(LRFolder, "*")): os.remove(i)
 
     nextStep(0, "Getting images")
     imgList = getFiles(args.input+"/**/*.png",
@@ -211,9 +213,15 @@ if __name__ == "__main__":
         imgList = stripNone(imgList)
     nextStep("2a", f"({len(imgList)}, {len(imgDicts)-len(imgList)}): possible, discarded")
 
-    imgDicts = sorted(imgDicts, key=lambda x: x['res']) # sort by resolution
+
+    
     if len(imgList) == 0: 
         exit(print("No images left to process"))
+
+    if args.sort:
+        assert args.sort in ['res', 'time', 'path'], "The sorting option given isn't available"
+        imgDicts = sorted(imgDicts, key=lambda x: x[args.sort], reverse=args.reverse)
+            
 
     if args.simulate: exit()
 
