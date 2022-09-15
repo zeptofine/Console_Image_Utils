@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from multiprocessing import Pool
+from random import shuffle
 
 try: 
     import cv2
@@ -138,23 +139,43 @@ if __name__ == "__main__":
     HRList = [opath.basename_(f) for f in getFiles(HRFolder + "/*")]
     LRList = [opath.basename_(f) for f in getFiles(LRFolder + "/*")]
     existList = [i for i in HRList if i in LRList]
-    indMax = 6
-    indSet = set([opath.basename_(i)[:indMax] for i in imgList])
-    indexedEList = {f[:indMax]: [i for i in existList if i[:indMax] == f[:indMax]] for f in indSet}
     nextStep("0a", f"({len(imgList)}): original")
     nextStep("0b", f"({len(existList)}, {len(HRList)}, {len(LRList)}): overlapping, HR, LR")
+    
+    nextStep("0c", "Indexing")
+    
+    def indexSet(inlist, indMax):
+        indSet = set([opath.basename_(i)[:indMax] for i in inlist])
+        return {f[:indMax]: [i for i in inlist if i[:indMax] == f[:indMax]] for f in indSet}
+    
+    def getIndexedList(inlist, maxind=18):
+        shuffle(inlist)
+        smalList = inlist[:1000]
+        minList = min(min([len(i) for i in smalList]), maxind+1)
+        setList = []
+        for h in range(1, minList):
+            setList.append((h, indexSet(smalList, h)))
+        indTups = [(i[0], len(i[1].keys())) for i in setList]       # [(1, 1) ... (18, 20)]
+        indAvg = sum([i[1] for i in indTups])/len(indTups)          # 13.16666
+        indClosest = min(indTups, key=lambda x: abs(x[1]-indAvg))   # (9, 13)
+        return (indClosest[0], indexSet(inlist, indClosest[0]))
 
+
+    indexedEList = (4, indexSet(existList, 4))
+    if len(existList) != 0:
+        indexedEList = getIndexedList(existList)
+    nextStep("0ca", f"Indexing finished: set to ({indexedEList[0]})")
     # End Handle arguments
 
     # indexing # to index the input as keys for first 4 characters of every string
     # newlist = {f[:4]: [i for i in oldlist if i[:4] == f[:4]] for f in set([g[:4] for g in oldlist])}
-
     # * Pool functions
 
     def gatherInfo(inumerated):
         index, item = inumerated
         itemBname = opath.basename_(item)
-        if itemBname in indexedEList[itemBname[:indMax]]: return
+        if itemBname[:indexedEList[0]] in indexedEList[1].keys():
+            if itemBname in indexedEList[1][itemBname[:indexedEList[0]]]: return
         ext = f".{str(args.extension if args.extension else opath.extension(item))}"
         threadStatus(getpid(), opath.basename(item), 
                      extra=f"{pBar(index, len(imgList))} {index}/{len(imgList)}")
