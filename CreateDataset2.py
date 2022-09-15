@@ -9,6 +9,9 @@ import cv2
 import pymage_size
 from PIL import Image
 
+print("This file is outdated, unsupported and has a so-so win rate")
+print("Use CreateDataset3.py")
+exit(1)
 try:
     from tqdm import tqdm
     USE_CUSTOM_BAR = False

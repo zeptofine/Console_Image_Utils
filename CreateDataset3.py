@@ -7,7 +7,7 @@ import sys
 import time
 from multiprocessing import Pool
 from random import shuffle
-
+from rich import print as rprint
 try: 
     import cv2
     import dateutil.parser as timeparser
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     nextStep("0a", f"({len(imgList)}): original")
     nextStep("0b", f"({len(existList)}, {len(HRList)}, {len(LRList)}): overlapping, HR, LR")
     
-    nextStep("0c", "Indexing")
+    nextStep("0c", f"Indexing overlapping")
     
     def indexSet(inlist, indMax):
         indSet = set([opath.basename_(i)[:indMax] for i in inlist])
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     
     def getIndexedList(inlist, maxind=18):
         shuffle(inlist)
-        smalList = inlist[:1000]
+        smalList = inlist[:500]
         minList = min(min([len(i) for i in smalList]), maxind+1)
         setList = []
         for h in range(1, minList):
