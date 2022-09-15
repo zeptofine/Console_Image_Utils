@@ -7,7 +7,6 @@ import sys
 import time
 from multiprocessing import Pool
 from random import shuffle
-from rich import print as rprint
 try: 
     import cv2
     import dateutil.parser as timeparser
