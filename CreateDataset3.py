@@ -7,6 +7,7 @@ import sys
 import time
 from multiprocessing import Pool
 from random import shuffle
+
 try: 
     import cv2
     import dateutil.parser as timeparser
@@ -141,8 +142,9 @@ if __name__ == "__main__":
     nextStep("0a", f"({len(imgList)}): original")
     nextStep("0b", f"({len(existList)}, {len(HRList)}, {len(LRList)}): overlapping, HR, LR")
     
-    nextStep("0c", f"Indexing overlapping")
     
+    nextStep("0c", f"Indexing overlapping")
+    # I'm honestly not sure if i'll remember anything these functions do in a day
     def indexSet(inlist, indMax):
         indSet = set([opath.basename_(i)[:indMax] for i in inlist])
         return {f[:indMax]: [i for i in inlist if i[:indMax] == f[:indMax]] for f in indSet}
@@ -158,7 +160,6 @@ if __name__ == "__main__":
         indAvg = sum([i[1] for i in indTups])/len(indTups)          # 13.16666
         indClosest = min(indTups, key=lambda x: abs(x[1]-indAvg))   # (9, 13)
         return (indClosest[0], indexSet(inlist, indClosest[0]))
-
 
     indexedEList = (4, indexSet(existList, 4))
     if len(existList) != 0:
