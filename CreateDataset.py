@@ -15,7 +15,6 @@ try:
     from PIL import Image
 except:
     print("Please run: 'pip install opencv-python python-dateutil imagesize pillow")
-
 parser = argparse.ArgumentParser()
 parser.add_argument("-i", "--input",     help="input directory",                                                                      required=True)
 parser.add_argument("-x", "--scale",     help="scale",                                                                      type=int, required=True)
@@ -77,7 +76,7 @@ class imgBackend:  # * image processing
         image.save(HR)
         threadStatus(pid, ppath,extra=f"{pBar(2, 2, 2)} {suffix}")
         image.resize((image.width // args.scale, image.height // args.scale)).save(LR)
-        os.utime(LR, (imtime, imtime)),
+        os.utime(LR, (imtime, imtime))
         os.utime(HR, (imtime, imtime))
 
 
@@ -181,7 +180,7 @@ if __name__ == "__main__":
         ext = f".{str(args.extension if args.extension else opath.extension(item))}"
         threadStatus(getpid(), opath.basename(item), 
                      extra=f"{pBar(index, len(imgList))} {index}/{len(imgList)}")
-        return {'path': item, 'res': quickResolution(item), 'time': os.path.getmtime(item),
+        return {'path': item, 'res': quickResolution(item), 'time': os.path.getmtime(item), 'name': opath.basename_(item),
                 'HR': opath.join(HRFolder, itemBname+ext), 'LR': opath.join(LRFolder, itemBname+ext)}
 
     def filterImages(inumerated):
@@ -198,7 +197,7 @@ if __name__ == "__main__":
     def fileparse(imgDict):
         index, imgDict, method = (imgDict[0], imgDict[1][0], imgDict[1][1])
         method(pid=getpid() - args.power*2, pth=imgDict['path'], HR=imgDict['HR'], LR=imgDict['LR'],
-               imtime=imgDict['time'], suffix=str(index))
+               imtime=imgDict['time'], suffix=f"{str(index)}, {imgDict[args.sort]}")
 
 
     nextStep(1, "Gathering image information")
@@ -218,17 +217,12 @@ if __name__ == "__main__":
     if len(imgList) == 0: 
         exit(print("No images left to process"))
 
-    if args.sort:
-        assert args.sort in ['res', 'time', 'path'], "The sorting option given isn't available"
-        imgDicts = sorted(imgDicts, key=lambda x: x[args.sort], reverse=args.reverse)
-            
-
     if args.simulate: exit()
 
     nextStep(3, "Processing...")
     try:
         with Pool(args.power) as p:
-            imdict = p.map(fileparse, enumerate([(i, backend) for i in imgList]))
+            imdict = p.map(fileparse, enumerate(sorted([(i, backend) for i in imgList],key=lambda x: x[0][args.sort])))
         p.close()
         print("\nDone!")
     except KeyboardInterrupt:
