@@ -38,7 +38,7 @@ parserCfg = {'input': None,
              'extension': None, 'backend': "cv2",
              'purge': False, 'simulate': False,
              'before': None, 'after': None,
-             'anonymous': False}
+             'anonymous': False, 'no_notifs': False}
 if not os.path.exists(cfgPath): 
     open(cfgPath, "w").write(json.dumps(parserCfg))
 with open(cfgPath, "r") as cfgP:
@@ -58,7 +58,7 @@ parser.add_argument("-p",                help="number of cores to use. default i
 parser.add_argument("--minsize",     help="minimum size of image.",                                                            type=int,                default=parserCfg['minsize'])
 parser.add_argument("--maxsize",     help="maximum size of image.",                                                            type=int,                default=parserCfg['maxsize'])
 parser.add_argument("-e", "--extension", help="extension of files to export. jpeg, png, webp, etc.",                                                    default=parserCfg['extension'])
-parser.add_argument("-b", "--backend",   help="backend to use for resizing. [cv2], PIL. cv2 is safer but slower in my experience.",                     default=parserCfg['backend'])
+parser.add_argument("-b", "--backend",   help="backend to use for resizing. [cv2], PIL.",                     default=parserCfg['backend'])
 parser.add_argument("--purge",           help="purge all existing files in output directories before processing",                  action="store_true", default=parserCfg['purge'])
 parser.add_argument("--simulate",        help="Doesn't convert at the end.",                                                       action="store_true", default=parserCfg['simulate'])
 parser.add_argument("--before",          help="Only converts files modified before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'",            default=parserCfg['before'])
@@ -66,6 +66,7 @@ parser.add_argument("--after",           help="Only converts files modified afte
 parser.add_argument("--within",          help="Only convert items modified within a timeframe. use None if unspecified. ex. 'None' 'Wed Jun 9'", 
                                          nargs=2, metavar=('BEFORE', 'AFTER'),                                                                      )
 parser.add_argument("--anonymous",       help="replaces the labels in the progress bar with '...'",                                action="store_true", default=parserCfg['anonymous'])
+parser.add_argument("--no_notifs",        help="disables the notifications at the end.",                                           action="store_true", default=parserCfg['no_notifs'])
 parser.add_argument("--config",          help="Prints the items in the config file.",                                              action="store_true")
 
 args = parser.parse_args()
@@ -122,7 +123,13 @@ if __name__ == "__main__":
         pEvent(5, length=20)
 
     # run glob.glob repeatedly and concatenate to one list
-    def getFiles(*args): return [y for x in [glob.glob(i, recursive=True) for i in args] for y in x]
+    def getFiles(*args): 
+        fileList = []
+        for i in enumerate(args):
+            print(pBar(i[0], len(args), len(args)), end="\r")
+            fileList+=(glob.glob(i[1], recursive=True))
+        return fileList
+
     def getpid(): return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
     def nextStep(order, text): rprint(" "+f"{str(order)}. {text}", end="\n\033[K")
     def stripNone(inlist: list): return [i for i in inlist if i is not None]
@@ -175,26 +182,6 @@ if __name__ == "__main__":
         if args.extension.startswith("."): args.extension = args.extension[1:]
         if args.extension != "same": nextStep(0, f"applying extension: .{args.extension}")
 
-    # * args.before & args.after
-    beforTime, afterTime = None, None
-
-
-    if args.within:
-        args.after, args.before = args.within
-        
-    if args.before or args.after:
-        
-        if args.before:
-            args.before = str(args.before) 
-            beforTime = timeparser.parse(args.before)
-        if args.after:  
-            args.after = str(args.after)
-            afterTime = timeparser.parse(args.after)
-        nextStep(0, f"using: ({afterTime}, {beforTime}): (after, before)")
-    if (args.before) and (args.after):
-        if args.after > args.before:
-            nextStep("\033[31mError\033[0m", f"{beforTime} is greater than {afterTime}!")
-            exit(1)
 
     # * args.input
     HRFolder = opath.join(opath.dirname(args.input), str(args.scale)+"x") + "HR"
@@ -213,7 +200,6 @@ if __name__ == "__main__":
     imgList = getFiles(args.input+"/**/*.png",
                        args.input+"/**/*.jpg",
                        args.input+"/**/*.webp")
-
     HRList = [opath.basename_(f) for f in getFiles(HRFolder + "/*")]
     LRList = [opath.basename_(f) for f in getFiles(LRFolder + "/*")]
     existList = [i for i in HRList if i in LRList]
@@ -227,6 +213,23 @@ if __name__ == "__main__":
     
     nextStep(0, f"Size threshold: ({args.minsize}<=x<={args.maxsize})")
     
+    # * args.before & args.after
+    beforTime, afterTime = None, None
+    if args.within:
+        args.after, args.before = args.within
+        
+    if args.before or args.after:
+        if args.before:
+            args.before = str(args.before) 
+            beforTime = timeparser.parse(args.before)
+        if args.after:  
+            args.after = str(args.after)
+            afterTime = timeparser.parse(args.after)
+        if (args.before) and (args.after):
+            if args.after > args.before:
+                nextStep("\033[31mError\033[0m", f"{beforTime} is greater than {afterTime}!")
+                exit(1)
+    nextStep(0, f"Time threshold: ({args.after}<=x<={args.before})")
     
     # I'm honestly not sure if i'll remember anything these functions do in a day
     def indexSet(inlist, indMax):
@@ -235,7 +238,7 @@ if __name__ == "__main__":
     
     def getIndexedList(inlist, maxind=18):
         shuffle(inlist)
-        smalList = inlist[:1000]
+        smalList = inlist[:500]
         minList = min(min([len(i) for i in smalList]), maxind+1)
         setList = []
         for h in range(1, minList):
@@ -245,14 +248,15 @@ if __name__ == "__main__":
         indClosest = min(indTups, key=lambda x: abs(x[1]-indAvg))   # (9, 13)
         return (indClosest[0], indexSet(inlist, indClosest[0]))
 
-    indexedEList = (4, indexSet(existList, 4))
+    indexedEList = (6, indexSet(existList, 4))
     if len(existList) != 0:
         indexedEList = getIndexedList(existList)
-    nextStep("0c", f"Indexed: set to ({indexedEList[0]})")
+    nextStep(0, f"Indexed: set to ({indexedEList[0]})")
     # End Handle arguments
 
     # indexing # to index the input as keys for first 4 characters of every string
     # newlist = {f[:4]: [i for i in oldlist if i[:4] == f[:4]] for f in set([g[:4] for g in oldlist])}
+    
     # * Pool functions
 
     def gatherInfo(inumerated):
@@ -315,13 +319,14 @@ if __name__ == "__main__":
         p.close()
         p.join()
         print("\n"*(args.power*2)+"Conversion cancelled")
-    subpReturn = subprocess.check_output(["notify-send",
-                        "-a", "Dataset Generator", '-w',
-                        '-t', '4000',
-                        f'--action=open {opath.dirname(args.input)}=Open folder',
-                        f"The generator has {result}!"]).decode("UTF-8")
-    if subpReturn:
-        subpCommand, subpOption = subpReturn.split(" ")
-        if subpCommand == 'open':
-            rprint(f"Opening directory: {subpOption}")
-            subprocess.call(['xdg-open', subpOption])
+    if not args.no_notifs:
+        subpReturn = subprocess.check_output(["notify-send",
+                            "-a", "Dataset Generator", '-w',
+                            '-t', '4000',
+                            f'--action=open {opath.dirname(args.input)}=Open folder',
+                            f"The generator has {result}!"]).decode("UTF-8")
+        if subpReturn:
+            subpCommand, subpOption = subpReturn.split(" ")
+            if subpCommand == 'open':
+                rprint(f"Opening directory: {subpOption}")
+                subprocess.call(['xdg-open', subpOption])
