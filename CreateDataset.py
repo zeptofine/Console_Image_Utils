@@ -301,8 +301,8 @@ if __name__ == "__main__":
         imgList = stripNone(imgList)
     nextStep("2a", f"({len(imgList)}, {len(imgDicts)-len(imgList)}): possible, discarded")
 
-    if len(imgList) == 0:
-        exit(print("No images left to process"))
+    # if len(imgList) == 0:
+    #     exit(print("No images left to process"))
 
     if args.simulate: exit()
 
@@ -320,13 +320,7 @@ if __name__ == "__main__":
         p.join()
         print("\n"*(args.power*2)+"Conversion cancelled")
     if not args.no_notifs:
-        subpReturn = subprocess.check_output(["notify-send",
+        subpReturn = subprocess.Popen(["notify-send",
                             "-a", "Dataset Generator", '-w',
                             '-t', '4000',
-                            f'--action=open {opath.dirname(args.input)}=Open folder',
-                            f"The generator has {result}!"]).decode("UTF-8")
-        if subpReturn:
-            subpCommand, subpOption = subpReturn.split(" ")
-            if subpCommand == 'open':
-                rprint(f"Opening directory: {subpOption}")
-                subprocess.call(['xdg-open', subpOption])
+                            f"The generator has {result}!"])
