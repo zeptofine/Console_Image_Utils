@@ -18,7 +18,6 @@ try:
     import cv2
     import dateutil.parser as timeparser
     import imagesize
-    if sys.platform == "win32": from plyer import notification
     from PIL import Image
 except:
     print("Please run: 'pip install opencv-python python-dateutil imagesize pillow plyer")
@@ -35,7 +34,8 @@ origin = os.path.abspath(__file__)
 cfgPath = opath.join(opath.dirname(origin), "config.json")
 parserCfg = {'input': None,
     'scale': 4, 'power': (os.cpu_count()//4)*3,
-             'msize': 0, 'extension': None, 'backend': "cv2",
+             'minsize': 0, 'maxsize': None,
+             'extension': None, 'backend': "cv2",
              'purge': False, 'simulate': False,
              'before': None, 'after': None,
              'anonymous': False}
@@ -51,21 +51,22 @@ parser = argparse.ArgumentParser()
 #set mode
 runParams = parser.add_mutually_exclusive_group()
 runParams.add_argument("-i", "--input",  help="input directory",                                                                                        default=parserCfg['input'])
-runParams.add_argument("--set",          help="change a settings default parameter. call the options like ex. --set backend PIl, or --set msize 128",   nargs=2)
+runParams.add_argument("--set",          help="change a settings default parameter. call the options like ex. --set backend PIl, or --set minsize 128",   nargs=2)
 runParams.add_argument("--reset",        help="change a settings default parameter. will reset everything if given 'all'.")
 parser.add_argument("-x", "--scale",     help="scale",                                                                             type=int,            default=parserCfg['scale'])
 parser.add_argument("-p",                help="number of cores to use. default is 3/4 of 'os.cpu_count()'.",          dest="power",type=int,            default=parserCfg['power'])
-parser.add_argument("-m", "--msize",     help="minimum size of image.",                                                            type=int,            default=parserCfg['msize'])
+parser.add_argument("--minsize",     help="minimum size of image.",                                                            type=int,                default=parserCfg['minsize'])
+parser.add_argument("--maxsize",     help="maximum size of image.",                                                            type=int,                default=parserCfg['maxsize'])
 parser.add_argument("-e", "--extension", help="extension of files to export. jpeg, png, webp, etc.",                                                    default=parserCfg['extension'])
 parser.add_argument("-b", "--backend",   help="backend to use for resizing. [cv2], PIL. cv2 is safer but slower in my experience.",                     default=parserCfg['backend'])
-parser.add_argument("--purge",           help="purge all existing files in output directories before processing",                  action="store_true",  default=parserCfg['purge'])
-parser.add_argument("--simulate",        help="Doesn't convert at the end.",                                                       action="store_true",  default=parserCfg['simulate'])
+parser.add_argument("--purge",           help="purge all existing files in output directories before processing",                  action="store_true", default=parserCfg['purge'])
+parser.add_argument("--simulate",        help="Doesn't convert at the end.",                                                       action="store_true", default=parserCfg['simulate'])
 parser.add_argument("--before",          help="Only converts files modified before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'",            default=parserCfg['before'])
 parser.add_argument("--after",           help="Only converts files modified after a given date.  ex. '2020', or '2009 sept 16th'",                      default=parserCfg['after'])
 parser.add_argument("--within",          help="Only convert items modified within a timeframe. use None if unspecified. ex. 'None' 'Wed Jun 9'", 
                                          nargs=2, metavar=('BEFORE', 'AFTER'),                                                                      )
 parser.add_argument("--anonymous",       help="replaces the labels in the progress bar with '...'",                                action="store_true", default=parserCfg['anonymous'])
-parser.add_argument("--config",          help="Prints the items in the config file.",                                                   action="store_true")
+parser.add_argument("--config",          help="Prints the items in the config file.",                                              action="store_true")
 
 args = parser.parse_args()
 
@@ -123,7 +124,7 @@ if __name__ == "__main__":
     # run glob.glob repeatedly and concatenate to one list
     def getFiles(*args): return [y for x in [glob.glob(i, recursive=True) for i in args] for y in x]
     def getpid(): return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
-    def nextStep(order, text): print(" "+f"\033[K{str(order)}. {text}", end="\n\033[K")
+    def nextStep(order, text): rprint(" "+f"{str(order)}. {text}", end="\n\033[K")
     def stripNone(inlist: list): return [i for i in inlist if i is not None]
 
     # * args.set, args.reset, args.config
@@ -154,6 +155,10 @@ if __name__ == "__main__":
     if args.config:
         rprint(cfgJson)
         exit(0)
+    
+
+
+    
     # Get backend to use for conversion
     backend = None
     if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']: backend = imgBackend.cv2
@@ -162,17 +167,13 @@ if __name__ == "__main__":
 
 
     # Handle arguments
-    # * args.scale
-    assert args.scale, "Please give the required argument: scale"
     # * args.input
     if args.input.endswith(os.sep): args.input = args.input[:-1]
-
-    print(f"using {args.power} threads")
     
     # * args.Extension
     if args.extension:
         if args.extension.startswith("."): args.extension = args.extension[1:]
-        if args.extension != "same": print(f"applying extension: .{args.extension}")
+        if args.extension != "same": nextStep(0, f"applying extension: .{args.extension}")
 
     # * args.before & args.after
     beforTime, afterTime = None, None
@@ -189,7 +190,7 @@ if __name__ == "__main__":
         if args.after:  
             args.after = str(args.after)
             afterTime = timeparser.parse(args.after)
-        nextStep("0c", f"using: ({afterTime}, {beforTime}): (after, before)")
+        nextStep(0, f"using: ({afterTime}, {beforTime}): (after, before)")
     if (args.before) and (args.after):
         if args.after > args.before:
             nextStep("\033[31mError\033[0m", f"{beforTime} is greater than {afterTime}!")
@@ -216,8 +217,17 @@ if __name__ == "__main__":
     HRList = [opath.basename_(f) for f in getFiles(HRFolder + "/*")]
     LRList = [opath.basename_(f) for f in getFiles(LRFolder + "/*")]
     existList = [i for i in HRList if i in LRList]
-    nextStep("0a", f"({len(imgList)}): original")
-    nextStep("0b", f"({len(existList)}, {len(HRList)}, {len(LRList)}): overlapping, HR, LR")
+    nextStep(0, f"Source: {args.input}")
+    nextStep(0, f"({len(imgList)}, {len(existList)}): original, overlap")
+    
+    # * args.scale
+    assert int(args.scale), "Please give the required argument: scale"
+    nextStep(0, f"Scale: {args.scale}")
+    
+    
+    nextStep(0, f"Size threshold: ({args.minsize}<=x<={args.maxsize})")
+    
+    
     # I'm honestly not sure if i'll remember anything these functions do in a day
     def indexSet(inlist, indMax):
         indSet = set([opath.basename_(i)[:indMax] for i in inlist])
@@ -225,7 +235,7 @@ if __name__ == "__main__":
     
     def getIndexedList(inlist, maxind=18):
         shuffle(inlist)
-        smalList = inlist[:500]
+        smalList = inlist[:1000]
         minList = min(min([len(i) for i in smalList]), maxind+1)
         setList = []
         for h in range(1, minList):
@@ -264,7 +274,9 @@ if __name__ == "__main__":
             if (beforTime) and (filetime > beforTime): return
             if (afterTime) and (filetime < afterTime): return
         width, height = item['res']
-        if (width < args.msize) or (height < args.msize) or ((width % args.scale) + (height % args.scale) != 0): return
+        if args.minsize and ((width < args.minsize) or (height < args.minsize)): return 
+        if args.maxsize and ((width > args.maxsize) or (height > args.maxsize)): return 
+        if ((width % args.scale) + (height % args.scale) != 0): return
         return item
 
     def fileparse(imgDict):
@@ -303,12 +315,12 @@ if __name__ == "__main__":
         p.close()
         p.join()
         print("\n"*(args.power*2)+"Conversion cancelled")
-    if sys.platform == "win32": notification.notify(title="Dataset Generator", message="Conversion complete!", timeout=10)
-    else:
-        subpReturn = subprocess.check_output(["notify-send", 
-                            "-a", "Dataset Generator", '-w',
-                            f'--action=open {opath.dirname(args.input)}=Open folder',
-                            f"The generator has {result}!"]).decode("UTF-8")
+    subpReturn = subprocess.check_output(["notify-send",
+                        "-a", "Dataset Generator", '-w',
+                        '-t', '4000',
+                        f'--action=open {opath.dirname(args.input)}=Open folder',
+                        f"The generator has {result}!"]).decode("UTF-8")
+    if subpReturn:
         subpCommand, subpOption = subpReturn.split(" ")
         if subpCommand == 'open':
             rprint(f"Opening directory: {subpOption}")
