@@ -285,24 +285,31 @@ if __name__ == "__main__":
         imgList = stripNone(imgList)
     nextStep("2a", f"({len(imgList)}, {len(imgDicts)-len(imgList)}): possible, discarded")
 
-    if len(imgList) == 0: 
+    if len(imgList) == 0:
         exit(print("No images left to process"))
 
     if args.simulate: exit()
 
     nextStep(3, "Processing...")
+    result = "Failed"
     try:
         with Pool(args.power) as p:
             imdict = p.map(fileparse, enumerate([(i, backend) for i in imgList]))
         p.close()
         print("\nDone!")
-        if sys.platform == "win32": notification.notify(title="Dataset Generator", message="Conversion complete!", timeout=10)
-        else:
-            subprocess.call(["notify-send", 
-                             "-a", "Dataset Generator",
-                             "The generator has finished!"])
+        result = "Finished"
 
     except KeyboardInterrupt:
         p.close()
         p.join()
         print("\n"*(args.power*2)+"Conversion cancelled")
+    if sys.platform == "win32": notification.notify(title="Dataset Generator", message="Conversion complete!", timeout=10)
+    else:
+        subpReturn = subprocess.check_output(["notify-send", 
+                            "-a", "Dataset Generator", '-w',
+                            f'--action=open {opath.dirname(args.input)}=Open folder',
+                            f"The generator has {result}!"]).decode("UTF-8")
+        subpCommand, subpOption = subpReturn.split(" ")
+        if subpCommand == 'open':
+            rprint(f"Opening directory: {subpOption}")
+            subprocess.call(['xdg-open', subpOption])
