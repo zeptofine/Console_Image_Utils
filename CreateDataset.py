@@ -5,6 +5,7 @@ import json
 import multiprocessing
 import os
 import sys
+import subprocess
 import time
 from multiprocessing import Pool
 from random import shuffle
@@ -17,9 +18,10 @@ try:
     import cv2
     import dateutil.parser as timeparser
     import imagesize
+    if sys.platform == "win32": from plyer import notification
     from PIL import Image
 except:
-    print("Please run: 'pip install opencv-python python-dateutil imagesize pillow")
+    print("Please run: 'pip install opencv-python python-dateutil imagesize pillow plyer")
 
 class opath(): # people have told me it's a bad practice to overwrite a packages' functions lol smh
     def basename(path): return path.rsplit(os.sep, 1)[-1]
@@ -35,7 +37,7 @@ parserCfg = {'input': None,
     'scale': 4, 'power': (os.cpu_count()//4)*3,
              'msize': 0, 'extension': None, 'backend': "cv2",
              'purge': False, 'simulate': False,
-             'before': None, 'after': None, 'within': None,
+             'before': None, 'after': None,
              'anonymous': False}
 if not os.path.exists(cfgPath): 
     open(cfgPath, "w").write(json.dumps(parserCfg))
@@ -61,7 +63,7 @@ parser.add_argument("--simulate",        help="Doesn't convert at the end.",    
 parser.add_argument("--before",          help="Only converts files modified before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'",            default=parserCfg['before'])
 parser.add_argument("--after",           help="Only converts files modified after a given date.  ex. '2020', or '2009 sept 16th'",                      default=parserCfg['after'])
 parser.add_argument("--within",          help="Only convert items modified within a timeframe. use None if unspecified. ex. 'None' 'Wed Jun 9'", 
-                                        nargs=2, metavar=('BEFORE', 'AFTER'),                                                                           default=parserCfg['within'])
+                                         nargs=2, metavar=('BEFORE', 'AFTER'),                                                                      )
 parser.add_argument("--anonymous",       help="replaces the labels in the progress bar with '...'",                                action="store_true", default=parserCfg['anonymous'])
 parser.add_argument("--config",          help="Prints the items in the config file.",                                                   action="store_true")
 
@@ -175,6 +177,10 @@ if __name__ == "__main__":
     # * args.before & args.after
     beforTime, afterTime = None, None
 
+
+    if args.within:
+        args.after, args.before = args.within
+        
     if args.before or args.after:
         
         if args.before:
@@ -279,8 +285,6 @@ if __name__ == "__main__":
         imgList = stripNone(imgList)
     nextStep("2a", f"({len(imgList)}, {len(imgDicts)-len(imgList)}): possible, discarded")
 
-
-    
     if len(imgList) == 0: 
         exit(print("No images left to process"))
 
@@ -292,7 +296,13 @@ if __name__ == "__main__":
             imdict = p.map(fileparse, enumerate([(i, backend) for i in imgList]))
         p.close()
         print("\nDone!")
+        if sys.platform == "win32": notification.notify(title="Dataset Generator", message="Conversion complete!", timeout=10)
+        else:
+            subprocess.call(["notify-send", 
+                             "-a", "Dataset Generator",
+                             "The generator has finished!"])
+
     except KeyboardInterrupt:
         p.close()
         p.join()
-        print("\n"*args.power+"Conversion cancelled")
+        print("\n"*(args.power*2)+"Conversion cancelled")

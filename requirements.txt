@@ -3,3 +3,4 @@ imagesize
 pillow
 rich
 dateutil
+plyer
