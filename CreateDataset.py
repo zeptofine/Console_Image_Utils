@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import glob
+import json
 import multiprocessing
 import os
 import sys
@@ -8,27 +9,64 @@ import time
 from multiprocessing import Pool
 from random import shuffle
 
-try: 
+try:
+    from rich import print as rprint
+except:
+    rprint = print
+try:
     import cv2
     import dateutil.parser as timeparser
     import imagesize
     from PIL import Image
 except:
     print("Please run: 'pip install opencv-python python-dateutil imagesize pillow")
+
+class opath(): # people have told me it's a bad practice to overwrite a packages' functions lol smh
+    def basename(path): return path.rsplit(os.sep, 1)[-1]
+    def extension(path): return path.rsplit(".", 1)[-1]
+    def basename_(path): return path.rsplit(os.sep, 1)[-1].rsplit(".", 1)[0]
+    def dirname(path): return path.rsplit(os.sep, 1)[0]
+    def join(*args): return os.sep.join([i for i in args])
+
+#get config file
+origin = os.path.abspath(__file__)
+cfgPath = opath.join(opath.dirname(origin), "config.json")
+parserCfg = {'input': None,
+    'scale': 4, 'power': (os.cpu_count()//4)*3,
+             'msize': 0, 'extension': None, 'backend': "cv2",
+             'purge': False, 'simulate': False,
+             'before': None, 'after': None, 'within': None,
+             'anonymous': False}
+if not os.path.exists(cfgPath): 
+    open(cfgPath, "w").write(json.dumps(parserCfg))
+with open(cfgPath, "r") as cfgP:
+    cfgJson = json.loads(cfgP.read())
+if cfgJson:
+    for i in cfgJson.keys():
+        parserCfg[i] = cfgJson[i]
+
 parser = argparse.ArgumentParser()
-parser.add_argument("-i", "--input",     help="input directory",                                                                      required=True)
-parser.add_argument("-x", "--scale",     help="scale",                                                                      type=int, required=True)
-parser.add_argument("-p", "--power",     help="number of cores to use. default is 'os.cpu_count()'.", type=int, default=int(((os.cpu_count()/4)*3)))
-parser.add_argument("--msize",           help="minimum size of image.",                                                         type=int, default=0)
-parser.add_argument("-e", "--extension", help="extension of files to export. jpeg, png, webp, etc.")
-parser.add_argument("--backend",         help="backend to use for resizing. [cv2], PIL. cv2 is safer but slower in my experience.",   default="cv2")
-parser.add_argument("--purge",           help="purge all existing files in output directories before processing",               action="store_true")
-parser.add_argument("--simulate",        help="Doesn't convert at the end.",                                                    action="store_true")
-parser.add_argument("--before",          help="Only converts files modified before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'",       )
-parser.add_argument("--after",           help="Only converts files modified after a given date.  ex. '2020', or '2009 sept 16th'",                 )
-parser.add_argument("--sort",            help="Sorts the files before running at the end by [path, time, [res]]", default="res")
-parser.add_argument("--reverse",         help="reverses the sort command.", action="store_true")
+#set mode
+runParams = parser.add_mutually_exclusive_group()
+runParams.add_argument("-i", "--input",  help="input directory",                                                                                        default=parserCfg['input'])
+runParams.add_argument("--set",          help="change a settings default parameter. call the options like ex. --set backend PIl, or --set msize 128",   nargs=2)
+runParams.add_argument("--reset",        help="change a settings default parameter. will reset everything if given 'all'.")
+parser.add_argument("-x", "--scale",     help="scale",                                                                             type=int,            default=parserCfg['scale'])
+parser.add_argument("-p",                help="number of cores to use. default is 3/4 of 'os.cpu_count()'.",          dest="power",type=int,            default=parserCfg['power'])
+parser.add_argument("-m", "--msize",     help="minimum size of image.",                                                            type=int,            default=parserCfg['msize'])
+parser.add_argument("-e", "--extension", help="extension of files to export. jpeg, png, webp, etc.",                                                    default=parserCfg['extension'])
+parser.add_argument("-b", "--backend",   help="backend to use for resizing. [cv2], PIL. cv2 is safer but slower in my experience.",                     default=parserCfg['backend'])
+parser.add_argument("--purge",           help="purge all existing files in output directories before processing",                  action="store_true",  default=parserCfg['purge'])
+parser.add_argument("--simulate",        help="Doesn't convert at the end.",                                                       action="store_true",  default=parserCfg['simulate'])
+parser.add_argument("--before",          help="Only converts files modified before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'",            default=parserCfg['before'])
+parser.add_argument("--after",           help="Only converts files modified after a given date.  ex. '2020', or '2009 sept 16th'",                      default=parserCfg['after'])
+parser.add_argument("--within",          help="Only convert items modified within a timeframe. use None if unspecified. ex. 'None' 'Wed Jun 9'", 
+                                        nargs=2, metavar=('BEFORE', 'AFTER'),                                                                           default=parserCfg['within'])
+parser.add_argument("--anonymous",       help="replaces the labels in the progress bar with '...'",                                action="store_true", default=parserCfg['anonymous'])
+parser.add_argument("--config",          help="Prints the items in the config file.",                                                   action="store_true")
+
 args = parser.parse_args()
+
 
 def pBar(iteration: int, total: int, length=10,
          fill="#", nullp="-", corner="[]", pref='', suff=''):
@@ -48,18 +86,12 @@ def pEvent(total, length=0, fill="#", nullp="-", corner="[]", pref=''):
         time.sleep(1)
 
 def threadStatus(pid, item="", extra="", extraSize=8):
-    print(('\n'*pid)+f"\033[K {str(pid).ljust(3)} | {str(extra).center(extraSize)} | {item}"+('\033[A'*pid), end="\r")
+    print(('\n'*pid)+f"\033[K {str(pid).ljust(3)} | {str(extra).center(extraSize)} | {item if not args.anonymous else '...'}"+('\033[A'*pid), end="\r")
 
 def quickResolution(file):
     try: return imagesize.get(file)
     except: return Image.open(file).size
 
-class opath():
-    def basename(path): return path.rsplit(os.sep, 1)[-1]
-    def extension(path): return path.rsplit(".", 1)[-1]
-    def basename_(path): return path.rsplit(os.sep, 1)[-1].rsplit(".", 1)[0]
-    def dirname(path): return path.rsplit(os.sep, 1)[0]
-    def join(*args): return os.sep.join([i for i in args])
 
 class imgBackend:  # * image processing 
     def cv2(pid, pth, HR, LR, imtime, suffix):
@@ -92,6 +124,34 @@ if __name__ == "__main__":
     def nextStep(order, text): print(" "+f"\033[K{str(order)}. {text}", end="\n\033[K")
     def stripNone(inlist: list): return [i for i in inlist if i is not None]
 
+    # * args.set, args.reset, args.config
+    if args.set or args.reset:
+        if (args.reset == 'all'):
+            rprint(f"removing {cfgPath} ...")
+            os.remove(cfgPath)
+            cfgJson = {}
+        else:
+            if args.reset:
+                if args.reset in cfgJson.keys():
+                    cfgJson.pop(args.reset)
+                else:
+                    print("Given argument isn't in the config.")
+                    exit(0)
+        if args.set:
+            if args.set[1] in ["True", "False"]: args.set[1] = bool(args.set[1])
+            elif args.set[1].isdigit(): args.set[1] = int(args.set[1])
+            rprint(f"Setting: '{args.set[0]}' => {args.set[1]}...")
+            cfgJson[args.set[0]] = args.set[1]
+        with open(cfgPath, "w") as cfgWrite:
+            cfgWrite.write(json.dumps(cfgJson, indent=4))
+        print("Config updated! restart the script to start with your new options.")
+        exit()
+    elif not args.input:
+        rprint("Please specify an input directory.")
+        exit(1)
+    if args.config:
+        rprint(cfgJson)
+        exit(0)
     # Get backend to use for conversion
     backend = None
     if args.backend.lower() in ['cv2', 'opencv', 'opencv2', 'opencv-python']: backend = imgBackend.cv2
@@ -100,24 +160,34 @@ if __name__ == "__main__":
 
 
     # Handle arguments
-
+    # * args.scale
+    assert args.scale, "Please give the required argument: scale"
     # * args.input
     if args.input.endswith(os.sep): args.input = args.input[:-1]
 
-    # * args.Extension
     print(f"using {args.power} threads")
-    if args.extension.startswith("."): args.extension = args.extension[1:]
-    if args.extension != "same": print(f"applying extension: .{args.extension}")
+    
+    # * args.Extension
+    if args.extension:
+        if args.extension.startswith("."): args.extension = args.extension[1:]
+        if args.extension != "same": print(f"applying extension: .{args.extension}")
 
     # * args.before & args.after
     beforTime, afterTime = None, None
+
     if args.before or args.after:
-        if args.before: beforTime = timeparser.parse(args.before)
-        if args.after:  afterTime = timeparser.parse(args.after)
-        nextStep("0c", f"using: ({beforTime}, {afterTime})")
-    if (args.before) and (args.after) and (args.before < args.after):
-        nextStep("\033[31mError\033[0m", f"{beforTime} is greater than {afterTime}!")
-        exit(1)
+        
+        if args.before:
+            args.before = str(args.before) 
+            beforTime = timeparser.parse(args.before)
+        if args.after:  
+            args.after = str(args.after)
+            afterTime = timeparser.parse(args.after)
+        nextStep("0c", f"using: ({afterTime}, {beforTime}): (after, before)")
+    if (args.before) and (args.after):
+        if args.after > args.before:
+            nextStep("\033[31mError\033[0m", f"{beforTime} is greater than {afterTime}!")
+            exit(1)
 
     # * args.input
     HRFolder = opath.join(opath.dirname(args.input), str(args.scale)+"x") + "HR"
@@ -142,9 +212,6 @@ if __name__ == "__main__":
     existList = [i for i in HRList if i in LRList]
     nextStep("0a", f"({len(imgList)}): original")
     nextStep("0b", f"({len(existList)}, {len(HRList)}, {len(LRList)}): overlapping, HR, LR")
-    
-    
-    nextStep("0c", f"Indexing overlapping")
     # I'm honestly not sure if i'll remember anything these functions do in a day
     def indexSet(inlist, indMax):
         indSet = set([opath.basename_(i)[:indMax] for i in inlist])
@@ -165,7 +232,7 @@ if __name__ == "__main__":
     indexedEList = (4, indexSet(existList, 4))
     if len(existList) != 0:
         indexedEList = getIndexedList(existList)
-    nextStep("0ca", f"Indexing finished: set to ({indexedEList[0]})")
+    nextStep("0c", f"Indexed: set to ({indexedEList[0]})")
     # End Handle arguments
 
     # indexing # to index the input as keys for first 4 characters of every string
@@ -197,7 +264,7 @@ if __name__ == "__main__":
     def fileparse(imgDict):
         index, imgDict, method = (imgDict[0], imgDict[1][0], imgDict[1][1])
         method(pid=getpid() - args.power*2, pth=imgDict['path'], HR=imgDict['HR'], LR=imgDict['LR'],
-               imtime=imgDict['time'], suffix=f"{str(index)}, {imgDict[args.sort]}")
+               imtime=imgDict['time'], suffix=str(index))
 
 
     nextStep(1, "Gathering image information")
@@ -222,7 +289,7 @@ if __name__ == "__main__":
     nextStep(3, "Processing...")
     try:
         with Pool(args.power) as p:
-            imdict = p.map(fileparse, enumerate(sorted([(i, backend) for i in imgList],key=lambda x: x[0][args.sort])))
+            imdict = p.map(fileparse, enumerate([(i, backend) for i in imgList]))
         p.close()
         print("\nDone!")
     except KeyboardInterrupt:
