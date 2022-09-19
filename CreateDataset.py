@@ -10,7 +10,7 @@ import sys
 import time
 from multiprocessing import Pool
 from random import shuffle
-
+from pprint import pprint
 try:
     from rich import print as rprint
 except:
@@ -21,7 +21,7 @@ try:
     import imagesize
     from PIL import Image
 except:
-    print("Please run: 'pip install opencv-python python-dateutil imagesize pillow plyer")
+    print("Please run: 'pip install opencv-python python-dateutil imagesize pillow")
 
 # class opath(): # people have told me it's a bad practice to overwrite a packages' functions lol smh
 def stem(path): return path.rsplit(os.sep, 1)[-1].rsplit(".", 1)[0]
@@ -34,7 +34,8 @@ parserCfg = {'input': None,
              'extension': None, 'backend': "cv2",
              'purge': False, 'simulate': False,
              'before': None, 'after': None,
-             'anonymous': False, 'no_notifs': False}
+             'anonymous': False, 'no_notifs': False,
+             'no_color': False}
 if not os.path.exists(cfgPath): 
     open(cfgPath, "w").write(json.dumps(parserCfg))
 with open(cfgPath, "r") as cfgP:
@@ -52,6 +53,7 @@ runParams.add_argument("--reset",        help="change a settings default paramet
 parser.add_argument("-x", "--scale",     help="scale",                                                                             type=int,            default=parserCfg['scale'])
 parser.add_argument("-p",                help="number of cores to use. default is 3/4 of 'os.cpu_count()'.",          dest="power",type=int,            default=parserCfg['power'])
 parser.add_argument("--minsize",     help="minimum size of image.",                                                            type=int,                default=parserCfg['minsize'])
+# TODO: add a maxsize conditions option: resize the images down if past the max, also maybe one with two thresholds [resize, skip]
 parser.add_argument("--maxsize",     help="maximum size of image.",                                                            type=int,                default=parserCfg['maxsize'])
 parser.add_argument("-e", "--extension", help="extension of files to export. jpeg, png, webp, etc.",                                                    default=parserCfg['extension'])
 parser.add_argument("-b", "--backend",   help="backend to use for resizing. [cv2], PIL.",                     default=parserCfg['backend'])
@@ -64,14 +66,14 @@ parser.add_argument("--within",          help="Only convert items modified withi
 parser.add_argument("--anonymous",       help="replaces the labels in the progress bar with '...'",                                action="store_true", default=parserCfg['anonymous'])
 parser.add_argument("--no_notifs",        help="disables the notifications at the end.",                                           action="store_true", default=parserCfg['no_notifs'])
 parser.add_argument("--config",          help="Prints the items in the config file.",                                              action="store_true")
-
+parser.add_argument("--no_color",        help="Disables the color from rich, if installed.",                                       action="store_true",  default=parserCfg['no_color'])
 args = parser.parse_args()
 
 
 def pBar(iteration: int, total: int, length=10,
          fill="#", nullp="-", corner="[]", pref='', suff=''):
     # custom progress bar (greatly modified) [https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console]
-    color1, color2 = "\033[93m", "\033[92m"
+    color1, color2 = ("\033[93m", "\033[92m") if not args.no_color else ("", "") # remove args.no_color if used elsewhere
     filledLength = (length * iteration) // total
     #    [############################# --------------------------------]
     bar = (fill*length)[:filledLength] + (nullp*(length - filledLength))
@@ -85,6 +87,7 @@ def pEvent(total, length=0, fill="#", nullp="-", corner="[]", pref=''):
         print(pBar(sec, total, length, fill, nullp, corner, pref, f" {sec} / {total} "), end="\r")
         time.sleep(1)
 
+# TODO: make the item justify to the right
 def threadStatus(pid, item="", extra="", extraSize=8):
     print(('\n'*pid)+f"\033[K {str(pid).ljust(3)} | {str(extra).center(extraSize)} | {item if not args.anonymous else '...'}"+('\033[A'*pid), end="\r")
 
@@ -129,6 +132,10 @@ if __name__ == "__main__":
     def getpid(): return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
     def nextStep(order, text): rprint(" "+f"{str(order)}. {text}", end="\n\033[K")
     def stripNone(inlist: list): return [i for i in inlist if i is not None]
+
+    # * args.no_color
+    if args.no_color:
+        rprint = print
 
     # * args.set, args.reset, args.config
     if args.set or args.reset:
@@ -212,10 +219,10 @@ if __name__ == "__main__":
     if args.before or args.after:
         if args.before:
             args.before = str(args.before) 
-            beforTime = timeparser.parse(args.before)
+            beforTime = timeparser.parse(args.before, fuzzy=True)
         if args.after:  
             args.after = str(args.after)
-            afterTime = timeparser.parse(args.after)
+            afterTime = timeparser.parse(args.after, fuzzy=True)
         if (args.before) and (args.after):
             if args.after > args.before:
                 nextStep("\033[31mError\033[0m", f"{beforTime} is greater than {afterTime}!")
@@ -284,7 +291,7 @@ if __name__ == "__main__":
     with Pool(args.power) as p:
         imgDicts = list(p.map(gatherInfo, enumerate(imgList)))
         imgDicts = stripNone(imgDicts)
-        nextStep("2a", f"({len(imgDicts)}, {len(imgList)-len(imgDicts)}): possible, discarded")
+        nextStep("1a", f"({len(imgDicts)}, {len(imgList)-len(imgDicts)}): possible, discarded")
 
     # exit()
     nextStep(2, f"Filtering out bad images")
@@ -293,8 +300,8 @@ if __name__ == "__main__":
         imgList = stripNone(imgList)
     nextStep("2a", f"({len(imgList)}, {len(imgDicts)-len(imgList)}): possible, discarded")
 
-    # if len(imgList) == 0:
-    #     exit(print("No images left to process"))
+    if len(imgList) == 0:
+        exit(print("No images left to process"))
 
     if args.simulate: exit()
 
