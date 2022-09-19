@@ -4,8 +4,9 @@ import glob
 import json
 import multiprocessing
 import os
-import sys
+import pathlib
 import subprocess
+import sys
 import time
 from multiprocessing import Pool
 from random import shuffle
@@ -22,16 +23,11 @@ try:
 except:
     print("Please run: 'pip install opencv-python python-dateutil imagesize pillow plyer")
 
-class opath(): # people have told me it's a bad practice to overwrite a packages' functions lol smh
-    def basename(path): return path.rsplit(os.sep, 1)[-1]
-    def extension(path): return path.rsplit(".", 1)[-1]
-    def basename_(path): return path.rsplit(os.sep, 1)[-1].rsplit(".", 1)[0]
-    def dirname(path): return path.rsplit(os.sep, 1)[0]
-    def join(*args): return os.sep.join([i for i in args])
+# class opath(): # people have told me it's a bad practice to overwrite a packages' functions lol smh
+def stem(path): return path.rsplit(os.sep, 1)[-1].rsplit(".", 1)[0]
 
 #get config file
-origin = os.path.abspath(__file__)
-cfgPath = opath.join(opath.dirname(origin), "config.json")
+cfgPath = pathlib.Path(__file__).parent / "config.json"
 parserCfg = {'input': None,
     'scale': 4, 'power': (os.cpu_count()//4)*3,
              'minsize': 0, 'maxsize': None,
@@ -99,7 +95,7 @@ def quickResolution(file):
 
 class imgBackend:  # * image processing 
     def cv2(pid, pth, HR, LR, imtime, suffix):
-        image, ppath = cv2.imread(pth), opath.basename(pth)
+        image, ppath = cv2.imread(str(pth)), pth.name
         threadStatus(pid, ppath,extra=f"{pBar(1, 2, 2)} {suffix}")
         cv2.imwrite(HR, image)
         threadStatus(pid, ppath,extra=f"{pBar(2, 2, 2)} {suffix}")
@@ -107,7 +103,7 @@ class imgBackend:  # * image processing
         os.utime(LR, (imtime, imtime))
         os.utime(HR, (imtime, imtime))
     def image(pid, pth, HR, LR, imtime, suffix):
-        image, ppath = Image.open(pth), opath.basename(pth)
+        image, ppath = Image.open(str(pth)), pth.name
         threadStatus(pid, ppath,extra=f"{pBar(1, 2, 2)} {suffix}")
         image.save(HR)
         threadStatus(pid, ppath,extra=f"{pBar(2, 2, 2)} {suffix}")
@@ -123,11 +119,11 @@ if __name__ == "__main__":
         pEvent(5, length=20)
 
     # run glob.glob repeatedly and concatenate to one list
-    def getFiles(*args): 
+    def getFiles(*args):
         fileList = []
         for i in enumerate(args):
             print(pBar(i[0], len(args), len(args)), end="\r")
-            fileList+=(glob.glob(i[1], recursive=True))
+            fileList+=[pathlib.Path(i) for i in (glob.glob(i[1], recursive=True))]
         return fileList
 
     def getpid(): return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
@@ -176,7 +172,6 @@ if __name__ == "__main__":
     # Handle arguments
     # * args.input
     if args.input.endswith(os.sep): args.input = args.input[:-1]
-    
     # * args.Extension
     if args.extension:
         if args.extension.startswith("."): args.extension = args.extension[1:]
@@ -184,33 +179,29 @@ if __name__ == "__main__":
 
 
     # * args.input
-    HRFolder = opath.join(opath.dirname(args.input), str(args.scale)+"x") + "HR"
-    LRFolder = opath.join(opath.dirname(args.input), str(args.scale)+"x") + "LR"
+    HRFolder = pathlib.Path(args.input).parent / (str(args.scale)+"x" + "HR")
+    LRFolder = pathlib.Path(args.input).parent / (str(args.scale)+"x" + "LR")
     if args.extension:
-        HRFolder += "-"+args.extension
-        LRFolder += "-"+args.extension
+        HRFolder = HRFolder.with_name(HRFolder.name+"-"+args.extension)
+        LRFolder = LRFolder.with_name(LRFolder.name+"-"+args.extension)
     if not os.path.exists(HRFolder): os.makedirs(HRFolder)
     if not os.path.exists(LRFolder): os.makedirs(LRFolder)
     if args.purge:
         nextStep(0, "purging output directories...")
-        for i in getFiles(opath.join(HRFolder, "*"),
-                          opath.join(LRFolder, "*")): os.remove(i)
-
+        for i in getFiles(str(HRFolder / "*"),
+                          str(LRFolder / "*")): os.remove(i)
     nextStep(0, "Getting images")
     imgList = getFiles(args.input+"/**/*.png",
                        args.input+"/**/*.jpg",
                        args.input+"/**/*.webp")
-    HRList = [opath.basename_(f) for f in getFiles(HRFolder + "/*")]
-    LRList = [opath.basename_(f) for f in getFiles(LRFolder + "/*")]
+    HRList = [f.stem for f in getFiles(str((HRFolder / "*")))]
+    LRList = [f.stem for f in getFiles(str((LRFolder / "*")))]
     existList = [i for i in HRList if i in LRList]
     nextStep(0, f"Source: {args.input}")
     nextStep(0, f"({len(imgList)}, {len(existList)}): original, overlap")
-    
     # * args.scale
     assert int(args.scale), "Please give the required argument: scale"
     nextStep(0, f"Scale: {args.scale}")
-    
-    
     nextStep(0, f"Size threshold: ({args.minsize}<=x<={args.maxsize})")
     
     # * args.before & args.after
@@ -233,7 +224,7 @@ if __name__ == "__main__":
     
     # I'm honestly not sure if i'll remember anything these functions do in a day
     def indexSet(inlist, indMax):
-        indSet = set([opath.basename_(i)[:indMax] for i in inlist])
+        indSet = set([stem(i)[:indMax] for i in inlist])
         return {f[:indMax]: [i for i in inlist if i[:indMax] == f[:indMax]] for f in indSet}
     
     def getIndexedList(inlist, maxind=18):
@@ -261,19 +252,18 @@ if __name__ == "__main__":
 
     def gatherInfo(inumerated):
         index, item = inumerated
-        itemBname = opath.basename_(item)
+        itemBname = item.stem
         if itemBname[:indexedEList[0]] in indexedEList[1].keys():
             if itemBname in indexedEList[1][itemBname[:indexedEList[0]]]: return
-        ext = f".{str(args.extension if args.extension else opath.extension(item))}"
-        threadStatus(getpid(), opath.basename(item), 
+        ext = f".{str(args.extension if args.extension else item.suffix)}"
+        threadStatus(getpid(), item.name, 
                      extra=f"{pBar(index, len(imgList))} {index}/{len(imgList)}")
-        return {'path': item, 'res': quickResolution(item), 'time': os.path.getmtime(item), 
-                'name': opath.basename_(item),
-                'HR': opath.join(HRFolder, itemBname+ext), 'LR': opath.join(LRFolder, itemBname+ext)}
+        return {'path': item, 'res': quickResolution(str(item)), 'time': item.stat().st_mtime, 
+                'HR': HRFolder / (itemBname+ext), 'LR': LRFolder / (itemBname+ext)}
 
     def filterImages(inumerated):
         index, item = inumerated
-        threadStatus(getpid() - args.power, opath.basename(item['path']), extra=f"{pBar(index, len(imgDicts))} {index}/{len(imgList)}")
+        threadStatus(getpid() - args.power, item['path'].name, extra=f"{pBar(index, len(imgDicts))} {index}/{len(imgList)}")
         if beforTime or afterTime:
             filetime = datetime.datetime.fromtimestamp(item['time'])
             if (beforTime) and (filetime > beforTime): return
@@ -286,7 +276,7 @@ if __name__ == "__main__":
 
     def fileparse(imgDict):
         index, imgDict, method = (imgDict[0], imgDict[1][0], imgDict[1][1])
-        method(pid=getpid() - args.power*2, pth=imgDict['path'], HR=imgDict['HR'], LR=imgDict['LR'],
+        method(pid=getpid() - args.power*2, pth=imgDict['path'], HR=str(imgDict['HR']), LR=str(imgDict['LR']),
                imtime=imgDict['time'], suffix=str(index))
 
 
@@ -296,6 +286,8 @@ if __name__ == "__main__":
         imgDicts = stripNone(imgDicts)
         nextStep("2a", f"({len(imgDicts)}, {len(imgList)-len(imgDicts)}): possible, discarded")
 
+    rprint(imgDicts[0])
+    # exit()
     nextStep(2, f"Filtering out bad images")
     with Pool(args.power) as p:
         imgList = p.map(filterImages, enumerate(imgDicts))
