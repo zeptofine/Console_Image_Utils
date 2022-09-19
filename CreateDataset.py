@@ -64,7 +64,7 @@ parser.add_argument("--simulate",        help="Doesn't convert at the end.",    
 parser.add_argument("--before",          help="Only converts files modified before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'",            default=parserCfg['before'])
 parser.add_argument("--after",           help="Only converts files modified after a given date.  ex. '2020', or '2009 sept 16th'",                      default=parserCfg['after'])
 parser.add_argument("--within",          help="Only convert items modified within a timeframe. use None if unspecified. ex. 'None' 'Wed Jun 9'", 
-                                         nargs=2, metavar=('BEFORE', 'AFTER'),                                                                      )
+                                         nargs=2, metavar=('AFTER', 'BEFORE'),                                                                      )
 parser.add_argument("--anonymous",       help="replaces the labels in the progress bar with '...'",                                action="store_true", default=parserCfg['anonymous'])
 parser.add_argument("--no_notifs",        help="disables the notifications at the end.",                                           action="store_true", default=parserCfg['no_notifs'])
 parser.add_argument("--config",          help="Prints the items in the config file.",                                              action="store_true")
@@ -192,7 +192,7 @@ if __name__ == "__main__":
     if not os.path.exists(HRFolder): os.makedirs(HRFolder)
     if not os.path.exists(LRFolder): os.makedirs(LRFolder)
     if args.purge:
-        print("purging output directories...")
+        nextStep(0, "purging output directories...")
         for i in getFiles(opath.join(HRFolder, "*"),
                           opath.join(LRFolder, "*")): os.remove(i)
 
@@ -217,7 +217,7 @@ if __name__ == "__main__":
     beforTime, afterTime = None, None
     if args.within:
         args.after, args.before = args.within
-        
+
     if args.before or args.after:
         if args.before:
             args.before = str(args.before) 
@@ -267,7 +267,8 @@ if __name__ == "__main__":
         ext = f".{str(args.extension if args.extension else opath.extension(item))}"
         threadStatus(getpid(), opath.basename(item), 
                      extra=f"{pBar(index, len(imgList))} {index}/{len(imgList)}")
-        return {'path': item, 'res': quickResolution(item), 'time': os.path.getmtime(item), 'name': opath.basename_(item),
+        return {'path': item, 'res': quickResolution(item), 'time': os.path.getmtime(item), 
+                'name': opath.basename_(item),
                 'HR': opath.join(HRFolder, itemBname+ext), 'LR': opath.join(LRFolder, itemBname+ext)}
 
     def filterImages(inumerated):
@@ -319,6 +320,7 @@ if __name__ == "__main__":
         p.close()
         p.join()
         print("\n"*(args.power*2)+"Conversion cancelled")
+
     if not args.no_notifs:
         subpReturn = subprocess.Popen(["notify-send",
                             "-a", "Dataset Generator", '-w',
