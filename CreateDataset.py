@@ -286,7 +286,6 @@ if __name__ == "__main__":
         imgDicts = stripNone(imgDicts)
         nextStep("2a", f"({len(imgDicts)}, {len(imgList)-len(imgDicts)}): possible, discarded")
 
-    rprint(imgDicts[0])
     # exit()
     nextStep(2, f"Filtering out bad images")
     with Pool(args.power) as p:
