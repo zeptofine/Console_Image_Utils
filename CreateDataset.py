@@ -146,20 +146,6 @@ def stripNone(inlist: list): return [i for i in inlist if i is not None]
 def getFileList(*args): 
     return [Path(y) for x in [glob.glob(str(p), recursive=True) for p in args] for y in x]
 
-def indexSet(inlist, ind):
-    indSet = set([i[:ind] for i in inlist])
-    return {f[:ind]: [i for i in inlist if i[:ind] == f[:ind]] for f in indSet}
-
-def getIndexedList(inlist, maxind=60):
-    shuffle(inlist)
-    smallList = inlist[:500]
-    minList = min(min([len(i) for i in smallList]), maxind+1)
-    setList = [(h, indexSet(smallList, h)) for h in range(1, minList)] 
-    indTups = [(i[0], len(i[1].keys())) for i in setList]               # [(1, 1) ... (18, 20)]
-    indAverage = sum([i[1] for i in indTups])/len(indTups)              # 13.16666
-    indClosest = min(indTups, key=lambda x: abs(x[1]-indAverage))       # (9, 13)
-    return (indClosest[0], indexSet(inlist, indClosest[0]))
-
 def quickResolution(file):
     try: return imagesize.get(file)
     except: return Image.open(file).size
@@ -203,11 +189,14 @@ def fileparse(inumerated):
     else:
         HRPath = HRFolder / inpath.name
         LRPath = LRFolder / inpath.name
+    if args.extension:
+        HRPath = HRPath.with_suffix("."+args.extension)
+        LRPath = LRPath.with_suffix("."+args.extension)
     pid = getpid() - args.power*2
     image = cv2.imread(str(inpath))
-    threadStatus(pid, inpath.stem, extra=pBar(1, 2, 2))
+    threadStatus(pid, relPath, extra=pBar(1, 2, 2))
     cv2.imwrite(str(HRPath), image)
-    threadStatus(pid, inpath.stem, extra=pBar(2, 2, 2))
+    threadStatus(pid, relPath, extra=pBar(2, 2, 2))
     cv2.imwrite(str(LRPath), cv2.resize(image, (0, 0), fx=1/args.scale, fy=1/args.scale))
     os.utime(str(HRPath), (filestime, filestime))
     os.utime(str(LRPath), (filestime, filestime))
@@ -245,12 +234,6 @@ def main():
     imageList = [i for i in imageList if i.stem not in existList]
     
     nextStep(0, f"(source, existed): ({len(imageList)}, {len(existList)})")
-    
-    indExistList = (4, indexSet(existList, 4))
-    if (len(existList) != 0):
-        indExistList = getIndexedList(existList)
-    nextStep(0, f"Indexed: set to    ({indExistList[0]})")    
-    
     nextStep(0, f"Scale:             ({args.scale})")
     nextStep(0, f"Size threshold:    ({args.minsize}<=x<={args.maxsize})")
     nextStep(0, f"Time threshold:    ({afterTime}<=x<={beforeTime})")
