@@ -1,4 +1,7 @@
-from pprint import pprint
+try:
+    from rich import print as rprint
+except:
+    from pprint import pprint as rprint
 import subprocess
 
 # This was made for reference for future projects.
@@ -16,5 +19,5 @@ def getPackages(pip='pip'):
 
 if __name__ == "__main__":
     packages = getPackages()
-    pprint(packages)
-    pprint(f"{len(packages.keys())} individual packages")
+    rprint(packages)
+    rprint(f"{len(packages.keys())} individual packages")
