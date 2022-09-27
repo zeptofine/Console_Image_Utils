@@ -180,7 +180,7 @@ def fileparse(inumerated):
         HRPath: Path = HRFolder / relPath
         LRPath: Path = LRFolder / relPath
         try:
-            if not LRPath.parent.exists(): os.makedirs(HRPath.parent)
+            if not HRPath.parent.exists(): os.makedirs(HRPath.parent)
         except: pass
         try: 
             if not LRPath.parent.exists(): os.makedirs(LRPath.parent)
@@ -240,12 +240,12 @@ def main():
     
     
     
-    nextStep(1, "Gathering image information")
+    nextStep(1, "Gathering info")
     with Pool(args.power) as p:
         imageTuples = list(p.map(gatherInfo, [(i[0], len(imageList), i[1]) for i in enumerate(imageList)]))
 
     nextStep(1, f"Images:            ({len(imageTuples)}, {byteFormat(sys.getsizeof(imageTuples))})")
-    nextStep(2, "Filtering out bad images")
+    nextStep(2, "Filtering bad images")
     with Pool(args.power) as p:
         imageFiltered = list(p.map(filterImages, [(i[0], len(imageList), 
                                                    i[1][0], i[1][1]) for i in enumerate(imageTuples)]))
