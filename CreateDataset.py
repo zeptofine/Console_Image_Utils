@@ -21,6 +21,7 @@ try:
     import cv2
     import dateutil.parser as timeparser
     import imagesize
+    from dateutil.parser import ParserError
     from PIL import Image
 except:
     print("Please run: 'pip install opencv-python python-dateutil imagesize pillow")
@@ -106,13 +107,18 @@ if args.set or args.reset:
 beforeTime, afterTime = None, None
 if args.within:
     args.after, args.before = args.within
-if args.after or args.before:    
-    if args.after:
-        args.after = str(args.after)
-        afterTime = timeparser.parse(args.after, fuzzy=True)
-    if args.before:
-        args.before = str(args.before)
-        beforeTime = timeparser.parse(args.before, fuzzy=True)
+if args.after or args.before:
+    try: 
+        if args.after:
+            args.after = str(args.after)
+            afterTime = timeparser.parse(args.after, fuzzy=True)
+        if args.before:
+            args.before = str(args.before)
+            beforeTime = timeparser.parse(args.before, fuzzy=True)
+    except ParserError as pe:
+        rprint("Given time is invalid!")
+        print(str(pe))
+        exit(1)
     if args.after and args.before:
         assert args.after < args.before, f"{beforeTime} is older than {afterTime}!"
 
@@ -154,7 +160,7 @@ def gatherInfo(inumerated):
     index, ptotal, inpath = inumerated
     basePath = inpath.stem
     ext = f".{str(args.extension if args.extension else inpath.suffix)}"
-    threadStatus(getpid(), inpath.name, extra=f"{pBar(index, ptotal)}")
+    threadStatus(getpid(), inpath.name, extra=f"{pBar(index, ptotal)} {index}/{ptotal}")
     return (inpath, quickResolution(str(inpath)))
 
 def filterImages(inumerated):
@@ -170,10 +176,10 @@ def filterImages(inumerated):
     if args.minsize and ((width < args.minsize) or (height < args.minsize)): return
     if args.maxsize and ((width > args.maxsize) or (height > args.maxsize)): return
     if (width % args.scale != 0)  or (height % args.scale != 0): return
-    return (inpath, res, filestime)
+    return (inpath, filestime)
 
 def fileparse(inumerated):
-    index, inpath, res, filestime, HRFolder, LRFolder = inumerated
+    index, inpath, filestime, HRFolder, LRFolder, ptotal = inumerated
     inpath: Path = inpath
     relPath = Path(inpath.relative_to(args.input))
     if args.recursive:
@@ -192,10 +198,10 @@ def fileparse(inumerated):
         HRPath = HRPath.with_suffix("."+args.extension)
         LRPath = LRPath.with_suffix("."+args.extension)
     pid = getpid() - args.power*2
+    threadStatus(pid, relPath, extra=f"{pBar(1, 2, 2)} {index}/{ptotal}")
     image = cv2.imread(str(inpath))
-    threadStatus(pid, relPath, extra=pBar(1, 2, 2))
     cv2.imwrite(str(HRPath), image)
-    threadStatus(pid, relPath, extra=pBar(2, 2, 2))
+    threadStatus(pid, relPath, extra=f"{pBar(2, 2, 2)} {index}/{ptotal}")
     cv2.imwrite(str(LRPath), cv2.resize(image, (0, 0), fx=1/args.scale, fy=1/args.scale))
     os.utime(str(HRPath), (filestime, filestime))
     os.utime(str(LRPath), (filestime, filestime))
@@ -260,8 +266,8 @@ def main():
     nextStep(3, "Processing ...")
     with Pool(args.power) as p:
         shuffle(imageFiltered)
-        newImages = list(p.imap(fileparse, [(i[0], i[1][0], i[1][1], i[1][2], 
-                                             HRFolder, LRFolder) for i in enumerate(imageFiltered)]))
+        newImages = list(p.imap(fileparse, [(i[0], i[1][0], i[1][1],
+                                             HRFolder, LRFolder, len(imageFiltered)) for i in enumerate(imageFiltered)]))
     
 if __name__=="__main__":
     if args.config:
