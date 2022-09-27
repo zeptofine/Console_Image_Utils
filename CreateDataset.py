@@ -6,7 +6,6 @@ import multiprocessing
 import os
 import pathlib
 import shutil
-import subprocess
 import sys
 import time
 from multiprocessing import Pool
@@ -134,7 +133,7 @@ def byteFormat(size: str|int):
     size = int("".join([num for num in str(size) if num.isnumeric()]))
     if (size > 0):
         for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti']:
-            if abs(size) < 2**10: return f"{size:3.2f} {unit}B"
+            if abs(size) < 2**10: return f"{size:.2f} {unit}B"
             size /= 2**10
         return f"{size:.2f} {unit}B"
     else: return f"N/A B"
@@ -234,6 +233,7 @@ def main():
     imageList = [i for i in imageList if i.stem not in existList]
     
     nextStep(0, f"(source, existed): ({len(imageList)}, {len(existList)})")
+    nextStep(0, f"list sizes:        ({byteFormat(sys.getsizeof(imageList))}, {byteFormat(sys.getsizeof(existList))})")
     nextStep(0, f"Scale:             ({args.scale})")
     nextStep(0, f"Size threshold:    ({args.minsize}<=x<={args.maxsize})")
     nextStep(0, f"Time threshold:    ({afterTime}<=x<={beforeTime})")
@@ -244,11 +244,13 @@ def main():
     with Pool(args.power) as p:
         imageTuples = list(p.map(gatherInfo, [(i[0], len(imageList), i[1]) for i in enumerate(imageList)]))
 
+    nextStep(1, f"Images:            ({len(imageTuples)}, {byteFormat(sys.getsizeof(imageTuples))})")
     nextStep(2, "Filtering out bad images")
     with Pool(args.power) as p:
         imageFiltered = list(p.map(filterImages, [(i[0], len(imageList), 
                                                    i[1][0], i[1][1]) for i in enumerate(imageTuples)]))
     imageFiltered = stripNone(imageFiltered)
+    nextStep(2, f"Images:            ({len(imageFiltered)}, {byteFormat(sys.getsizeof(imageFiltered))})")
 
     if args.simulate: return 
     
@@ -257,6 +259,7 @@ def main():
         exit()
     nextStep(3, "Processing ...")
     with Pool(args.power) as p:
+        shuffle(imageFiltered)
         newImages = list(p.imap(fileparse, [(i[0], i[1][0], i[1][1], i[1][2], 
                                              HRFolder, LRFolder) for i in enumerate(imageFiltered)]))
     
