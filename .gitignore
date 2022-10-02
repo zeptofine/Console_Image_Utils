@@ -11,3 +11,4 @@ special/prefixes.json
 special/prefixes2.json
 text.txt
 config.json
+*.pyc
