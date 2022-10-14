@@ -1,6 +1,10 @@
 #!/bin/bash
 # parse arguments, input, resolution
-if [ -z "$(command -v inkscape)" ]; then echo "Inkscape is not found. please install it xwx"; exit 127; fi
+if [ -z "$(command -v inkscape)" ]; then 
+  echo "Inkscape is not found. please install it xwx"
+  exit 127 
+fi
+# for every operation getopts finds, switch case
 while getopts ":i:r:h" opt; do
   case $opt in
     i) input=$OPTARG;;
@@ -10,6 +14,7 @@ while getopts ":i:r:h" opt; do
     h) echo "Usage: svgtopng.sh -i <input> -r <resolution>"; exit 0;;
   esac
 done
+
 # check if any arguments are missing
 if [ -z "$input" ] || [ -z "$resolution" ]; then
   echo "Missing arguments"
@@ -26,14 +31,7 @@ echo -e "\nConverting SVG to PNG; res:$resolution; number: ${#svglist[@]}\n"
 function convert_svg_to_png {
     # echo -e "Converting $1 of ${#svglist[@]} files"
     if [ ! -f "${1%.*}.png" ]; then
-        inkscape -z -o "${svglist[i]%.svg}.png" -w 2400 -h 2400 "$1" >> /dev/null 2>&1
+        inkscape -z -o "${svglist[i]%.svg}.png" -w 4096 -h 4096 "$1" >> /dev/null 2>&1
     fi
 }; export -f convert_svg_to_png
 find . -name "*.svg" | parallel --progress "convert_svg_to_png {}"
-# for i in "${!svglist[@]}"; do
-#     echo -e "\033[1AConverting $i of ${#svglist[@]} files"
-#     if [ ! -f "${svglist[$i]%.*}.png" ]; then
-#         inkscape -z -o "${svglist[i]%.svg}.png" -w "$resolution" -h "$resolution" "${svglist[i]}" > /dev/null 2>&1
-#     fi
-    
-#     done

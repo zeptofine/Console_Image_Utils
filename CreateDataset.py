@@ -13,7 +13,7 @@ from pathlib import Path
 from pprint import pprint
 from random import shuffle
 
-from misc_utils import nextStep, numFmt, pBar, threadStatus
+from misc_utils import nextStep, numFmt, pBar, thread_status
 
 try:
     from rich import print as rprint
@@ -171,14 +171,14 @@ def quickResolution(file):
 
 def gatherInfo(inumerated):
     index, ptotal, inpath = inumerated
-    threadStatus(getpid(), inpath.name, anonymous=args.anonymous,
+    thread_status(getpid(), inpath.name, anonymous=args.anonymous,
                  extra=f"{pBar(index, ptotal)} {index}/{ptotal}")
     return (inpath, quickResolution(str(inpath)))
 
 
 def filterImages(inumerated):
     index, ptotal, inpath, res = inumerated
-    threadStatus(getpid()-args.power, inpath.name, anonymous=args.anonymous,
+    thread_status(getpid()-args.power, inpath.name, anonymous=args.anonymous,
                  extra=f"{pBar(index, ptotal)} {index}/{ptotal}")
     filestat = inpath.stat()
     filestime = filestat.st_mtime
@@ -223,11 +223,11 @@ def fileparse(inumerated):
         HRPath = HRPath.with_suffix("."+args.extension)
         LRPath = LRPath.with_suffix("."+args.extension)
     pid = getpid() - args.power*2
-    threadStatus(pid, str(relPath), anonymous=args.anonymous,
+    thread_status(pid, str(relPath), anonymous=args.anonymous,
                  extra=f"{pBar(1, 2, 2)} {index}/{ptotal}")
     image = cv2.imread(str(inpath))  # type: ignore
     cv2.imwrite(str(HRPath), image)  # type: ignore
-    threadStatus(pid, str(relPath), anonymous=args.anonymous,
+    thread_status(pid, str(relPath), anonymous=args.anonymous,
                  extra=f"{pBar(2, 2, 2)} {index}/{ptotal}")
     cv2.imwrite(str(LRPath), cv2.resize(  # type: ignore
         image, (0, 0), fx=1/args.scale, fy=1/args.scale))

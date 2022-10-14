@@ -2,7 +2,7 @@
 # if argument is gui, then startup the gui
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd 2>/dev/null)"
-if [ ! "$#" -eq 0 ]; then {
+if [ ! "$#" -eq "--" ]; then {
     if [ "$1" == "--init" ]; then
         cp -f "$SCRIPT_DIR/flip_ui.sh" ~/.flip.ui.sh
         echo "Copied flip_ui.sh to ~/.flip.ui.sh"
@@ -10,7 +10,7 @@ if [ ! "$#" -eq 0 ]; then {
         if [ "${response:=y}" == "y" ]; then
             # check if line is already in ~/.zshrc
             if ! grep -q "source ~/.flip.ui.sh" ~/.zshrc; then
-                echo "source ~/.flip.ui.sh" >>~/.zshrc
+                echo "source ~/.flip.ui.sh --" >>~/.zshrc
                 echo "Added line to ~/.zshrc"
             fi
         fi
@@ -18,7 +18,7 @@ if [ ! "$#" -eq 0 ]; then {
         if [ "${response:=y}" == "y" ]; then
             # check if line is already in ~/.bashrc
             if ! grep -q "source ~/.flip.ui.sh" ~/.bashrc; then
-                echo "source ~/.flip.ui.sh" >>~/.bashrc
+                echo "source ~/.flip.ui.sh --" >>~/.bashrc
                 echo "Added line to ~/.bashrc"
             fi
         fi

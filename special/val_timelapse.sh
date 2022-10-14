@@ -35,6 +35,7 @@ cp -r "$input" "/tmp/${input##*/}"
 cd "/tmp/${input##*/}" || exit
 tmpinput="/tmp/${input##*/}"
 #find files, and check if there are more than one type of file
+
 if [ "$(find "$tmpinput" -type f,l | awk -F . '{print $NF}' | sort | uniq -c | awk '{print $2,$1}' | wc -l)" -gt 1 ]; then {
   echo "Found more than one type of file, converting to webp as a fallback"
   function extcheck() {

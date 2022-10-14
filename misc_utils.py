@@ -20,12 +20,9 @@ def pBar(iteration: int, total: int, length=10,
     return command
 
 
-def threadStatus(pid, item="", extra="", anonymous=False, extraSize=8):
+def thread_status(pid, item="", extra="", anonymous=False, extraSize=8):
     output = f"\033[K {str(pid).ljust(3)} | {str(extra).center(extraSize)}"
-    if not anonymous:
-        output += f" | {item}"
-    else:
-        output += " | ..."
+    output += f" | {item}" if not anonymous else " | ..."
     output = ('\n'*pid) + output + ('\033[A'*pid)
     print(output, end="\r")
 
