@@ -1,11 +1,11 @@
-'''print_utils, mainly for CreateDataset'''
+'''misc_utils, mainly for CreateDataset'''
 try:
     from rich import print as rprint
 except ImportError:
     rprint = print
 import os
-import sys
 import subprocess
+import sys
 
 
 def pBar(iteration: int, total: int, length=10,
