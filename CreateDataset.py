@@ -4,14 +4,12 @@ import glob
 import json
 import multiprocessing
 import os
-import pathlib
 import shutil
 import sys
 import time
 from multiprocessing import Pool
 from pathlib import Path
 from pprint import pprint
-from random import shuffle
 
 from misc_utils import nextStep, numFmt, pBar, thread_status
 
@@ -19,6 +17,7 @@ try:
     from rich import print as rprint
 except ImportError:
     rprint = print
+
 try:
     import cv2
     import dateutil.parser as timeparser
@@ -36,105 +35,96 @@ try:
     CPU_COUNT: int = os.cpu_count()  # type: ignore
 except:
     CPU_COUNT = 4
-defaultCfg = {'input': None,
-              'scale': 4, 'power': (CPU_COUNT//4)*3,
-              'minsize': None, 'maxsize': None, 'maxmethod': "skip",
-              'extension': None, 'backend': "cv2",
-              'purge': False, 'simulate': False,
-              'before': None, 'after': None,
-              'anonymous': False, 'no_notifs': False,
-              'no_color': False, 'recursive': False}
-cfgPath = pathlib.Path(__file__).parent / "config.json"
-
-
-def setCfgDefaults(inpath: pathlib.Path, cfgDict: dict):
-    if not inpath.exists():
-        open(inpath, "w", encoding="utf-8").write(json.dumps({}))
-    with open(inpath, "r", encoding="utf-8") as cfgP:
-        cfgJson = json.loads(cfgP.read())
-        cfgP.close()
-    if cfgJson:
-        for i in cfgJson.keys():
-            cfgDict[i] = cfgJson[i]
-    return cfgDict, cfgJson
-
-
-parserCfg, cfgJson = setCfgDefaults(cfgPath, defaultCfg)
 
 parser = argparse.ArgumentParser()
-runOptions = parser.add_mutually_exclusive_group()
-runOptions.add_argument("-i", "--input",
-                        default=parserCfg['input'])
-runOptions.add_argument("--set",
-                        help="change a default argument's option.",
-                        nargs=2)
-runOptions.add_argument("--reset",
-                        help="removes a changed option.")
-runOptions.add_argument("--config",
-                        help="returns the file config.",
-                        action="store_true")
-
-parser.add_argument("-x", "--scale",
-                    type=int, default=parserCfg['scale'])
+parser.add_argument("-i", "--input")
+parser.add_argument("-x", "--scale", type=int, default=4)
 parser.add_argument("-e", "--extension",
-                    help="export extension.", default=parserCfg['extension'])
+                    help="export extension.", default="webp")
 parser.add_argument("-r", "--recursive", help="preserves the tree hierarchy.",
-                    action="store_true", default=parserCfg['recursive'])
+                    action="store_true")
 
 parser.add_argument("--minsize", help="smallest available image",
-                    type=int, default=parserCfg['minsize'])
+                    type=int)
 parser.add_argument("--maxsize", help="largest allowed image.",
-                    type=int, default=parserCfg['maxsize'])
+                    type=int)
 
-parser.add_argument("--after",
-                    help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'",
-                    default=parserCfg['after'])
-parser.add_argument("--before",
-                    help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'",
-                    default=parserCfg['before'])
-parser.add_argument("--within", help="Only convert items modified within a timeframe. use None if unspecified. ex. 'None' 'Wed Jun 9'",
-                    nargs=2, metavar=('AFTER', 'BEFORE'))
+parser.add_argument(
+    "--after", help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'")
+parser.add_argument(
+    "--before", help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
 
 parser.add_argument("--power", help="number of cores to use.",
-                    type=int, default=parserCfg['power'])
+                    type=int, default=(CPU_COUNT*4)//3)
 parser.add_argument("--anonymous", help="hides path names in progress. Doesn't affect the result.",
-                    action="store_true", default=parserCfg['anonymous'])
+                    action="store_true")
 parser.add_argument("--simulate", help="skips the conversion step.",
-                    action="store_true", default=parserCfg['simulate'])
+                    action="store_true")
 parser.add_argument("--purge", help="Clears every output before converting.",
-                    action="store_true", default=parserCfg['purge'])
-args = parser.parse_args()
+                    action="store_true")
 
-if args.set or args.reset:
-    if args.set:
-        if args.set[1] in ["True", "False"]:
-            args.set[1] = map(lambda ele: ele == "True", args.set[1])
-        elif args.set[1].isdigit():
-            args.set[1] = int(args.set[1])
-        rprint(f"Setting: '{args.set[0]}' => {args.set[1]} ...")
-        if args.set[0] not in defaultCfg.keys():
-            print("This key isn't available, so results may vary")
-        cfgJson[args.set[0]] = args.set[1]
-    elif args.reset:
-        if (args.reset == 'all'):
-            rprint(f"clearing {cfgPath} ...")
-            cfgJson = {}
-        else:
-            if args.reset not in defaultCfg.keys():
-                rprint("key is not visible from editable defaults!")
-            if args.reset in cfgJson.keys():
-                rprint(f"resetting {args.reset} ...")
-                cfgJson.pop(args.reset)
 
-    with open(cfgPath, "w", encoding="utf-8") as cfgWrite:
-        cfgWrite.write(json.dumps(cfgJson, indent=4))
-        cfgWrite.close()
-    sys.exit("Config updated! restart to use the new options.")
+class configParser:
+    def __init__(self, parser: argparse.ArgumentParser, config_path):
+        self.config_path = config_path
+        self.parser: argparse.ArgumentParser = parser
+        self.original = self.parser
+        self.run_options = self.parser.add_mutually_exclusive_group()
+        self.run_options.add_argument(
+            "--set", help="change a default argument's options.", nargs=2, metavar=('KEY', 'VALUE'))
+        self.run_options.add_argument(
+            "--reset", help="removes a changed option.", metavar='VALUE')
+        self.run_options.add_argument(
+            "--config", help="returns the file config.", action="store_true")
 
+        self.parsed_args = self.parser.parse_args()
+        self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
+        if not os.path.exists(config_path):
+            with open(config_path, "r") as config_file:
+                config_file.write(json.dumps({}))
+                config_file.close()
+        with open(config_path, "r") as config_file:
+            self.config_json = json.loads(config_file.read())
+            self.edited_keys = {}
+            for key in self.config_json.keys():
+                self.edited_keys[key] = self.config_json[key]
+            if self.parsed_args.config:
+                print(self.config_json)
+            config_file.close()
+        if self.parsed_args.set or self.parsed_args.reset:
+            if self.parsed_args.set:
+                potential_args = self.parsed_args.set
+                if potential_args[1] in ["True", "False"]:
+                    potential_args[1] = True if potential_args[1] == "True" else False
+                elif potential_args[1].isdigit():
+                    potential_args[1] = int(potential_args[1])
+                self.edited_keys[potential_args[0]] = potential_args[1]
+            elif self.parsed_args.reset:
+                if self.parsed_args.reset == 'all':
+                    self.edited_keys = {}
+                else:
+                    self.edited_keys.pop(self.parsed_args.reset)
+            with open(config_path, "w") as config_file:
+                config_file.write(json.dumps(self.edited_keys, indent=4))
+                config_file.close()
+        for key in self.edited_keys.keys():
+            if isinstance(self.edited_keys[key], str):
+                exec(f"self.parser.set_defaults({key}='{self.edited_keys[key]}')")
+            else:
+                exec(f"self.parser.set_defaults({key}={self.edited_keys[key]})")
+
+
+    def parse_args(self):
+        return self.parser.parse_args()
+
+    def config(self):
+        return self.config_json
+
+
+cparser = configParser(parser, "config.json")
+args = cparser.parse_args()
 
 beforeTime, afterTime = None, None
-if args.within:
-    args.after, args.before = args.within
 if args.after or args.before:
     try:
         if args.after:
@@ -156,7 +146,7 @@ def getpid():
     return int(pid.name.rsplit("-", 1)[-1])
 
 
-def getFileList(*args):
+def get_file_list(*args):
     globlist = [glob.glob(str(p), recursive=True)
                 for p in args]  # get list of lists of paths
     return [Path(y) for x in globlist for y in x]  # combine them into a list
@@ -172,14 +162,14 @@ def quickResolution(file):
 def gatherInfo(inumerated):
     index, ptotal, inpath = inumerated
     thread_status(getpid(), inpath.name, anonymous=args.anonymous,
-                 extra=f"{pBar(index, ptotal)} {index}/{ptotal}")
+                  extra=f"{pBar(index, ptotal)} {index}/{ptotal}")
     return (inpath, quickResolution(str(inpath)))
 
 
 def filterImages(inumerated):
     index, ptotal, inpath, res = inumerated
     thread_status(getpid()-args.power, inpath.name, anonymous=args.anonymous,
-                 extra=f"{pBar(index, ptotal)} {index}/{ptotal}")
+                  extra=f"{pBar(index, ptotal)} {index}/{ptotal}")
     filestat = inpath.stat()
     filestime = filestat.st_mtime
     if beforeTime or afterTime:
@@ -224,11 +214,11 @@ def fileparse(inumerated):
         LRPath = LRPath.with_suffix("."+args.extension)
     pid = getpid() - args.power*2
     thread_status(pid, str(relPath), anonymous=args.anonymous,
-                 extra=f"{pBar(1, 2, 2)} {index}/{ptotal}")
+                  extra=f"{pBar(1, 2, 2)} {index}/{ptotal}")
     image = cv2.imread(str(inpath))  # type: ignore
     cv2.imwrite(str(HRPath), image)  # type: ignore
     thread_status(pid, str(relPath), anonymous=args.anonymous,
-                 extra=f"{pBar(2, 2, 2)} {index}/{ptotal}")
+                  extra=f"{pBar(2, 2, 2)} {index}/{ptotal}")
     cv2.imwrite(str(LRPath), cv2.resize(  # type: ignore
         image, (0, 0), fx=1/args.scale, fy=1/args.scale))
     os.utime(str(HRPath), (filestime, filestime))
@@ -242,9 +232,9 @@ def main():
     nextStep(0, f"Input: {args.input}")
     nextStep(0, "Gathering paths ...")
     args.input = Path(args.input)
-    imageList = getFileList(args.input/"**"/"*.png",
-                            args.input/"**"/"*.jpg",
-                            args.input/"**"/"*.webp")
+    imageList = get_file_list(args.input/"**"/"*.png",
+                              args.input/"**"/"*.jpg",
+                              args.input/"**"/"*.webp")
 
     if (args.extension) and (args.extension.startswith(".")):
         args.extension = args.extension[1:]
@@ -261,21 +251,21 @@ def main():
 
     if args.purge:
         nextStep(0, "Purging output ...")
-        for i in getFileList(str(HRFolder/"**/*"),
-                             str(LRFolder/"**/*")):
+        for i in get_file_list(str(HRFolder/"**/*"),
+                               str(LRFolder/"**/*")):
             if i.is_dir():
                 shutil.rmtree(i)
             elif i.is_file():
                 os.remove(i)
         nextStep(0, "Purged.")
 
-    HRFiles = [f.stem for f in getFileList(str((HRFolder / "*")))]
-    LRFiles = [f.stem for f in getFileList(str((LRFolder / "*")))]
-    existList = [i for i in HRFiles if i in LRFiles]
+    hr_files = [f.stem for f in get_file_list(str((HRFolder / "*")))]
+    lr_files = [f.stem for f in get_file_list(str((LRFolder / "*")))]
+    existList = [i for i in hr_files if i in lr_files]
     nextStep(0, f"(source, existed): ({len(imageList)}, {len(existList)})")
     imageList = [i for i in imageList if i.stem not in existList]
     nextStep(0, f"new list: {len(imageList)}")
-    nextStep(0, f"Scale: ({args.scale})")
+    nextStep(0, f"Scale: {args.scale}")
     nextStep(0, f"Size threshold: ({args.minsize}<=x<={args.maxsize})")
     nextStep(0, f"Time threshold: ({afterTime}<=x<={beforeTime})")
 
@@ -309,7 +299,4 @@ def main():
 
 
 if __name__ == "__main__":
-    if args.config:
-        rprint(cfgJson)
-        sys.exit()
     main()

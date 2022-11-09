@@ -56,8 +56,6 @@ for prompt in prefixes:
         'page': 1, 'perpage': 60,
         'path': args.input,
         'postFiltering': [
-            "-grabber:downloaded",
-            "-blood",
             "-piss"
         ],
         'query': {
