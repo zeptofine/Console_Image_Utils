@@ -11,7 +11,7 @@ from multiprocessing import Pool
 from pathlib import Path
 from pprint import pprint
 
-from misc_utils import nextStep, numFmt, pBar, thread_status
+from misc_utils import nextStep, numFmt, pBar, thread_status, configParser
 
 try:
     from rich import print as rprint
@@ -55,70 +55,13 @@ parser.add_argument(
     "--before", help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
 
 parser.add_argument("--power", help="number of cores to use.",
-                    type=int, default=(CPU_COUNT*4)//3)
+                    type=int, default=int((CPU_COUNT/4)*3))
 parser.add_argument("--anonymous", help="hides path names in progress. Doesn't affect the result.",
                     action="store_true")
 parser.add_argument("--simulate", help="skips the conversion step.",
                     action="store_true")
 parser.add_argument("--purge", help="Clears every output before converting.",
                     action="store_true")
-
-
-class configParser:
-    def __init__(self, parser: argparse.ArgumentParser, config_path):
-        self.config_path = config_path
-        self.parser: argparse.ArgumentParser = parser
-        self.original = self.parser
-        self.run_options = self.parser.add_mutually_exclusive_group()
-        self.run_options.add_argument(
-            "--set", help="change a default argument's options.", nargs=2, metavar=('KEY', 'VALUE'))
-        self.run_options.add_argument(
-            "--reset", help="removes a changed option.", metavar='VALUE')
-        self.run_options.add_argument(
-            "--config", help="returns the file config.", action="store_true")
-
-        self.parsed_args = self.parser.parse_args()
-        self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
-        if not os.path.exists(config_path):
-            with open(config_path, "r") as config_file:
-                config_file.write(json.dumps({}))
-                config_file.close()
-        with open(config_path, "r") as config_file:
-            self.config_json = json.loads(config_file.read())
-            self.edited_keys = {}
-            for key in self.config_json.keys():
-                self.edited_keys[key] = self.config_json[key]
-            if self.parsed_args.config:
-                print(self.config_json)
-            config_file.close()
-        if self.parsed_args.set or self.parsed_args.reset:
-            if self.parsed_args.set:
-                potential_args = self.parsed_args.set
-                if potential_args[1] in ["True", "False"]:
-                    potential_args[1] = True if potential_args[1] == "True" else False
-                elif potential_args[1].isdigit():
-                    potential_args[1] = int(potential_args[1])
-                self.edited_keys[potential_args[0]] = potential_args[1]
-            elif self.parsed_args.reset:
-                if self.parsed_args.reset == 'all':
-                    self.edited_keys = {}
-                else:
-                    self.edited_keys.pop(self.parsed_args.reset)
-            with open(config_path, "w") as config_file:
-                config_file.write(json.dumps(self.edited_keys, indent=4))
-                config_file.close()
-        for key in self.edited_keys.keys():
-            if isinstance(self.edited_keys[key], str):
-                exec(f"self.parser.set_defaults({key}='{self.edited_keys[key]}')")
-            else:
-                exec(f"self.parser.set_defaults({key}={self.edited_keys[key]})")
-
-
-    def parse_args(self):
-        return self.parser.parse_args()
-
-    def config(self):
-        return self.config_json
 
 
 cparser = configParser(parser, "config.json")
@@ -230,6 +173,7 @@ def main():
     if not (args.input):
         sys.exit("Please specify an input directory.")
     nextStep(0, f"Input: {args.input}")
+    nextStep(0, f"Threads: {args.power}")
     nextStep(0, "Gathering paths ...")
     args.input = Path(args.input)
     imageList = get_file_list(args.input/"**"/"*.png",
@@ -263,6 +207,7 @@ def main():
     lr_files = [f.stem for f in get_file_list(str((LRFolder / "*")))]
     existList = [i for i in hr_files if i in lr_files]
     nextStep(0, f"(source, existed): ({len(imageList)}, {len(existList)})")
+    nextStep(0, f"Stripping existing files...")
     imageList = [i for i in imageList if i.stem not in existList]
     nextStep(0, f"new list: {len(imageList)}")
     nextStep(0, f"Scale: {args.scale}")
