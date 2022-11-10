@@ -1,7 +1,6 @@
 import argparse
 import datetime
 import glob
-import json
 import multiprocessing
 import os
 import shutil
@@ -12,6 +11,7 @@ from pathlib import Path
 from pprint import pprint
 
 from misc_utils import nextStep, numFmt, pBar, thread_status, configParser
+
 
 try:
     from rich import print as rprint
@@ -26,7 +26,7 @@ try:
     from PIL import Image
 except ImportError:
     print("Please run: 'pip install opencv-python python-dateutil imagesize pillow")
-    exit(1)
+    sys.exit(1)
 
 if sys.platform == "win32":
     print("This application was not made for windows and its compatibility is not guaranteed.")
@@ -35,8 +35,14 @@ try:
     CPU_COUNT: int = os.cpu_count()  # type: ignore
 except:
     CPU_COUNT = 4
-
-parser = argparse.ArgumentParser()
+try:
+    import rich_argparse
+    parser = argparse.ArgumentParser(
+        formatter_class=rich_argparse.RichHelpFormatter)
+except:
+    parser = argparse.ArgumentParser()
+p_size = parser.add_argument_group("Resolution thresholds")
+p_time = parser.add_argument_group("Time thresholds")
 parser.add_argument("-i", "--input")
 parser.add_argument("-x", "--scale", type=int, default=4)
 parser.add_argument("-e", "--extension",
@@ -44,14 +50,14 @@ parser.add_argument("-e", "--extension",
 parser.add_argument("-r", "--recursive", help="preserves the tree hierarchy.",
                     action="store_true")
 
-parser.add_argument("--minsize", help="smallest available image",
+p_size.add_argument("--minsize", help="smallest available image",
                     type=int)
-parser.add_argument("--maxsize", help="largest allowed image.",
+p_size.add_argument("--maxsize", help="largest allowed image.",
                     type=int)
 
-parser.add_argument(
+p_time.add_argument(
     "--after", help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'")
-parser.add_argument(
+p_time.add_argument(
     "--before", help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
 
 parser.add_argument("--power", help="number of cores to use.",
@@ -63,8 +69,8 @@ parser.add_argument("--simulate", help="skips the conversion step.",
 parser.add_argument("--purge", help="Clears every output before converting.",
                     action="store_true")
 
-
-cparser = configParser(parser, "config.json")
+# simple integration!
+cparser = configParser(parser, "config.json", exit_on_change=True)
 args = cparser.parse_args()
 
 beforeTime, afterTime = None, None
@@ -207,9 +213,16 @@ def main():
     lr_files = [f.stem for f in get_file_list(str((LRFolder / "*")))]
     existList = [i for i in hr_files if i in lr_files]
     nextStep(0, f"(source, existed): ({len(imageList)}, {len(existList)})")
-    nextStep(0, f"Stripping existing files...")
+    nextStep(0, f"Filtering out existing files...")
+    # imageList_ = []
+    # for i in enumerate(imageList):
+    #     if i[0] % 1000 == 0:
+    #         thread_status(0, f"{i[0]}/{len(imageList)}", pBar(i[0], len(imageList), 50))
+    #     if i[1].stem not in existList:
+    #         imageList_.append(i[1])
+    # imageList = imageList_
     imageList = [i for i in imageList if i.stem not in existList]
-    nextStep(0, f"new list: {len(imageList)}")
+    nextStep(0, f"Files: {len(imageList)}")
     nextStep(0, f"Scale: {args.scale}")
     nextStep(0, f"Size threshold: ({args.minsize}<=x<={args.maxsize})")
     nextStep(0, f"Time threshold: ({afterTime}<=x<={beforeTime})")

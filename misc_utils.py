@@ -3,11 +3,12 @@ try:
     from rich import print as rprint
 except ImportError:
     rprint = print
+import argparse
+import json
 import os
 import subprocess
 import sys
-import argparse
-import json
+
 
 def pBar(iteration: int, total: int, length=10,
          fill="#", nullp="-", corner="[]", pref='', suff=''):
@@ -22,8 +23,8 @@ def pBar(iteration: int, total: int, length=10,
 
 
 def thread_status(pid, item="", extra="", anonymous=False, extraSize=8):
-    output = f"\033[K {str(pid).ljust(3)} | {str(extra).center(extraSize)}"
-    output += f" | {item}" if not anonymous else " | ..."
+    output = f"\033[K {pid:03} | {str(extra).center(extraSize)}"
+    output += f" | {item}" if not anonymous else ""
     output = ('\n'*pid) + output + ('\033[A'*pid)
     print(output, end="\r")
 
@@ -130,23 +131,42 @@ class numFmt:
 
 
 class configParser:
-    def __init__(self, parser: argparse.ArgumentParser, config_path, autofill=False):
+    '''Creates an easy argparse config utility. It saves arguments given to it. 
+    TODO: I haven't tested keys with lists as inputs or anything similar.
+    '''
+
+    def __init__(self, parser: argparse.ArgumentParser, config_path, autofill=False, exit_on_change=False):
+        '''
+        parser: argparse function. initialize before parse_args()
+
+        config_path: a path to the supposed json file
+
+        autofill: when creating the json, fill it with the initial default values.
+        Otherwise, it will only contain edited defaults.
+        '''
         self.config_path = config_path
         self.parser: argparse.ArgumentParser = parser
-        self.original = self.parser
-        self.run_options = self.parser.add_mutually_exclusive_group()
+        self.config_option_group = self.parser.add_argument_group(
+            'Config options')
+
+        # Add config options
+        self.run_options = self.config_option_group.add_mutually_exclusive_group()
         self.run_options.add_argument(
-            "--set", help="change a default argument's options.", nargs=2, metavar=('KEY', 'VALUE'))
+            "--set", help="change a default argument's options.", nargs="+", metavar=('KEY', 'VALUE'))
         self.run_options.add_argument(
             "--reset", help="removes a changed option.", metavar='VALUE')
 
         self.parsed_args = self.parser.parse_args()
+        # (key, value) to dict
         self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
-        # exclude set, reset if available
+        
+        # exclude set, reset from config
         if "set" in self.kwargs.keys():
             self.kwargs.pop('set')
         if 'reset' in self.kwargs.keys():
             self.kwargs.pop('reset')
+
+        # If config doesn't exist, create an empty/filled version
         if not os.path.exists(config_path):
             with open(config_path, "w") as config_file:
                 if autofill:
@@ -154,19 +174,25 @@ class configParser:
                 else:
                     config_file.write(json.dumps({}))
                 config_file.close()
+
+        # Read config file
         with open(config_path, "r") as config_file:
-            self.config_json = json.loads(config_file.read())
-            self.edited_keys = {}
-            for key in self.config_json.keys():
-                self.edited_keys[key] = self.config_json[key]
+            self.edited_keys = json.loads(config_file.read())
             config_file.close()
+
+        # set defaults
         if self.parsed_args.set or self.parsed_args.reset:
             if self.parsed_args.set:
                 potential_args = self.parsed_args.set
-                if potential_args[1] in ["True", "False"]:
-                    potential_args[1] = True if potential_args[1] == "True" else False
+                # convert to different types
+                if potential_args[1].lower() in ["true", "talse"]:
+                    if potential_args[1].lower() == "true":
+                        potential_args[1] = True
+                    else:
+                        potential_args[1] = False
                 elif potential_args[1].isdigit():
                     potential_args[1] = int(potential_args[1])
+
                 self.edited_keys[potential_args[0]] = potential_args[1]
             elif self.parsed_args.reset:
                 if self.parsed_args.reset == 'all':
@@ -176,20 +202,29 @@ class configParser:
             with open(config_path, "w") as config_file:
                 config_file.write(json.dumps(self.edited_keys, indent=4))
                 config_file.close()
+            if exit_on_change:
+                sys.exit()
+
+        # create exec command to change ArgumentParser defaults
         key_command = []
         for key in self.edited_keys.keys():
             if isinstance(self.edited_keys[key], str):
                 key_command.append(f"{key}='{self.edited_keys[key]}'")
-                exec(f"self.parser.set_defaults({key}='{self.edited_keys[key]}')")
+                exec(
+                    f"self.parser.set_defaults({key}='{self.edited_keys[key]}')")
             else:
                 key_command.append(f"{key}={self.edited_keys[key]}")
+
+        # Change ArgumentParser defaults
         exec(f"self.parser.set_defaults({', '.join(key_command)})")
 
     def parse_args(self):
+        '''parse_args passthrough to simplify integration'''
         return self.parser.parse_args()
 
     def config(self):
-        return self.config_json
+        '''returns a dictionary of all the edited options'''
+        return self.edited_keys
 
 
 if __name__ == "__main__":
