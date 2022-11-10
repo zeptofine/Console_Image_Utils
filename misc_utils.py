@@ -142,6 +142,11 @@ class configParser:
 
         self.parsed_args = self.parser.parse_args()
         self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
+        # exclude set, reset if available
+        if "set" in self.kwargs.keys():
+            self.kwargs.pop('set')
+        if 'reset' in self.kwargs.keys():
+            self.kwargs.pop('reset')
         if not os.path.exists(config_path):
             with open(config_path, "w") as config_file:
                 if autofill:
