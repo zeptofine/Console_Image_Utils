@@ -4,3 +4,4 @@ pillow
 rich
 dateutil
 plyer
+python_argparse

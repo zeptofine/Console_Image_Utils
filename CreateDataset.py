@@ -45,29 +45,21 @@ p_size = parser.add_argument_group("Resolution thresholds")
 p_time = parser.add_argument_group("Time thresholds")
 parser.add_argument("-i", "--input")
 parser.add_argument("-x", "--scale", type=int, default=4)
-parser.add_argument("-e", "--extension",
-                    help="export extension.", default="webp")
-parser.add_argument("-r", "--recursive", help="preserves the tree hierarchy.",
-                    action="store_true")
+parser.add_argument("-e", "--extension", help="export extension.", default="webp")
+parser.add_argument("-r", "--recursive", help="preserves the tree hierarchy.", action="store_true")
+parser.add_argument("--power", help="number of cores to use.", type=int, default=int((CPU_COUNT/4)*3))
+parser.add_argument("--anonymous", help="hides path names in progress. Doesn't affect the result.", action="store_true")
+parser.add_argument("--simulate", help="skips the conversion step.", action="store_true")
+parser.add_argument("--purge", help="Clears every output before converting.", action="store_true")
 
-p_size.add_argument("--minsize", help="smallest available image",
-                    type=int)
-p_size.add_argument("--maxsize", help="largest allowed image.",
-                    type=int)
+p_size.add_argument("--minsize", help="smallest available image", type=int)
+p_size.add_argument("--maxsize", help="largest allowed image.", type=int)
 
 p_time.add_argument(
     "--after", help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'")
 p_time.add_argument(
     "--before", help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
 
-parser.add_argument("--power", help="number of cores to use.",
-                    type=int, default=int((CPU_COUNT/4)*3))
-parser.add_argument("--anonymous", help="hides path names in progress. Doesn't affect the result.",
-                    action="store_true")
-parser.add_argument("--simulate", help="skips the conversion step.",
-                    action="store_true")
-parser.add_argument("--purge", help="Clears every output before converting.",
-                    action="store_true")
 
 # simple integration!
 cparser = configParser(parser, "config.json", exit_on_change=True)

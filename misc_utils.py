@@ -23,14 +23,13 @@ def pBar(iteration: int, total: int, length=10,
 
 
 def thread_status(pid, item="", extra="", anonymous=False, extraSize=8):
-    output = f"\033[K {pid:03} | {str(extra).center(extraSize)}"
+    output = f"\033[K {pid} | {str(extra).center(extraSize)}"
     output += f" | {item}" if not anonymous else ""
     output = ('\n'*pid) + output + ('\033[A'*pid)
     print(output, end="\r")
 
 
 def nextStep(order, text):
-    '''prints the steps in accord to CreateDataset'''
     rprint(" "+f"{str(order)}. {text}", end="\n\033[K")
 
 
