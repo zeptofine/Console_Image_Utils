@@ -44,10 +44,10 @@ try:
         formatter_class=rich_argparse.RichHelpFormatter)
 except:
     parser = argparse.ArgumentParser()
-p_time = parser.add_argument_group("Time thresholds")
+
 parser.add_argument("-i", "--input")
 parser.add_argument("-x", "--scale", type=int, default=4)
-parser.add_argument("-e", "--extension", help="export extension.", default="webp")
+parser.add_argument("-e", "--extension", help="export extension.", metavar="EXT", default="webp")
 parser.add_argument("-r", "--recursive", help="preserves the tree hierarchy.", action="store_true")
 parser.add_argument("--power", help="number of cores to use.", type=int, default=int((CPU_COUNT/4)*3))
 parser.add_argument("--anonymous", help="hides path names in progress. Doesn't affect the result.", action="store_true")
@@ -58,8 +58,9 @@ p_size = parser.add_argument_group("Resolution thresholds")
 p_size.add_argument("--minsize", help="smallest available image", type=int)
 p_size.add_argument("--maxsize", help="largest allowed image.", type=int)
 
-p_time.add_argument("--after", help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'")
-p_time.add_argument("--before", help="Only uses before a given date.               ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
+p_time = parser.add_argument_group("Time thresholds")
+p_time.add_argument("--after", help="Only uses files modified after a given date. ex. '2020', or '2009 sept 16th'")
+p_time.add_argument("--before", help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
 
 cparser = configParser(parser, "config.json", exit_on_change=True)
 args = cparser.parse_args()
@@ -130,40 +131,40 @@ def filterImages(inumerated):
 
 
 def fileparse(inumerated):
-    index, ptotal, inpath, filestat, HRFolder, LRFolder = inumerated
+    index, ptotal, inpath, filestat, hr_folder, lr_folder = inumerated
     filestime = filestat.st_mtime
     inpath: Path = inpath
-    relPath = Path(inpath.relative_to(args.input))
+    rel_path = Path(inpath.relative_to(args.input))
     if args.recursive:
-        HRPath: Path = HRFolder / relPath
-        LRPath: Path = LRFolder / relPath
+        hr_path: Path = hr_folder / rel_path
+        hr_path: Path = lr_folder / rel_path
         try:
-            if not HRPath.parent.exists():
-                os.makedirs(HRPath.parent)
+            if not hr_path.parent.exists():
+                os.makedirs(hr_path.parent)
         except OSError:
             pass
         try:
-            if not LRPath.parent.exists():
-                os.makedirs(LRPath.parent)
+            if not hr_path.parent.exists():
+                os.makedirs(hr_path.parent)
         except OSError:
             pass
     else:
-        HRPath = HRFolder / inpath.name
-        LRPath = LRFolder / inpath.name
+        hr_path = hr_folder / inpath.name
+        hr_path = lr_folder / inpath.name
     if args.extension:
-        HRPath = HRPath.with_suffix("."+args.extension)
-        LRPath = LRPath.with_suffix("."+args.extension)
+        hr_path = hr_path.with_suffix("."+args.extension)
+        hr_path = hr_path.with_suffix("."+args.extension)
     pid = getpid() - args.power*2
-    thread_status(pid, str(relPath), anonymous=args.anonymous,
+    thread_status(pid, str(rel_path), anonymous=args.anonymous,
                   extra=f"{pBar(1, 2, 2)} {index}/{ptotal}")
     image = cv2.imread(str(inpath))  # type: ignore
-    cv2.imwrite(str(HRPath), image)  # type: ignore
-    thread_status(pid, str(relPath), anonymous=args.anonymous,
+    cv2.imwrite(str(hr_path), image)  # type: ignore
+    thread_status(pid, str(rel_path), anonymous=args.anonymous,
                   extra=f"{pBar(2, 2, 2)} {index}/{ptotal}")
-    cv2.imwrite(str(LRPath), cv2.resize(  # type: ignore
+    cv2.imwrite(str(hr_path), cv2.resize(  # type: ignore
         image, (0, 0), fx=1/args.scale, fy=1/args.scale))
-    os.utime(str(HRPath), (filestime, filestime))
-    os.utime(str(LRPath), (filestime, filestime))
+    os.utime(str(hr_path), (filestime, filestime))
+    os.utime(str(hr_path), (filestime, filestime))
 
 
 def main():
@@ -174,47 +175,40 @@ def main():
     nextStep(0, f"Threads: {args.power}")
     nextStep(0, "Gathering paths ...")
     args.input = Path(args.input)
-    imageList = get_file_list(args.input/"**"/"*.png",
+    image_list = get_file_list(args.input/"**"/"*.png",
                               args.input/"**"/"*.jpg",
                               args.input/"**"/"*.webp")
 
     if (args.extension) and (args.extension.startswith(".")):
         args.extension = args.extension[1:]
 
-    HRFolder = args.input.parent / (str(args.scale)+"xHR")
-    LRFolder = args.input.parent / (str(args.scale)+"xLR")
+    hr_folder = args.input.parent / (str(args.scale)+"xHR")
+    lr_folder = args.input.parent / (str(args.scale)+"xLR")
     if args.extension:
-        HRFolder = Path(str(HRFolder)+f"-{args.extension}")
-        LRFolder = Path(str(LRFolder)+f"-{args.extension}")
-    if not HRFolder.exists():
-        os.makedirs(HRFolder)
-    if not LRFolder.exists():
-        os.makedirs(LRFolder)
+        hr_folder = Path(str(hr_folder)+f"-{args.extension}")
+        lr_folder = Path(str(lr_folder)+f"-{args.extension}")
+    if not hr_folder.exists():
+        os.makedirs(hr_folder)
+    if not lr_folder.exists():
+        os.makedirs(lr_folder)
 
     if args.purge:
         nextStep(0, "Purging output ...")
-        for i in get_file_list(str(HRFolder/"**/*"),
-                               str(LRFolder/"**/*")):
+        for i in get_file_list(str(hr_folder/"**/*"),
+                               str(lr_folder/"**/*")):
             if i.is_dir():
                 shutil.rmtree(i)
             elif i.is_file():
                 os.remove(i)
         nextStep(0, "Purged.")
 
-    hr_files = [f.stem for f in get_file_list(str((HRFolder / "*")))]
-    lr_files = [f.stem for f in get_file_list(str((LRFolder / "*")))]
+    hr_files = [f.stem for f in get_file_list(str((hr_folder / "*")))]
+    lr_files = [f.stem for f in get_file_list(str((lr_folder / "*")))]
     existList = [i for i in hr_files if i in lr_files]
-    nextStep(0, f"(source, existed): ({len(imageList)}, {len(existList)})")
+    nextStep(0, f"(source, existed): ({len(image_list)}, {len(existList)})")
     nextStep(0, f"Filtering out existing files...")
-    # imageList_ = []
-    # for i in enumerate(imageList):
-    #     if i[0] % 1000 == 0:
-    #         thread_status(0, f"{i[0]}/{len(imageList)}", pBar(i[0], len(imageList), 50))
-    #     if i[1].stem not in existList:
-    #         imageList_.append(i[1])
-    # imageList = imageList_
-    imageList = [i for i in imageList if i.stem not in existList]
-    nextStep(0, f"Files: {len(imageList)}")
+    image_list = [i for i in image_list if i.stem not in existList]
+    nextStep(0, f"Files: {len(image_list)}")
     nextStep(0, f"Scale: {args.scale}")
     nextStep(0, f"Size threshold: ({args.minsize}<=x<={args.maxsize})")
     nextStep(0, f"Time threshold: ({afterTime}<=x<={beforeTime})")
@@ -222,29 +216,29 @@ def main():
     nextStep(1, "Gathering info")
     with Pool(args.power) as pool:
         # (index, total, data)
-        intuple = [(i[0], len(imageList), i[1]) for i in enumerate(imageList)]
-        imgTuples = list(pool.map(gatherInfo, intuple))
+        intuple = [(i[0], len(image_list), i[1]) for i in enumerate(image_list)]
+        img_tuples = list(pool.map(gatherInfo, intuple))
 
     nextStep(2, "Filtering bad images")
     with Pool(args.power) as pool:
-        intuple = [(i[0], len(imageList))+i[1] for i in enumerate(imgTuples)]
-        imgsFiltered = list(pool.map(filterImages, intuple))
-    imgsFiltered: list = [i for i in imgsFiltered if i is not None]
-    nextStep(2, f"New images: {len(imgsFiltered)}")
+        intuple = [(i[0], len(image_list))+i[1] for i in enumerate(img_tuples)]
+        imgs_filtered = list(pool.map(filterImages, intuple))
+    imgs_filtered: list = [i for i in imgs_filtered if i is not None]
+    nextStep(2, f"New images: {len(imgs_filtered)}")
 
     if args.simulate:
         return
 
-    if (len(imgsFiltered) == 0):
+    if (len(imgs_filtered) == 0):
         rprint("No images left to process")
         sys.exit(0)
     nextStep(3, "Processing ...")
     with Pool(args.power) as p:
         # add index and total
-        intuple = [(i[0], len(imgsFiltered))+i[1]
-                   for i in enumerate(imgsFiltered)]
+        intuple = [(i[0], len(imgs_filtered))+i[1]
+                   for i in enumerate(imgs_filtered)]
         # append HRFolder and LRFolder
-        intuple = [i+(HRFolder, LRFolder) for i in intuple]
+        intuple = [i+(hr_folder, lr_folder) for i in intuple]
         imgs = p.map(fileparse, intuple)
 
 
