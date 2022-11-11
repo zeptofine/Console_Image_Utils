@@ -44,10 +44,10 @@ try:
         formatter_class=rich_argparse.RichHelpFormatter)
 except:
     parser = argparse.ArgumentParser()
-
+p_time = parser.add_argument_group("Time thresholds")
 parser.add_argument("-i", "--input")
 parser.add_argument("-x", "--scale", type=int, default=4)
-parser.add_argument("-e", "--extension", help="export extension.", metavar="EXT", default="webp")
+parser.add_argument("-e", "--extension", help="export extension.", default="webp")
 parser.add_argument("-r", "--recursive", help="preserves the tree hierarchy.", action="store_true")
 parser.add_argument("--power", help="number of cores to use.", type=int, default=int((CPU_COUNT/4)*3))
 parser.add_argument("--anonymous", help="hides path names in progress. Doesn't affect the result.", action="store_true")
@@ -58,9 +58,8 @@ p_size = parser.add_argument_group("Resolution thresholds")
 p_size.add_argument("--minsize", help="smallest available image", type=int)
 p_size.add_argument("--maxsize", help="largest allowed image.", type=int)
 
-p_time = parser.add_argument_group("Time thresholds")
-p_time.add_argument("--after", help="Only uses files modified after a given date. ex. '2020', or '2009 sept 16th'")
-p_time.add_argument("--before", help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
+p_time.add_argument("--after", help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'")
+p_time.add_argument("--before", help="Only uses before a given date.               ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
 
 cparser = configParser(parser, "config.json", exit_on_change=True)
 args = cparser.parse_args()
@@ -137,23 +136,23 @@ def fileparse(inumerated):
     rel_path = Path(inpath.relative_to(args.input))
     if args.recursive:
         hr_path: Path = hr_folder / rel_path
-        hr_path: Path = lr_folder / rel_path
+        lr_path: Path = lr_folder / rel_path
         try:
             if not hr_path.parent.exists():
                 os.makedirs(hr_path.parent)
         except OSError:
             pass
         try:
-            if not hr_path.parent.exists():
-                os.makedirs(hr_path.parent)
+            if not lr_path.parent.exists():
+                os.makedirs(lr_path.parent)
         except OSError:
             pass
     else:
         hr_path = hr_folder / inpath.name
-        hr_path = lr_folder / inpath.name
+        lr_path = lr_folder / inpath.name
     if args.extension:
         hr_path = hr_path.with_suffix("."+args.extension)
-        hr_path = hr_path.with_suffix("."+args.extension)
+        lr_path = lr_path.with_suffix("."+args.extension)
     pid = getpid() - args.power*2
     thread_status(pid, str(rel_path), anonymous=args.anonymous,
                   extra=f"{pBar(1, 2, 2)} {index}/{ptotal}")
@@ -161,10 +160,10 @@ def fileparse(inumerated):
     cv2.imwrite(str(hr_path), image)  # type: ignore
     thread_status(pid, str(rel_path), anonymous=args.anonymous,
                   extra=f"{pBar(2, 2, 2)} {index}/{ptotal}")
-    cv2.imwrite(str(hr_path), cv2.resize(  # type: ignore
+    cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
         image, (0, 0), fx=1/args.scale, fy=1/args.scale))
     os.utime(str(hr_path), (filestime, filestime))
-    os.utime(str(hr_path), (filestime, filestime))
+    os.utime(str(lr_path), (filestime, filestime))
 
 
 def main():
