@@ -10,11 +10,12 @@ from multiprocessing import Pool
 from pathlib import Path
 from pprint import pprint
 
-from misc_utils import nextStep, numFmt, pBar, thread_status, configParser
-
+from misc_utils import configParser, nextStep, numFmt, pBar, thread_status
 
 try:
     from rich import print as rprint
+    from rich.traceback import install
+    install(show_locals=True)
 except ImportError:
     rprint = print
 
@@ -35,13 +36,14 @@ try:
     CPU_COUNT: int = os.cpu_count()  # type: ignore
 except:
     CPU_COUNT = 4
+    
+    
 try:
     import rich_argparse
     parser = argparse.ArgumentParser(
         formatter_class=rich_argparse.RichHelpFormatter)
 except:
     parser = argparse.ArgumentParser()
-p_size = parser.add_argument_group("Resolution thresholds")
 p_time = parser.add_argument_group("Time thresholds")
 parser.add_argument("-i", "--input")
 parser.add_argument("-x", "--scale", type=int, default=4)
@@ -52,18 +54,16 @@ parser.add_argument("--anonymous", help="hides path names in progress. Doesn't a
 parser.add_argument("--simulate", help="skips the conversion step.", action="store_true")
 parser.add_argument("--purge", help="Clears every output before converting.", action="store_true")
 
+p_size = parser.add_argument_group("Resolution thresholds")
 p_size.add_argument("--minsize", help="smallest available image", type=int)
 p_size.add_argument("--maxsize", help="largest allowed image.", type=int)
 
-p_time.add_argument(
-    "--after", help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'")
-p_time.add_argument(
-    "--before", help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
+p_time.add_argument("--after", help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'")
+p_time.add_argument("--before", help="Only uses before a given date.               ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
 
-
-# simple integration!
 cparser = configParser(parser, "config.json", exit_on_change=True)
 args = cparser.parse_args()
+
 
 beforeTime, afterTime = None, None
 if args.after or args.before:
