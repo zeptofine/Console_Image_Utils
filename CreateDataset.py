@@ -15,7 +15,7 @@ from misc_utils import configParser, nextStep, numFmt, pBar, thread_status
 try:
     from rich import print as rprint
     from rich.traceback import install
-    install(show_locals=True)
+    install(show_locals=False)
 except ImportError:
     rprint = print
 
@@ -31,35 +31,52 @@ except ImportError:
 
 if sys.platform == "win32":
     print("This application was not made for windows and its compatibility is not guaranteed.")
-    time.sleep(5)
+    time.sleep(3)
+
 try:
     CPU_COUNT: int = os.cpu_count()  # type: ignore
 except:
     CPU_COUNT = 4
-    
-    
+
+
 try:
     import rich_argparse
     parser = argparse.ArgumentParser(
         formatter_class=rich_argparse.RichHelpFormatter)
 except:
     parser = argparse.ArgumentParser()
-p_time = parser.add_argument_group("Time thresholds")
-parser.add_argument("-i", "--input")
+parser.add_argument("-i", "--input",
+                    help="Input folder.")
 parser.add_argument("-x", "--scale", type=int, default=4)
-parser.add_argument("-e", "--extension", help="export extension.", default="webp")
-parser.add_argument("-r", "--recursive", help="preserves the tree hierarchy.", action="store_true")
-parser.add_argument("--power", help="number of cores to use.", type=int, default=int((CPU_COUNT/4)*3))
-parser.add_argument("--anonymous", help="hides path names in progress. Doesn't affect the result.", action="store_true")
-parser.add_argument("--simulate", help="skips the conversion step.", action="store_true")
-parser.add_argument("--purge", help="Clears every output before converting.", action="store_true")
+parser.add_argument("-e", "--extension", metavar="EXT", default="webp",
+                    help="export extension.")
+parser.add_argument("-r", "--recursive", action="store_true", default=False,
+                    help="preserves the tree hierarchy.")
+parser.add_argument("--power", type=int, default=int((CPU_COUNT/4)*3),
+                    help="number of cores to use.")
+parser.add_argument("--anonymous", action="store_true",
+                    help="hides path names in progress. Doesn't affect the result.")
+parser.add_argument("--simulate", action="store_true",
+                    help="skips the conversion step.")
+parser.add_argument("--purge", action="store_true",
+                    help="Clears every output before converting.")
+parser.add_argument("--sort", choices=["path", "basename", "extension"],
+                    help="sorting method.")
+
 
 p_size = parser.add_argument_group("Resolution thresholds")
-p_size.add_argument("--minsize", help="smallest available image", type=int)
-p_size.add_argument("--maxsize", help="largest allowed image.", type=int)
+p_size.add_argument("--minsize", type=int,
+                    help="smallest available image")
+p_size.add_argument("--maxsize", type=int,
+                    help="largest allowed image.")
 
-p_time.add_argument("--after", help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'")
-p_time.add_argument("--before", help="Only uses before a given date.               ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
+
+p_time = parser.add_argument_group("Time thresholds")
+p_time.add_argument("--after",
+                    help="Only uses files modified after a given date.  ex. '2020', or '2009 sept 16th'")
+p_time.add_argument("--before",
+                    help="Only uses before a given date.               ex. 'Wed Jun 9 04:26:40 2018', or 'Jun 9'")
+
 
 cparser = configParser(parser, "config.json", exit_on_change=True)
 args = cparser.parse_args()
@@ -70,10 +87,12 @@ if args.after or args.before:
     try:
         if args.after:
             args.after = str(args.after)
-            afterTime = timeparser.parse(args.after, fuzzy=True)
+            afterTime = timeparser.parse(args.after,
+                                         fuzzy=True)
         if args.before:
             args.before = str(args.before)
-            beforeTime = timeparser.parse(args.before, fuzzy=True)
+            beforeTime = timeparser.parse(args.before,
+                                          fuzzy=True)
     except ParserError as pe:
         rprint("Given time is invalid!")
         sys.exit(str(pe))
@@ -82,44 +101,40 @@ if args.after or args.before:
             sys.exit(f"{beforeTime} is older than {afterTime}!")
 
 
-def getpid():
+def getpid() -> int:
     pid = multiprocessing.current_process()
     return int(pid.name.rsplit("-", 1)[-1])
 
 
-def get_file_list(*args):
+def get_file_list(*args) -> list[Path]:
     globlist = [glob.glob(str(p), recursive=True)
                 for p in args]  # get list of lists of paths
     return [Path(y) for x in globlist for y in x]  # combine them into a list
 
 
-def quickResolution(file):
+def quickResolution(file) -> tuple:
     try:
         return imagesize.get(file)
     except:
         return Image.open(file).size
 
 
-def gatherInfo(inumerated):
+def to_recursive(path) -> Path:
+    return Path(str(path).replace(os.sep, "_"))
+
+
+def filterImages(inumerated) -> tuple[Path, os.stat_result] | None:
     index, ptotal, inpath = inumerated
     thread_status(getpid(), inpath.name, anonymous=args.anonymous,
-                  extra=f"{pBar(index, ptotal)} {index}/{ptotal}")
-    return (inpath, quickResolution(str(inpath)))
-
-
-def filterImages(inumerated):
-    index, ptotal, inpath, res = inumerated
-    thread_status(getpid()-args.power, inpath.name, anonymous=args.anonymous,
-                  extra=f"{pBar(index, ptotal)} {index}/{ptotal}")
-    filestat = inpath.stat()
-    filestime = filestat.st_mtime
+                  extra=f"{pBar(index, ptotal, 20)} {index}/{ptotal}")
+    filestat = (args.input / inpath).stat()
     if beforeTime or afterTime:
-        filetime = datetime.datetime.fromtimestamp(filestime)
+        filetime = datetime.datetime.fromtimestamp(filestat.st_mtime)
         if (beforeTime) and (filetime > beforeTime):
             return
         if (afterTime) and (filetime < afterTime):
             return
-    width, height = res
+    width, height = quickResolution(str(args.input / inpath))
     if args.minsize and ((width < args.minsize) or (height < args.minsize)):
         return
     if args.maxsize and ((width > args.maxsize) or (height > args.maxsize)):
@@ -129,36 +144,28 @@ def filterImages(inumerated):
     return (inpath, filestat)
 
 
-def fileparse(inumerated):
+def fileparse(inumerated) -> None:
     index, ptotal, inpath, filestat, hr_folder, lr_folder = inumerated
     filestime = filestat.st_mtime
-    inpath: Path = inpath
-    rel_path = Path(inpath.relative_to(args.input))
+    pid = getpid() - args.power
+
     if args.recursive:
-        hr_path: Path = hr_folder / rel_path
-        lr_path: Path = lr_folder / rel_path
-        try:
-            if not hr_path.parent.exists():
-                os.makedirs(hr_path.parent)
-        except OSError:
-            pass
-        try:
-            if not lr_path.parent.exists():
-                os.makedirs(lr_path.parent)
-        except OSError:
-            pass
+        hr_path = Path(hr_folder / inpath)
+        lr_path = Path(lr_folder / inpath)
     else:
-        hr_path = hr_folder / inpath.name
-        lr_path = lr_folder / inpath.name
+        hr_path = Path(hr_folder / to_recursive(inpath))
+        lr_path = Path(lr_folder / to_recursive(inpath))
+    os.makedirs(hr_path.parent, exist_ok=True)
+    os.makedirs(lr_path.parent, exist_ok=True)
     if args.extension:
         hr_path = hr_path.with_suffix("."+args.extension)
         lr_path = lr_path.with_suffix("."+args.extension)
-    pid = getpid() - args.power*2
-    thread_status(pid, str(rel_path), anonymous=args.anonymous,
+
+    image = cv2.imread(str(args.input / inpath))  # type: ignore
+    thread_status(pid, inpath, anonymous=args.anonymous,
                   extra=f"{pBar(1, 2, 2)} {index}/{ptotal}")
-    image = cv2.imread(str(inpath))  # type: ignore
     cv2.imwrite(str(hr_path), image)  # type: ignore
-    thread_status(pid, str(rel_path), anonymous=args.anonymous,
+    thread_status(pid, inpath, anonymous=args.anonymous,
                   extra=f"{pBar(2, 2, 2)} {index}/{ptotal}")
     cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
         image, (0, 0), fx=1/args.scale, fy=1/args.scale))
@@ -167,7 +174,6 @@ def fileparse(inumerated):
 
 
 def main():
-
     if not (args.input):
         sys.exit("Please specify an input directory.")
     nextStep(0, f"Input: {args.input}")
@@ -175,8 +181,11 @@ def main():
     nextStep(0, "Gathering paths ...")
     args.input = Path(args.input)
     image_list = get_file_list(args.input/"**"/"*.png",
-                              args.input/"**"/"*.jpg",
-                              args.input/"**"/"*.webp")
+                               args.input/"**"/"*.jpg",
+                               args.input/"**"/"*.webp")
+
+    nextStep(0, f"Getting relative paths...")
+    image_list = [i.relative_to(args.input) for i in image_list]
 
     if (args.extension) and (args.extension.startswith(".")):
         args.extension = args.extension[1:]
@@ -186,15 +195,13 @@ def main():
     if args.extension:
         hr_folder = Path(str(hr_folder)+f"-{args.extension}")
         lr_folder = Path(str(lr_folder)+f"-{args.extension}")
-    if not hr_folder.exists():
-        os.makedirs(hr_folder)
-    if not lr_folder.exists():
-        os.makedirs(lr_folder)
+    os.makedirs(hr_folder, exist_ok=True)
+    os.makedirs(lr_folder, exist_ok=True)
 
     if args.purge:
         nextStep(0, "Purging output ...")
-        for i in get_file_list(str(hr_folder/"**/*"),
-                               str(lr_folder/"**/*")):
+        for i in get_file_list(str(hr_folder/"**"/"*"),
+                               str(lr_folder/"**"/"*")):
             if i.is_dir():
                 shutil.rmtree(i)
             elif i.is_file():
@@ -204,26 +211,34 @@ def main():
     hr_files = [f.stem for f in get_file_list(str((hr_folder / "*")))]
     lr_files = [f.stem for f in get_file_list(str((lr_folder / "*")))]
     existList = [i for i in hr_files if i in lr_files]
+
     nextStep(0, f"(source, existed): ({len(image_list)}, {len(existList)})")
     nextStep(0, f"Filtering out existing files...")
-    image_list = [i for i in image_list if i.stem not in existList]
+    image_list = [i for i in image_list
+                  if i.stem not in existList]
+    image_list = [i for i in image_list
+                  if to_recursive(i).stem not in existList]
+
+    nextStep(0, f"Sorting...")
+    if args.sort == "basename":
+        image_list = sorted(image_list, key=lambda x: x.stem, reverse=True)
+    elif args.sort == "extension":
+        image_list = sorted(image_list, key=lambda x: x.suffix)
+    else:
+        image_list = sorted(image_list)
+
     nextStep(0, f"Files: {len(image_list)}")
     nextStep(0, f"Scale: {args.scale}")
     nextStep(0, f"Size threshold: ({args.minsize}<=x<={args.maxsize})")
     nextStep(0, f"Time threshold: ({afterTime}<=x<={beforeTime})")
 
-    nextStep(1, "Gathering info")
+    nextStep(1, "Filtering bad images")
     with Pool(args.power) as pool:
-        # (index, total, data)
-        intuple = [(i[0], len(image_list), i[1]) for i in enumerate(image_list)]
-        img_tuples = list(pool.map(gatherInfo, intuple))
-
-    nextStep(2, "Filtering bad images")
-    with Pool(args.power) as pool:
-        intuple = [(i[0], len(image_list))+i[1] for i in enumerate(img_tuples)]
+        intuple = [(i[0], len(image_list), i[1])
+                   for i in enumerate(image_list)]
         imgs_filtered = list(pool.map(filterImages, intuple))
     imgs_filtered: list = [i for i in imgs_filtered if i is not None]
-    nextStep(2, f"New images: {len(imgs_filtered)}")
+    nextStep(1, f"New images: {len(imgs_filtered)}")
 
     if args.simulate:
         return
@@ -231,7 +246,7 @@ def main():
     if (len(imgs_filtered) == 0):
         rprint("No images left to process")
         sys.exit(0)
-    nextStep(3, "Processing ...")
+    nextStep(2, "Processing ...")
     with Pool(args.power) as p:
         # add index and total
         intuple = [(i[0], len(imgs_filtered))+i[1]

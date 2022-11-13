@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 
-def pBar(iteration: int, total: int, length=10,
+def pBar(iteration: int, total: int, length=20,
          fill="#", nullp="-", corner="[]", pref='', suff=''):
     color1, color2 = (
         "\033[93m", "\033[92m")
