@@ -163,10 +163,10 @@ def fileparse(inumerated) -> None:
 
     image = cv2.imread(str(args.input / inpath))  # type: ignore
     thread_status(pid, inpath, anonymous=args.anonymous,
-                  extra=f"{pBar(1, 2, 2)} {index}/{ptotal}")
+                  extra=f"{pBar(index, ptotal, 40)} {pBar(1, 2, 2)} {index}/{ptotal}")
     cv2.imwrite(str(hr_path), image)  # type: ignore
     thread_status(pid, inpath, anonymous=args.anonymous,
-                  extra=f"{pBar(2, 2, 2)} {index}/{ptotal}")
+                  extra=f"{pBar(index, ptotal, 40)} {pBar(2, 2, 2)} {index}/{ptotal}")
     cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
         image, (0, 0), fx=1/args.scale, fy=1/args.scale))
     os.utime(str(hr_path), (filestime, filestime))
