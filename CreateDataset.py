@@ -237,7 +237,7 @@ def main():
         intuple = [(i[0], len(image_list), i[1])
                    for i in enumerate(image_list)]
         imgs_filtered = list(pool.map(filterImages, intuple))
-    imgs_filtered: list = [i for i in imgs_filtered if i is not None]
+    imgs_filtered = [i for i in imgs_filtered if i is not None]
     nextStep(1, f"New images: {len(imgs_filtered)}")
 
     if args.simulate:
