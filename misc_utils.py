@@ -184,7 +184,7 @@ class configParser:
             if self.parsed_args.set:
                 potential_args = self.parsed_args.set
                 # convert to different types
-                if potential_args[1].lower() in ["true", "talse"]:
+                if potential_args[1].lower() in ["true", "false"]:
                     if potential_args[1].lower() == "true":
                         potential_args[1] = True
                     else:
@@ -192,6 +192,9 @@ class configParser:
                 elif potential_args[1].isdigit():
                     potential_args[1] = int(potential_args[1])
 
+                if not potential_args[0] in self.kwargs.keys():
+                    raise KeyError ("Given key not found")
+                
                 self.edited_keys[potential_args[0]] = potential_args[1]
             elif self.parsed_args.reset:
                 if self.parsed_args.reset == 'all':
