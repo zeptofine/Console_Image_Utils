@@ -182,7 +182,7 @@ def fileparse(inumerated) -> None:
         hr_path = hr_path.with_suffix("."+args.extension)
         lr_path = lr_path.with_suffix("."+args.extension)
 
-    image = cv2.imread(str(args.input / inpath))  # type: ignore
+    image = cv2.imread(str(args.input / inpath))
     thread_status(pid, inpath, anonymous=args.anonymous,
                   extra=f"{index}/{ptotal} {p_bar(index, ptotal, 16)}{p_bar(1, 2, 2)}")
     cv2.imwrite(str(hr_path), image)  # type: ignore

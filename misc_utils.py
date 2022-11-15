@@ -26,8 +26,9 @@ def p_bar(iteration: int, total: int, length=20,
 
 
 def thread_status(pid: int, item: str = "", extra: str = "", anonymous: bool = False,
-                  item_size=os.get_terminal_size().columns,):
+                  item_size=None):
     len_extra = len(ansi_escape.sub('', extra))
+    item_size = item_size if item_size else os.get_terminal_size().columns
     output = f"{pid}: "
     output += f"{item}" if not anonymous else ""
     output = output[:item_size-len_extra-2]
@@ -182,7 +183,7 @@ class ConfigParser:
                                          nargs=2, metavar=('KEY', 'VAL'),
                                         help="change a default argument's options")
         self.config_options.add_argument(self.default_prefix*2+"reset", metavar='VALUE',
-                                      help="removes a changed option.")
+                                      help="removes a changed option. pass 'all' to reset them all.")
 
         self.parsed_args, _ = self.parser.parse_known_args()
         self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
