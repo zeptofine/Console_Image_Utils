@@ -188,6 +188,7 @@ class ConfigParser:
         # exclude set, reset from config
         self.kwargs.pop('set', None)
         self.kwargs.pop('reset', None)
+        self.kwargs.pop('reset_all', None)
 
         self.config_path = self.kwargs['config_path']
 
@@ -226,11 +227,11 @@ class ConfigParser:
                     raise KeyError("Given key not found")
 
                 self.edited_keys[potential_args[0]] = potential_args[1]
-            elif self.parsed_args.reset or self.parsed_args.reset_all:
-                if self.parsed_args.reset_all:
-                    self.edited_keys = {}
-                else:
-                    self.edited_keys.pop(self.parsed_args.reset, None)
+            elif self.parsed_args.reset:
+                self.edited_keys.pop(self.parsed_args.reset, None)
+            elif self.parsed_args.reset_all:
+                self.edited_keys = {}
+
             with open(self.config_path, "w", encoding='utf-8') as config_file:
                 config_file.write(json.dumps(self.edited_keys, indent=4))
                 config_file.close()
