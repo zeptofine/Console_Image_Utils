@@ -3,7 +3,11 @@ import argparse
 import json
 import os
 import sys
-
+try:
+    from rich.traceback import install
+    install()
+except ImportError as e:
+    print(e)
 parser = argparse.ArgumentParser()
 parser.add_argument('-s', '--sort', action="store_true",
                     help="Sorts the list of entries.")
@@ -33,8 +37,8 @@ if not (args.input or args.web or args.max):
             args.max = int(settings_files[2])
             settings.close()
 
-assert os.path.exists(
-    "prefixes.txt"), "You don't have a prefixes.txt file! (a prompt per line)"
+if not os.path.exists("prefixes.txt"):
+    raise FileNotFoundError("You don't have a prefixes.txt file! (a prompt per line)")
 with open("prefixes.txt", "r") as prfile:
     prefixes = prfile.readlines()
     prfile.close()

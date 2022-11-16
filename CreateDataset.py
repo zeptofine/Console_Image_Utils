@@ -21,7 +21,7 @@ from misc_utils import ConfigParser, next_step, p_bar, thread_status
 try:
     from rich import print as rprint
     from rich.traceback import install
-    install(show_locals=False)
+    install()
 except ImportError:
     rprint = print
 
@@ -60,7 +60,7 @@ p_req.add_argument("-i", "--input",
 p_req.add_argument("-x", "--scale", type=int, default=4,
                    help="scale to downscale LR images")
 
-p_req.add_argument("-e", "--extension", metavar="EXT", default="webp",
+p_req.add_argument("-e", "--extension", metavar="EXT", default=None,
                    help="export extension.")
 p_req.add_argument("-r", "--recursive", action="store_true", default=False,
                    help="preserves the tree hierarchy.")
@@ -68,31 +68,31 @@ p_req.add_argument("-r", "--recursive", action="store_true", default=False,
 p_mods = parser.add_argument_group("Modifiers")
 p_mods.add_argument("-p", "--power", type=int, default=int((CPU_COUNT/4)*3),
                     help="number of cores to use.")
+p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
+                    help="only gathers a given number of images. None if disabled.")
 p_mods.add_argument("--anonymous", action="store_true",
                     help="hides path names in progress. Doesn't affect the result.")
 p_mods.add_argument("--simulate", action="store_true",
                     help="skips the conversion step.")
 p_mods.add_argument("--purge", action="store_true",
                     help="Clears every output before converting.")
-p_mods.add_argument("--image_limit", type=int, default=-1,
-                    help="only gathers a given number of images. -1 if disabled.")
 
 p_filters = parser.add_argument_group("Filters")
-p_filters.add_argument("--whitelist", type=str,
+p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
                        help="only allows paths with the given string.")
-p_filters.add_argument("--blacklist", type=str,
+p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
                        help="strips paths with the given string.")
 
 p_sort = parser.add_argument_group("Sorting")
-p_sort.add_argument("--sort", choices=["full", "name", "ext", "len", "rand"], default="name",
+p_sort.add_argument("--sort", choices=["full", "name", "ext", "len"], default="name",
                     help="sorting method.")
 p_sort.add_argument("--reverse", action="store_true",
                     help="reverses the sorting direction.")
 
 p_thresh = parser.add_argument_group("Thresholds")
-p_thresh.add_argument("--minsize", type=int,
+p_thresh.add_argument("--minsize", type=int, metavar="MIN",
                       help="smallest available image")
-p_thresh.add_argument("--maxsize", type=int,
+p_thresh.add_argument("--maxsize", type=int, metavar="MAX",
                       help="largest allowed image.")
 p_thresh.add_argument("--after", type=str,
                       help="Only uses files modified after a given date."
@@ -123,8 +123,7 @@ if args.after or args.before:
 
 
 def getpid() -> int:
-    pid = multiprocessing.current_process()
-    return int(pid.name.rsplit("-", 1)[-1])
+    return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
 
 
 def get_file_list(*paths) -> list[Path]:
@@ -178,16 +177,17 @@ def fileparse(inumerated) -> None:
         lr_path = Path(lr_folder / to_recursive(inpath))
     os.makedirs(hr_path.parent, exist_ok=True)
     os.makedirs(lr_path.parent, exist_ok=True)
-    if args.extension:
+
+    if args.extension not in [None, 'None']:
         hr_path = hr_path.with_suffix("."+args.extension)
         lr_path = lr_path.with_suffix("."+args.extension)
 
     image = cv2.imread(str(args.input / inpath))
     thread_status(pid, inpath, anonymous=args.anonymous,
-                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 16)}{p_bar(1, 2, 2)}")
+                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 14)}{p_bar(1, 2, 4)}")
     cv2.imwrite(str(hr_path), image)  # type: ignore
     thread_status(pid, inpath, anonymous=args.anonymous,
-                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 16)}{p_bar(1, 2, 2)}")
+                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 14)}{p_bar(2, 2, 4)}")
     cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
         image, (0, 0), fx=1/args.scale, fy=1/args.scale))
     os.utime(str(hr_path), (filestime, filestime))
@@ -197,24 +197,33 @@ def fileparse(inumerated) -> None:
 def main():
     if not args.input:
         sys.exit("Please specify an input directory.")
-    next_step(0, f"Input: {args.input}")
-    next_step(0, f"Threads: {args.power}")
-    next_step(0, f"Scale: {args.scale}")
-    next_step(0, "Gathering paths ...")
+
+    next_step(0, f"(Input: {args.input}) (Recursive: {args.recursive})")
+    next_step(0, f"(Scale: {args.scale}) (Threads: {args.power})")
+    next_step(0, f"(Extension: {args.extension})")
+    next_step(0, f"(anonymous: {args.anonymous})")
+    next_step(0, f"Size threshold: ({args.minsize} <= x <= {args.maxsize})")
+    next_step(0, f"Time threshold: ({afterTime} <= x <= {beforeTime})")
+    next_step(0, f"(sort: {args.sort}) (reverse: {args.reverse})")
+    print()
+
     args.input = Path(args.input)
-    image_list = get_file_list(args.input/"**"/"*.png",
-                               args.input/"**"/"*.jpg",
-                               args.input/"**"/"*.webp")
-    if args.image_limit != -1:
+    image_list = get_file_list(args.input / "**" / "*.png",
+                               args.input / "**" / "*.jpg",
+                               args.input / "**" / "*.webp")
+    if args.image_limit is not None:
         image_list = image_list[:args.image_limit]
+
+    next_step(1, f"images: {len(image_list)}")
+
     # filter out blackisted/whitelisted items
     if args.whitelist:
+        next_step(1, f"(whitelist: {args.whitelist})")
         image_list = [i for i in image_list if args.whitelist in str(i)]
     if args.blacklist:
-        image_list = [
-            i for i in image_list if args.blacklist not in str(i)]
+        next_step(1, f"(blacklist: {args.blacklist})")
+        image_list = [i for i in image_list if args.blacklist not in str(i)]
 
-    next_step(0, "Getting relative paths ...")
     image_list = [i.relative_to(args.input) for i in image_list]
     if (args.extension) and (args.extension.startswith(".")):
         args.extension = args.extension[1:]
@@ -228,65 +237,65 @@ def main():
     os.makedirs(lr_folder, exist_ok=True)
 
     if args.purge:
-        next_step(0, "Purging output ...")
+        next_step(1, f"purge: {args.purge}")
         for i in get_file_list(str(hr_folder / "**" / "*"),
                                str(lr_folder / "**" / "*")):
             if i.is_dir():
                 shutil.rmtree(i)
             elif i.is_file():
                 os.remove(i)
-        next_step(0, "Purged.")
+        next_step(1, "Purged.")
 
     # get files that were already converted
-    hr_files = [f.relative_to(hr_folder).with_suffix("") for f in get_file_list(
-                str((hr_folder / "**" / "*"))) if not f.is_dir()]
-    lr_files = [f.relative_to(lr_folder).with_suffix("") for f in get_file_list(
-                str((lr_folder / "**" / "*"))) if not f.is_dir()]
-    exist_list = [i for i in hr_files if i in lr_files]
-
+    next_step(1, "Filtering files ...")
+    hr_files = set([f.relative_to(hr_folder).with_suffix("") for f in get_file_list(
+        str((hr_folder / "**" / "*"))) if not f.is_dir()])
+    lr_files = set([f.relative_to(lr_folder).with_suffix("") for f in get_file_list(
+        str((lr_folder / "**" / "*"))) if not f.is_dir()])
+    exist_list = set([i for i in hr_files if i in lr_files])
     unfiltered_len = len(image_list)
-    next_step(0, "Filtering out existing files ...")
     image_list = [i for i in image_list
                   if i.with_suffix("") not in exist_list]
     image_list = [i for i in image_list
                   if to_recursive(i).with_suffix("") not in exist_list]
-    next_step(
-        0, f"(source, existed, new): ({unfiltered_len}, {len(exist_list)}, {len(image_list)})")
+    next_step(1,
+              f"(existing: {len(exist_list)}) (discarded: {unfiltered_len-len(image_list)})")
+    next_step(1, f"images: {len(image_list)}")
 
     # Sort files based on different attributes
-    next_step(0, "Sorting ...")
-    if args.sort == "name":
-        image_list = sorted(image_list, key=lambda x: x.stem, reverse=True)
-    elif args.sort == "ext":
-        image_list = sorted(image_list, key=lambda x: x.suffix)
-    elif args.sort == "len":
-        image_list = sorted(image_list, key=lambda x: len(str(x)))
-    elif args.sort == "rand":
-        shuffle(image_list)
-    else:
-        image_list = sorted(image_list)
-
+    if args.sort:
+        next_step(1, f"Sorting...")
+        sorting_methods = {
+            "name": lambda x: x.stem,
+            "ext": lambda x: x.suffix,
+            "len": lambda x: len(str(x)),
+            "full": lambda x: x
+        }
+        image_list = sorted(image_list, key=sorting_methods[args.sort])
     if args.reverse:
         image_list = image_list[::-1]
+    print()
 
-    next_step(0, f"Size threshold: ({args.minsize}<=x<={args.maxsize})")
-    next_step(0, f"Time threshold: ({afterTime}<=x<={beforeTime})")
-
-    next_step(1, "Filtering bad images")
-    with Pool(args.power) as pool:
+    # Remove files that hit the arg limits
+    next_step(2, "Filtering bad images ...")
+    with Pool(args.power) as p:
         intuple = [(i[0], len(image_list), i[1])
                    for i in enumerate(image_list)]
-        imgs_filtered = list(pool.map(filter_imgs, intuple))
+        imgs_filtered = list(p.map(filter_imgs, intuple))
     imgs_filtered = [i for i in imgs_filtered if i is not None]
-    next_step(1, f"New images: {len(imgs_filtered)}")
+    next_step(2, f"discarded {len(intuple)-len(imgs_filtered)} images")
+    print()
 
+    # exit if args.simulate
     if args.simulate:
+        next_step(3, "Simulate == True")
         return
 
+    # Process images
     if len(imgs_filtered) == 0:
         rprint("No images left to process")
         sys.exit(0)
-    next_step(2, "Processing ...")
+    next_step(3, f"processing: {len(imgs_filtered)} images...")
     with Pool(args.power) as p:
         intuple = [(i[0], len(imgs_filtered))+i[1]
                    for i in enumerate(imgs_filtered)]

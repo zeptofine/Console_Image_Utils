@@ -1,19 +1,20 @@
 '''misc_utils, mainly for CreateDataset'''
-try:
-    from rich import print as rprint
-except ImportError:
-    rprint = print
 import argparse
 import json
 import os
 import re
 import sys
 
+try:
+    from rich import print as rprint
+except ImportError:
+    rprint = print
+
 ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 def p_bar(iteration: int, total: int, length=20,
-         fill="#", nullp="-", corner="[]", pref='', suff=''):
+          fill="#", nullp="-", corner="[]", pref='', suff=''):
     """returns a colored progress bar"""
     color1, color2 = (
         "\033[93m", "\033[92m")
@@ -124,32 +125,22 @@ class numFmt:
 
 
 class ConfigParser:
-    '''Creates an easy argparse config utility. It saves arguments given to it.
+    '''Creates an easy argparse config utility. It saves arguments given to it to a path.'''
 
-    *help will be overwritten.*
-    TODO: I haven't tested keys with lists as inputs or anything similar.
-
-    '''
-
-    def __init__(self, parser: argparse.ArgumentParser, config_path, autofill=False, exit_on_change=False, rewrite_help=True):
+    def __init__(self, parser: argparse.ArgumentParser, config_path, autofill=False, exit_on_change=False, rewrite_help=True) -> None:
         '''
-        parser: argparse function. initialize before parse_args()
-
+        parser: argparse function.
         config_path: a path to the supposed json file
-
         autofill: when creating the json, fill it with the initial default values.
         Otherwise, it will only contain edited defaults.
-
         exit_on_change: when commands set and reset are passed, exit once finished.
-
         rewrite_help: remove and readd help argument to properly write defaults.
         '''
         self.config_path = config_path
 
         # parent parser
-        self.p_parser: argparse.ArgumentParser = parser
-        self.default_prefix = '-' if \
-            '-' in self.p_parser.prefix_chars else self.p_parser.prefix_chars[0]
+        self.p_parser = parser
+        self.default_prefix = '-' if '-' in self.p_parser.prefix_chars else self.p_parser.prefix_chars[0]
 
         # remove --help from parser
         if self.p_parser.add_help & rewrite_help:
@@ -181,9 +172,11 @@ class ConfigParser:
         self.config_options = self.config_option_group.add_mutually_exclusive_group()
         self.config_options.add_argument(self.default_prefix*2+"set",
                                          nargs=2, metavar=('KEY', 'VAL'),
-                                        help="change a default argument's options")
+                                         help="change a default argument's options")
         self.config_options.add_argument(self.default_prefix*2+"reset", metavar='VALUE',
-                                      help="removes a changed option. pass 'all' to reset them all.")
+                                         help="removes a changed option.")
+        self.config_options.add_argument(self.default_prefix*2+"reset_all", action="store_true",
+                                         help="resets every option.")
 
         self.parsed_args, _ = self.parser.parse_known_args()
         self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
@@ -207,7 +200,9 @@ class ConfigParser:
             config_file.close()
 
         # set defaults
-        if self.parsed_args.set or self.parsed_args.reset:
+        if self.parsed_args.set or \
+                self.parsed_args.reset or \
+                self.parsed_args.reset_all:
             if self.parsed_args.set:
                 potential_args = self.parsed_args.set
                 # convert to different types
@@ -216,6 +211,8 @@ class ConfigParser:
                         potential_args[1] = True
                     else:
                         potential_args[1] = False
+                elif potential_args[1].lower() in ["none", "null"]:
+                    potential_args[1] = None
                 elif potential_args[1].isdigit():
                     potential_args[1] = int(potential_args[1])
 
@@ -223,11 +220,11 @@ class ConfigParser:
                     raise KeyError("Given key not found")
 
                 self.edited_keys[potential_args[0]] = potential_args[1]
-            elif self.parsed_args.reset:
-                if self.parsed_args.reset == 'all':
+            elif self.parsed_args.reset or self.parsed_args.reset_all:
+                if self.parsed_args.reset_all:
                     self.edited_keys = {}
                 else:
-                    self.edited_keys.pop(self.parsed_args.reset)
+                    self.edited_keys.pop(self.parsed_args.reset, None)
             with open(self.config_path, "w", encoding='utf-8') as config_file:
                 config_file.write(json.dumps(self.edited_keys, indent=4))
                 config_file.close()
