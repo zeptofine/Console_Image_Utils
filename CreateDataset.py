@@ -90,6 +90,8 @@ p_sort.add_argument("--reverse", action="store_true",
                     help="reverses the sorting direction.")
 
 p_thresh = parser.add_argument_group("Thresholds")
+p_thresh.add_argument("--no_mod", action="store_true",
+                      help="disables the modulo check for if the file is divisible by scale. May encounter errors later on.")
 p_thresh.add_argument("--minsize", type=int, metavar="MIN",
                       help="smallest available image")
 p_thresh.add_argument("--maxsize", type=int, metavar="MAX",
@@ -159,8 +161,10 @@ def filter_imgs(inumerated) -> tuple[Path, os.stat_result] | None:
         return
     if args.maxsize and ((width > args.maxsize) or (height > args.maxsize)):
         return
-    if (width % args.scale != 0) or (height % args.scale != 0):
-        return
+    if not args.no_mod:
+        if (width % args.scale != 0 or height % args.scale != 0):
+            return
+
     return (inpath, filestat)
 
 
