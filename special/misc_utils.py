@@ -238,7 +238,7 @@ class ConfigParser:
             if exit_on_change:
                 sys.exit()
 
-        # edit defaults   ( modified from argparse.py )
+        # modified from argparse.py <- parser.set_defaults(**kwargs)
         self.parser._defaults.update(self.edited_keys)
         for action in self.parser._actions:
             if action.dest in self.edited_keys:

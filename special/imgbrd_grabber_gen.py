@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import sys
+from misc_utils import ConfigParser
 try:
     from rich.traceback import install
     install()
@@ -11,13 +12,14 @@ except ImportError as e:
 parser = argparse.ArgumentParser()
 parser.add_argument('-s', '--sort', action="store_true",
                     help="Sorts the list of entries.")
-parser.add_argument(
-    '-i', '--input', help="input for the folder name. will use settings.txt if not omitted.")
-parser.add_argument(
-    '-w', '--web', help="input the website. will use settings.txt if not omitted.")
-parser.add_argument(
-    '--max', help="max images to give per item. will use settings.txt if not omitted.")
-args = parser.parse_args()
+parser.add_argument('-i', '--input', default="./",
+                    help="input for the folder name. will use settings.txt if not omitted.")
+parser.add_argument('-w', '--web', default="e621.net",
+                    help="input the website. will use settings.txt if not omitted.")
+parser.add_argument('--max', type=int, default=1000,
+                    help="max images to give per item. will use settings.txt if not omitted.")
+cparser = ConfigParser(parser, "config.json", autofill=True)
+args = cparser.parse_args()
 
 defaultPaths = ["e621.net",
                 os.path.dirname(os.path.realpath(__file__)), "1000"]
@@ -38,7 +40,8 @@ if not (args.input or args.web or args.max):
             settings.close()
 
 if not os.path.exists("prefixes.txt"):
-    raise FileNotFoundError("You don't have a prefixes.txt file! (a prompt per line)")
+    raise FileNotFoundError(
+        "You don't have a prefixes.txt file! (a prompt per line)")
 with open("prefixes.txt", "r") as prfile:
     prefixes = prfile.readlines()
     prfile.close()

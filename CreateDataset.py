@@ -16,7 +16,7 @@ from pathlib import Path
 # from pprint import pprint
 from random import shuffle
 
-from misc_utils import ConfigParser, next_step, p_bar, thread_status
+from special.misc_utils import ConfigParser, next_step, p_bar, thread_status
 
 try:
     from rich import print as rprint
@@ -84,7 +84,7 @@ p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
                        help="strips paths with the given string.")
 
 p_sort = parser.add_argument_group("Sorting")
-p_sort.add_argument("--sort", choices=["full", "name", "ext", "len"], default="name",
+p_sort.add_argument("--sort", choices=["full", "name", "ext", "len"], default="full",
                     help="sorting method.")
 p_sort.add_argument("--reverse", action="store_true",
                     help="reverses the sorting direction.")
@@ -146,7 +146,7 @@ def to_recursive(path) -> Path:
 def filter_imgs(inumerated) -> tuple[Path, os.stat_result] | None:
     index, ptotal, inpath = inumerated
     thread_status(getpid(), inpath, anonymous=args.anonymous,
-                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 20)}")
+                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 10)}")
     filestat = (args.input / inpath).stat()
     if beforeTime or afterTime:
         filetime = datetime.datetime.fromtimestamp(filestat.st_mtime)
@@ -184,10 +184,10 @@ def fileparse(inumerated) -> None:
 
     image = cv2.imread(str(args.input / inpath))
     thread_status(pid, inpath, anonymous=args.anonymous,
-                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 14)}{p_bar(1, 2, 4)}")
+                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 6)}{p_bar(1, 2, 2)}")
     cv2.imwrite(str(hr_path), image)  # type: ignore
     thread_status(pid, inpath, anonymous=args.anonymous,
-                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 14)}{p_bar(2, 2, 4)}")
+                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 6)}{p_bar(2, 2, 2)}")
     cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
         image, (0, 0), fx=1/args.scale, fy=1/args.scale))
     os.utime(str(hr_path), (filestime, filestime))
@@ -198,16 +198,19 @@ def main():
     if not args.input:
         sys.exit("Please specify an input directory.")
 
-    next_step(0, f"(Input: {args.input}) (Recursive: {args.recursive})")
-    next_step(0, f"(Scale: {args.scale}) (Threads: {args.power})")
-    next_step(0, f"(Extension: {args.extension})")
-    next_step(0, f"(anonymous: {args.anonymous})")
+    next_step(0, f"(input: {args.input})")
+    next_step(0, f"(scale: {args.scale})"
+              f" (threads: {args.power})"
+              f" (recursive: {args.recursive})")
+    next_step(0, f"(extension: {args.extension})"
+              f" (anonymous: {args.anonymous})")
     next_step(0, f"Size threshold: ({args.minsize} <= x <= {args.maxsize})")
     next_step(0, f"Time threshold: ({afterTime} <= x <= {beforeTime})")
     next_step(0, f"(sort: {args.sort}) (reverse: {args.reverse})")
     print()
 
     args.input = Path(args.input)
+    next_step(1, "gathering images")
     image_list = get_file_list(args.input / "**" / "*.png",
                                args.input / "**" / "*.jpg",
                                args.input / "**" / "*.webp")
@@ -218,11 +221,11 @@ def main():
 
     # filter out blackisted/whitelisted items
     if args.whitelist:
-        next_step(1, f"(whitelist: {args.whitelist})")
         image_list = [i for i in image_list if args.whitelist in str(i)]
+        next_step(1, f"(whitelist: {args.whitelist}): {len(image_list)}")
     if args.blacklist:
-        next_step(1, f"(blacklist: {args.blacklist})")
         image_list = [i for i in image_list if args.blacklist not in str(i)]
+        next_step(1, f"(blacklist: {args.blacklist}): {len(image_list)}")
 
     image_list = [i.relative_to(args.input) for i in image_list]
     if (args.extension) and (args.extension.startswith(".")):
