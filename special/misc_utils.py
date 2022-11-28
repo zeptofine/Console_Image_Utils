@@ -124,7 +124,6 @@ class numFmt:
             return self.__dict__
 
 
-# TODO: implement ConfigParser into imgbrd-grabber-gen.py
 class ConfigParser:
     '''Creates an easy argparse config utility. It saves arguments given to it to a path.'''
 
@@ -184,14 +183,14 @@ class ConfigParser:
 
         self.parsed_args, _ = self.parser.parse_known_args()
         self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
+        self.config_path = self.kwargs['config_path']
 
         # exclude set, reset from config
         self.kwargs.pop('set', None)
         self.kwargs.pop('reset', None)
         self.kwargs.pop('reset_all', None)
-
-        self.config_path = self.kwargs['config_path']
-
+        self.kwargs.pop('config_path', None)
+        
         # If config doesn't exist, create an empty/filled version
         if not os.path.exists(self.config_path):
             with open(self.config_path, "w", encoding='utf-8') as config_file:
