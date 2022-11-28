@@ -13,10 +13,10 @@ import sys
 import time
 from multiprocessing import Pool
 from pathlib import Path
-# from pprint import pprint
 from random import shuffle
 
-from special.misc_utils import ConfigParser, next_step, p_bar, thread_status
+from special.misc_utils import next_step, p_bar, thread_status
+from special.ConfigParser import ConfigParser
 
 try:
     from rich import print as rprint
