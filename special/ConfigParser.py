@@ -101,7 +101,7 @@ class ConfigParser:
                     potential_args[1] = int(potential_args[1])
 
                 if not potential_args[0] in self.kwargs.keys():
-                    raise KeyError("Given key not found")
+                    sys_exit("Given key not found")
 
                 self.edited_keys[potential_args[0]] = potential_args[1]
             elif self.parsed_args.reset:

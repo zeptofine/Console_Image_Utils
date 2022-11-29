@@ -66,8 +66,8 @@ p_req.add_argument("-r", "--recursive", action="store_true", default=False,
                    help="preserves the tree hierarchy.")
 
 p_mods = parser.add_argument_group("Modifiers")
-p_mods.add_argument("-p", "--power", type=int, default=int((CPU_COUNT/4)*3),
-                    help="number of cores to use.")
+p_mods.add_argument("--threads", type=int, default=int((CPU_COUNT/4)*3),
+                    help="number of total threads.")
 p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
                     help="only gathers a given number of images. None if disabled.")
 p_mods.add_argument("--anonymous", action="store_true",
@@ -128,6 +128,15 @@ def getpid() -> int:
     return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
 
 
+def intersect_lists(x: list | tuple, y: list | tuple) -> list:
+    outlist = []
+    for i in x:
+        if i in y:
+            outlist.append(i)
+            y.remove(i)
+    return outlist
+
+
 def get_file_list(*paths) -> list[Path]:
     globlist = [glob.glob(str(p), recursive=True)
                 for p in paths]  # get list of lists of paths
@@ -171,7 +180,7 @@ def filter_imgs(inumerated) -> tuple[Path, os.stat_result] | None:
 def fileparse(inumerated) -> None:
     index, ptotal, inpath, filestat, hr_folder, lr_folder = inumerated
     filestime = filestat.st_mtime
-    pid = getpid() - args.power
+    pid = getpid() - args.threads
 
     if args.recursive:
         hr_path = Path(hr_folder / inpath)
@@ -204,17 +213,16 @@ def main():
 
     next_step(0, f"(input: {args.input})")
     next_step(0, f"(scale: {args.scale})"
-              f" (threads: {args.power})"
-              f" (recursive: {args.recursive})")
-    next_step(0, f"(extension: {args.extension})"
-              f" (anonymous: {args.anonymous})")
+                f" (threads: {args.threads})"
+                f" (recursive: {args.recursive})")
+    next_step(0, f"(extension: {args.extension}) (anonymous: {args.anonymous})")
     next_step(0, f"Size threshold: ({args.minsize} <= x <= {args.maxsize})")
     next_step(0, f"Time threshold: ({afterTime} <= x <= {beforeTime})")
     next_step(0, f"(sort: {args.sort}) (reverse: {args.reverse})")
     print()
 
-    args.input = Path(args.input)
     next_step(1, "gathering images")
+    args.input = Path(args.input)
     image_list = get_file_list(args.input / "**" / "*.png",
                                args.input / "**" / "*.jpg",
                                args.input / "**" / "*.webp")
@@ -244,7 +252,7 @@ def main():
     os.makedirs(lr_folder, exist_ok=True)
 
     if args.purge:
-        next_step(1, f"purge: {args.purge}")
+        next_step(1, "Purging...")
         for i in get_file_list(str(hr_folder / "**" / "*"),
                                str(lr_folder / "**" / "*")):
             if i.is_dir():
@@ -254,17 +262,18 @@ def main():
         next_step(1, "Purged.")
 
     # get files that were already converted
-    next_step(1, "Filtering files ...")
+    next_step(1, "Filtering existing ...")
     hr_files = set([f.relative_to(hr_folder).with_suffix("") for f in get_file_list(
         str((hr_folder / "**" / "*"))) if not f.is_dir()])
     lr_files = set([f.relative_to(lr_folder).with_suffix("") for f in get_file_list(
         str((lr_folder / "**" / "*"))) if not f.is_dir()])
-    exist_list = set([i for i in hr_files if i in lr_files])
+    exist_list = set(intersect_lists(hr_files, lr_files))
     unfiltered_len = len(image_list)
     image_list = [i for i in image_list
                   if i.with_suffix("") not in exist_list]
     image_list = [i for i in image_list
                   if to_recursive(i).with_suffix("") not in exist_list]
+    del hr_files, lr_files # lol
     next_step(1,
               f"(existing: {len(exist_list)}) (discarded: {unfiltered_len-len(image_list)})")
     next_step(1, f"images: {len(image_list)}")
@@ -285,7 +294,7 @@ def main():
 
     # Remove files that hit the arg limits
     next_step(2, "Filtering bad images ...")
-    with Pool(args.power) as p:
+    with Pool(args.threads) as p:
         intuple = [(i[0], len(image_list), i[1])
                    for i in enumerate(image_list)]
         imgs_filtered = list(p.map(filter_imgs, intuple))
@@ -303,7 +312,7 @@ def main():
         rprint("No images left to process")
         sys.exit(0)
     next_step(3, f"processing: {len(imgs_filtered)} images...")
-    with Pool(args.power) as p:
+    with Pool(args.threads) as p:
         intuple = [(i[0], len(imgs_filtered))+i[1]
                    for i in enumerate(imgs_filtered)]
         intuple = [i+(hr_folder, lr_folder) for i in intuple]
