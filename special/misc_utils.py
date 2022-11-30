@@ -1,9 +1,6 @@
 '''misc_utils, mainly for CreateDataset'''
-import argparse
-import json
 import os
 import re
-import sys
 
 try:
     from rich import print as rprint
@@ -60,7 +57,6 @@ class numFmt:
                            'Ebit', 'Zbit', 'Ybit']
 
         def fmt_iec(self) -> tuple:
-            # 1000000 / (10**3)**2
             for fmt in enumerate(self.iec):
                 num = self.amount / (2**10)**fmt[0]
                 if (num <= (2**10) and (num >= 1)):
@@ -100,7 +96,6 @@ class numFmt:
                            'EB', 'ZB', 'YB']
 
         def fmt_iec(self) -> tuple:
-            # 1000000 / (10**3)**2
             for fmt in enumerate(self.iec):
                 num = self.amount / (2**10)**fmt[0]
                 if (num <= (2**10) and (num >= 1)):
@@ -126,7 +121,6 @@ class numFmt:
 
 if __name__ == "__main__":
     machinesize = numFmt.Byte(1000000)
-    # machinesizeByte = machinesize.to_bytes()
     rprint(machinesize.dict())
     rprint(machinesize)
     rprint(machinesize.fmt_iec())
