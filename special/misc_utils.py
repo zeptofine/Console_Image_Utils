@@ -14,7 +14,7 @@ ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 def p_bar(iteration: int, total: int, length=20,
-          fill="#", nullp="-", corner="[]", pref='', suff=''):
+          fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
     """returns a colored progress bar"""
     color1, color2 = (
         "\033[93m", "\033[92m")
@@ -27,7 +27,7 @@ def p_bar(iteration: int, total: int, length=20,
 
 
 def thread_status(pid: int, item: str = "", extra: str = "", anonymous: bool = False,
-                  item_size=None):
+                  item_size=None) -> None:
     len_extra = len(ansi_escape.sub('', extra))
     item_size = item_size if item_size else os.get_terminal_size().columns
     output = f"{pid}: "
@@ -38,7 +38,7 @@ def thread_status(pid: int, item: str = "", extra: str = "", anonymous: bool = F
     print(output, end="\r")
 
 
-def next_step(order, text):
+def next_step(order, text) -> None:
     rprint(" "+f"{str(order)}: {text}", end="\n\033[K")
 
 
