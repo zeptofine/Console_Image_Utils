@@ -2,10 +2,12 @@ import argparse
 import os
 import json
 from sys import exit as sys_exit
+
 class ConfigParser:
     '''Creates an easy argparse config utility. It saves arguments given to it to a path.'''
 
-    def __init__(self, parser: argparse.ArgumentParser, config_path, autofill=False, exit_on_change=False, rewrite_help=True) -> None:
+    def __init__(self, parser: argparse.ArgumentParser, 
+                 config_path, autofill: bool=False, exit_on_change: bool=False, rewrite_help: bool= True) -> None:
         '''
         parser: argparse function.
         config_path: a path to the supposed json file
@@ -14,10 +16,10 @@ class ConfigParser:
         exit_on_change: when commands set and reset are passed, exit once finished.
         rewrite_help: remove and readd help argument to properly write defaults.
         '''
-        self.config_path = config_path
 
         # parent parser
         self.p_parser = parser
+        self.config_path = config_path
         self.default_prefix = '-' if '-' in self.p_parser.prefix_chars else self.p_parser.prefix_chars[0]
 
         # remove --help from parser
@@ -68,7 +70,7 @@ class ConfigParser:
         self.kwargs.pop('reset', None)
         self.kwargs.pop('reset_all', None)
         self.kwargs.pop('config_path', None)
-        
+
         # If config doesn't exist, create an empty/filled version
         if not os.path.exists(self.config_path):
             with open(self.config_path, "w", encoding='utf-8') as config_file:
@@ -122,7 +124,7 @@ class ConfigParser:
                 action.default = self.edited_keys[action.dest]
 
         # Add --help back in
-        if self.p_parser.add_help & rewrite_help:
+        if self.p_parser.add_help and rewrite_help:
             self.parser.add_argument(
                 self.parser.prefix_chars+"h", self.parser.prefix_chars*2+"help",
                 action='help', default=argparse.SUPPRESS,

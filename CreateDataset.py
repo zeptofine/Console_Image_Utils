@@ -48,7 +48,7 @@ packages = {'rich':            "rich",
             'pillow':          "PIL",
             'rich-argparse':   "rich_argparse"}
 import_list = [sys.executable, '-m', 'pip', 'install'] + list(packages.keys())
-try: 
+try:
     import dateutil.parser
     import cv2
     from imagesize import get as imagesize_get
@@ -65,9 +65,10 @@ except (ImportError, ModuleNotFoundError):
         for package in packages.keys():
             if try_import(packages[package]) is None:
                 import_failed = True
-                print(f"`{package}` not detected. Attempting to install...")
+                print("-"*os.get_terminal_size().columns +
+                      f"\n{package} not detected. Attempting to install...\n")
                 with subprocess.Popen([sys.executable, '-m', 'pip', 'install', package],
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE) as importproc:
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE) as importproc:
                     while importproc.poll() is None:
                         if importproc.stdout is not None:
                             importproc_string = importproc.stdout.readline().decode('UTF-8').strip()
@@ -79,8 +80,6 @@ except (ImportError, ModuleNotFoundError):
                     raise ModuleNotFoundError(f"Couldn't install '{package}'.")
         if import_failed:
             os.execv(sys.executable, ['python'] + sys.argv)
-
-
 
     except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
         rprint(f"{type(err2).__name__}: {err2}")
@@ -124,7 +123,7 @@ p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
                        help="strips paths with the given string.")
 
 p_sort = parser.add_argument_group("Sorting")
-p_sort.add_argument("--sort", choices=["full", "name", "ext", "len"], default="full",
+p_sort.add_argument("--sort", choices=["name", "ext", "len", "full"], default="full",
                     help="sorting method.")
 p_sort.add_argument("--reverse", action="store_true",
                     help="reverses the sorting direction.")
