@@ -23,7 +23,7 @@ from special.misc_utils import next_step, p_bar, thread_status
 from special.ConfigParser import ConfigParser
 
 if sys.platform == "win32":
-    print("This application was not made for windows. Use WSL2 (untested)")
+    print("This application was not made for windows. Try Using WSL2 (untested)")
     time.sleep(3)
 
 
@@ -40,6 +40,7 @@ def try_import(package) -> int | str:
     except ModuleNotFoundError:
         return None
 
+
 packages = {'rich':            "rich",
             'opencv-python':   "cv2",
             'python-dateutil': "dateutil",
@@ -47,39 +48,43 @@ packages = {'rich':            "rich",
             'pillow':          "PIL",
             'rich-argparse':   "rich_argparse"}
 import_list = [sys.executable, '-m', 'pip', 'install'] + list(packages.keys())
-try:
-    import_failed = False
-    for package in packages.keys():
-        if try_import(packages[package]) is None:
-            import_failed = True
-            print(f"`{package}` not detected. Attempting to install...")
-            with subprocess.Popen([sys.executable, '-m', 'pip', 'install', package],
-                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE) as importproc:
-                while importproc.poll() is None:
-                    if importproc.stdout is not None:
-                        importproc_string = importproc.stdout.readline().decode('UTF-8').strip()
-                        if importproc_string != "":
-                            print(f'({package}) : {importproc_string}')
-                    time.sleep(0.05)
-            print()
-            if try_import(packages[package]) is None:
-                raise ModuleNotFoundError(f"Couldn't install '{package}'.")
-    if import_failed:
-        os.execv(sys.executable, ['python'] + sys.argv)
-
+try: 
     import dateutil.parser
     import cv2
     from imagesize import get as imagesize_get
     from rich_argparse import ArgumentDefaultsRichHelpFormatter
     from PIL import Image
-    
+
     from rich import print as rprint
     from rich.traceback import install
     install()
 
-except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
-    rprint(f"{type(err2).__name__}: {err2}")
-    sys.exit(127)  # command not found
+except (ImportError, ModuleNotFoundError):
+    try:
+        import_failed = False
+        for package in packages.keys():
+            if try_import(packages[package]) is None:
+                import_failed = True
+                print(f"`{package}` not detected. Attempting to install...")
+                with subprocess.Popen([sys.executable, '-m', 'pip', 'install', package],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE) as importproc:
+                    while importproc.poll() is None:
+                        if importproc.stdout is not None:
+                            importproc_string = importproc.stdout.readline().decode('UTF-8').strip()
+                            if importproc_string != "":
+                                print(f'({package}) : {importproc_string}')
+                        time.sleep(0.05)
+                print()
+                if try_import(packages[package]) is None:
+                    raise ModuleNotFoundError(f"Couldn't install '{package}'.")
+        if import_failed:
+            os.execv(sys.executable, ['python'] + sys.argv)
+
+
+
+    except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
+        rprint(f"{type(err2).__name__}: {err2}")
+        sys.exit(127)  # command not found
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
 
