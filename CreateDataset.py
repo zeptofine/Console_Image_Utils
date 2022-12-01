@@ -20,7 +20,7 @@ from multiprocessing import Pool
 from pathlib import Path
 
 from special.misc_utils import next_step, p_bar, thread_status
-from special.ConfigParser import ConfigParser
+from special.ConfigArgParser import ConfigParser
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
 
@@ -114,15 +114,15 @@ packages = {
 }
 
 try:
-    import dateutil.parser
-    import cv2
-    from imagesize import get as imagesize_get
-    from rich_argparse import ArgumentDefaultsRichHelpFormatter
-    from PIL import Image
-
     from rich import print as rprint
     from rich.traceback import install
     install()
+
+    import cv2
+    import dateutil.parser
+    from imagesize import get as imagesize_get
+    from PIL import Image
+    from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
 except (ImportError, ModuleNotFoundError):
     try:
@@ -142,7 +142,8 @@ except (ImportError, ModuleNotFoundError):
                         time.sleep(0.05)
                 print()
                 if try_import(packages[package]) is None:
-                    raise ModuleNotFoundError(f"Failed to install '{package}'.")
+                    raise ModuleNotFoundError(
+                        f"Failed to install '{package}'.")
         if import_failed and not args.parse_error:
             os.execv(sys.executable, ['python'] + sys.argv + ['--parse_error'])
         elif import_failed and args.parse_error:

@@ -4,7 +4,7 @@ import json
 import os
 import sys
 
-from ConfigParser import ConfigParser
+from special.ConfigArgParser import ConfigParser
 
 try:
     from rich.traceback import install
