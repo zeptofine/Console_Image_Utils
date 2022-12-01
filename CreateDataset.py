@@ -22,9 +22,72 @@ from pathlib import Path
 from special.misc_utils import next_step, p_bar, thread_status
 from special.ConfigParser import ConfigParser
 
+CPU_COUNT: int = os.cpu_count()  # type: ignore
+
 if sys.platform == "win32":
     print("This application was not made for windows. Try Using WSL2 (untested)")
     time.sleep(3)
+
+try:
+    from rich_argparse import ArgumentDefaultsRichHelpFormatter
+except (ModuleNotFoundError, ImportError):
+    ArgumentDefaultsRichHelpFormatter = argparse.ArgumentDefaultsHelpFormatter
+
+parser = argparse.ArgumentParser(
+    formatter_class=ArgumentDefaultsRichHelpFormatter,
+    description="""Hi! this script converts thousands of files to
+another format in a High-res/Low-res pair.""")
+parser.add_argument("--parse_error", action="store_true",
+                    help=argparse.SUPPRESS)
+p_req = parser.add_argument_group("Runtime options")
+p_req.add_argument("-i", "--input",
+                   help="Input folder.")
+p_req.add_argument("-x", "--scale", type=int, default=4,
+                   help="scale to downscale LR images")
+
+p_req.add_argument("-e", "--extension", metavar="EXT", default=None,
+                   help="export extension.")
+p_req.add_argument("-r", "--recursive", action="store_true", default=False,
+                   help="preserves the tree hierarchy.")
+
+p_mods = parser.add_argument_group("Modifiers")
+p_mods.add_argument("--threads", type=int, default=int((CPU_COUNT / 4) * 3),
+                    help="number of total threads.")
+p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
+                    help="only gathers a given number of images. None if disabled.")
+p_mods.add_argument("--anonymous", action="store_true",
+                    help="hides path names in progress. Doesn't affect the result.")
+p_mods.add_argument("--simulate", action="store_true",
+                    help="skips the conversion step.")
+p_mods.add_argument("--purge", action="store_true",
+                    help="Clears every output before converting.")
+
+p_filters = parser.add_argument_group("Filters")
+p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
+                       help="only allows paths with the given string.")
+p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
+                       help="strips paths with the given string.")
+
+p_sort = parser.add_argument_group("Sorting")
+p_sort.add_argument("--sort", choices=["name", "ext", "len", "full"], default="full",
+                    help="sorting method.")
+p_sort.add_argument("--reverse", action="store_true",
+                    help="reverses the sorting direction.")
+
+p_thresh = parser.add_argument_group("Thresholds")
+p_thresh.add_argument("--no_mod", action="store_true",
+                      help="disables the modulo check for if the file is divisible by scale. May encounter errors later on.")
+p_thresh.add_argument("--minsize", type=int, metavar="MIN",
+                      help="smallest available image")
+p_thresh.add_argument("--maxsize", type=int, metavar="MAX",
+                      help="largest allowed image.")
+p_thresh.add_argument("--after", type=str,
+                      help="Only uses files modified after a given date."
+                      "ex. '2020', or '2009 sept 16th'")
+p_thresh.add_argument("--before", type=str,
+                      help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
+cparser = ConfigParser(parser, "config.json", exit_on_change=True)
+args = cparser.parse_args()
 
 
 def try_import(package) -> int | str:
@@ -78,72 +141,17 @@ except (ImportError, ModuleNotFoundError):
                 print()
                 if try_import(packages[package]) is None:
                     raise ModuleNotFoundError(f"Couldn't install '{package}'.")
-        if import_failed:
-            os.execv(sys.executable, ['python'] + sys.argv)
-
+        if import_failed and not args.parse_error:
+            os.execv(sys.executable, ['python'] + sys.argv + ['--parse_error'])
+        elif args.parse_error:
+            raise ModuleNotFoundError(
+                f'Packages not found after relaunching. Please properly install {"".join(packages.keys())}')
     except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
         rprint(f"{type(err2).__name__}: {err2}")
         sys.exit(127)  # command not found
 
-CPU_COUNT: int = os.cpu_count()  # type: ignore
 
 timeparser = dateutil.parser
-parser = argparse.ArgumentParser(
-    formatter_class=ArgumentDefaultsRichHelpFormatter,
-    description="""Hi! this script converts thousands of files to
-another format in a High-res/Low-res pair.""")
-
-p_req = parser.add_argument_group("Runtime options")
-p_req.add_argument("-i", "--input",
-                   help="Input folder.")
-p_req.add_argument("-x", "--scale", type=int, default=4,
-                   help="scale to downscale LR images")
-
-p_req.add_argument("-e", "--extension", metavar="EXT", default=None,
-                   help="export extension.")
-p_req.add_argument("-r", "--recursive", action="store_true", default=False,
-                   help="preserves the tree hierarchy.")
-
-p_mods = parser.add_argument_group("Modifiers")
-p_mods.add_argument("--threads", type=int, default=int((CPU_COUNT / 4) * 3),
-                    help="number of total threads.")
-p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
-                    help="only gathers a given number of images. None if disabled.")
-p_mods.add_argument("--anonymous", action="store_true",
-                    help="hides path names in progress. Doesn't affect the result.")
-p_mods.add_argument("--simulate", action="store_true",
-                    help="skips the conversion step.")
-p_mods.add_argument("--purge", action="store_true",
-                    help="Clears every output before converting.")
-
-p_filters = parser.add_argument_group("Filters")
-p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
-                       help="only allows paths with the given string.")
-p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
-                       help="strips paths with the given string.")
-
-p_sort = parser.add_argument_group("Sorting")
-p_sort.add_argument("--sort", choices=["name", "ext", "len", "full"], default="full",
-                    help="sorting method.")
-p_sort.add_argument("--reverse", action="store_true",
-                    help="reverses the sorting direction.")
-
-p_thresh = parser.add_argument_group("Thresholds")
-p_thresh.add_argument("--no_mod", action="store_true",
-                      help="disables the modulo check for if the file is divisible by scale. May encounter errors later on.")
-p_thresh.add_argument("--minsize", type=int, metavar="MIN",
-                      help="smallest available image")
-p_thresh.add_argument("--maxsize", type=int, metavar="MAX",
-                      help="largest allowed image.")
-p_thresh.add_argument("--after", type=str,
-                      help="Only uses files modified after a given date."
-                      "ex. '2020', or '2009 sept 16th'")
-p_thresh.add_argument("--before", type=str,
-                      help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
-
-
-cparser = ConfigParser(parser, "config.json", exit_on_change=True)
-args = cparser.parse_args()
 
 
 before_time, after_time = None, None
