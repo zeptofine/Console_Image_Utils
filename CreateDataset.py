@@ -104,13 +104,15 @@ def try_import(package) -> int | str:
         return None
 
 
-packages = {'rich':            "rich",
-            'opencv-python':   "cv2",
-            'python-dateutil': "dateutil",
-            'imagesize':       "imagesize",
-            'pillow':          "PIL",
-            'rich-argparse':   "rich_argparse"}
-import_list = [sys.executable, '-m', 'pip', 'install'] + list(packages.keys())
+packages = {
+    'rich':            "rich",
+    'opencv-python':   "cv2",
+    'python-dateutil': "dateutil",
+    'imagesize':       "imagesize",
+    'pillow':          "PIL",
+    'rich-argparse':   "rich_argparse",
+}
+
 try:
     import dateutil.parser
     import cv2
@@ -140,14 +142,14 @@ except (ImportError, ModuleNotFoundError):
                         time.sleep(0.05)
                 print()
                 if try_import(packages[package]) is None:
-                    raise ModuleNotFoundError(f"Couldn't install '{package}'.")
+                    raise ModuleNotFoundError(f"Failed to install '{package}'.")
         if import_failed and not args.parse_error:
             os.execv(sys.executable, ['python'] + sys.argv + ['--parse_error'])
         elif args.parse_error:
             raise ModuleNotFoundError(
                 f'Packages not found after relaunching. Please properly install {"".join(packages.keys())}')
     except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
-        rprint(f"{type(err2).__name__}: {err2}")
+        print(f"{type(err2).__name__}: {err2}")
         sys.exit(127)  # command not found
 
 
