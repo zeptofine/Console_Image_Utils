@@ -145,7 +145,7 @@ except (ImportError, ModuleNotFoundError):
                     raise ModuleNotFoundError(f"Failed to install '{package}'.")
         if import_failed and not args.parse_error:
             os.execv(sys.executable, ['python'] + sys.argv + ['--parse_error'])
-        elif args.parse_error:
+        elif import_failed and args.parse_error:
             raise ModuleNotFoundError(
                 f'Packages not found after relaunching. Please properly install {"".join(packages.keys())}')
     except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
