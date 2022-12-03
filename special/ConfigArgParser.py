@@ -3,11 +3,12 @@ import os
 import json
 from sys import exit as sys_exit
 
+
 class ConfigParser:
     '''Creates an easy argparse config utility. It saves arguments given to it to a path.'''
 
-    def __init__(self, parser: argparse.ArgumentParser, 
-                 config_path, autofill: bool=False, exit_on_change: bool=False, rewrite_help: bool= True) -> None:
+    def __init__(self, parser: argparse.ArgumentParser,
+                 config_path, autofill: bool = False, exit_on_change: bool = False, rewrite_help: bool = True) -> None:
         '''
         parser: argparse function.
         config_path: a path to the supposed json file
@@ -18,39 +19,38 @@ class ConfigParser:
         '''
 
         # parent parser
-        self.p_parser = parser
+        self._parent = parser
         self.config_path = config_path
-        self.default_prefix = '-' if '-' in self.p_parser.prefix_chars else self.p_parser.prefix_chars[0]
+        self.default_prefix = '-' if '-' in self._parent.prefix_chars else self._parent.prefix_chars[0]
 
         # remove --help from parser
-        if self.p_parser.add_help & rewrite_help:
-            self.p_parser._actions.pop(0)
-            self.p_parser._option_string_actions.pop(self.default_prefix+'h')
-            self.p_parser._option_string_actions.pop(
+        if self._parent.add_help & rewrite_help:
+            self._parent._actions.pop(0)
+            self._parent._option_string_actions.pop(self.default_prefix+'h')
+            self._parent._option_string_actions.pop(
                 self.default_prefix*2+'help')
 
         # set up child parser
         self.parser = argparse.ArgumentParser(
-            prog=self.p_parser.prog,
-            usage=self.p_parser.usage,
-            description=self.p_parser.description,
-            epilog=self.p_parser.epilog,
-            parents=[self.p_parser],
-            formatter_class=self.p_parser.formatter_class,
-            prefix_chars=self.p_parser.prefix_chars,
-            fromfile_prefix_chars=self.p_parser.fromfile_prefix_chars,
-            argument_default=self.p_parser.argument_default,
-            conflict_handler=self.p_parser.conflict_handler,
+            prog=self._parent.prog,
+            usage=self._parent.usage,
+            description=self._parent.description,
+            epilog=self._parent.epilog,
+            parents=[self._parent],
+            formatter_class=self._parent.formatter_class,
+            prefix_chars=self._parent.prefix_chars,
+            fromfile_prefix_chars=self._parent.fromfile_prefix_chars,
+            argument_default=self._parent.argument_default,
+            conflict_handler=self._parent.conflict_handler,
             add_help=False,
-            allow_abbrev=self.p_parser.allow_abbrev,
+            allow_abbrev=self._parent.allow_abbrev,
             exit_on_error=True
         )
-
         # Add config options
         self.config_option_group = self.parser.add_argument_group(
-            f'Config options ("{self.config_path}")')
+            f'Config options')
         self.config_options = self.config_option_group.add_mutually_exclusive_group()
-        self.config_option_group.add_argument(self.default_prefix*2+"config_path",
+        self.config_option_group.add_argument(self.default_prefix*2+"config_path", type=str,
                                               default=self.config_path, metavar="PATH",
                                               help="select a config to read from.")
         self.config_options.add_argument(self.default_prefix*2+"set",
@@ -69,7 +69,6 @@ class ConfigParser:
         self.kwargs.pop('set', None)
         self.kwargs.pop('reset', None)
         self.kwargs.pop('reset_all', None)
-        self.kwargs.pop('config_path', None)
 
         # If config doesn't exist, create an empty/filled version
         if not os.path.exists(self.config_path):
@@ -117,14 +116,14 @@ class ConfigParser:
             if exit_on_change:
                 sys_exit()
 
-        # modified from argparse.py <- parser.set_defaults(**kwargs)
+        # modified from argparse.py ( self.set_defaults(**kwargs) )
         self.parser._defaults.update(self.edited_keys)
         for action in self.parser._actions:
             if action.dest in self.edited_keys:
                 action.default = self.edited_keys[action.dest]
 
         # Add --help back in
-        if self.p_parser.add_help and rewrite_help:
+        if self._parent.add_help and rewrite_help:
             self.parser.add_argument(
                 self.parser.prefix_chars+"h", self.parser.prefix_chars*2+"help",
                 action='help', default=argparse.SUPPRESS,

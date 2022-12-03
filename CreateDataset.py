@@ -12,6 +12,7 @@ import importlib
 import importlib
 import multiprocessing
 import os
+import io
 import shutil
 import subprocess
 import sys
@@ -90,11 +91,11 @@ cparser = ConfigParser(parser, "config.json", exit_on_change=True)
 args = cparser.parse_args()
 
 
-def try_import(package) -> int | str:
+def try_import(package) -> None | str:
     try:
-        spec = importlib.util.find_spec(package)
+        spec = importlib.util.find_spec(package)  # type: ignore
         if spec is not None:
-            module = importlib.util.module_from_spec(spec)
+            module = importlib.util.module_from_spec(spec)  # type: ignore
             sys.modules[module] = package
             importlib.import_module(package)
             return spec
@@ -125,27 +126,26 @@ try:
     from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
 except (ImportError, ModuleNotFoundError):
+    rprint = print
     try:
         import_failed = False
         for package in packages.keys():
             if try_import(packages[package]) is None:
                 import_failed = True
-                print("-"*os.get_terminal_size().columns +
-                      f"\n{package} not detected. Attempting to install...\n")
+                print(
+                    f"{'-'*os.get_terminal_size().columns}\n{package} not detected. Attempting to install...")
                 with subprocess.Popen([sys.executable, '-m', 'pip', 'install', package],
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE) as importproc:
-                    while importproc.poll() is None:
-                        if importproc.stdout is not None:
-                            importproc_string = importproc.stdout.readline().decode('UTF-8').strip()
-                            if importproc_string != "":
-                                print(f'({package}) : {importproc_string}')
-                        time.sleep(0.05)
+
+                    for line in io.TextIOWrapper(importproc.stdout,  # type: ignore
+                                                 encoding="utf-8"):
+                        print(f'({package}) : {line.strip()}')
                 print()
                 if try_import(packages[package]) is None:
                     raise ModuleNotFoundError(
                         f"Failed to install '{package}'.")
         if import_failed and not args.parse_error:
-            os.execv(sys.executable, ['python'] + sys.argv + ['--parse_error'])
+            os.execv(sys.executable, ['python', *sys.argv, '--parse_error'])
         elif import_failed and args.parse_error:
             raise ModuleNotFoundError(
                 f'Packages not found after relaunching. Please properly install {"".join(packages.keys())}')
@@ -154,7 +154,7 @@ except (ImportError, ModuleNotFoundError):
         sys.exit(127)  # command not found
 
 
-timeparser = dateutil.parser
+timeparser = dateutil.parser  # type: ignore
 
 
 before_time, after_time = None, None
@@ -183,7 +183,7 @@ def intersect_lists(x: list | tuple, y: list | tuple) -> list:
     for i in x:
         if i in y:
             outlist.append(i)
-            y.remove(i)
+            y.remove(i)  # type: ignore
     return outlist
 
 
@@ -216,9 +216,10 @@ def filter_imgs(inumerated) -> tuple[Path, os.stat_result] | None:
         if after_time and (filetime < after_time):
             return
     width, height = q_res(str(args.input / inpath))
-    if args.minsize and ((width < args.minsize) or (height < args.minsize)):
+
+    if args.minsize and (width < args.minsize or height < args.minsize):
         return
-    if args.maxsize and ((width > args.maxsize) or (height > args.maxsize)):
+    if args.maxsize and (width > args.maxsize or height > args.maxsize):
         return
     if not args.no_mod:
         if (width % args.scale != 0 or height % args.scale != 0):
@@ -242,8 +243,8 @@ def fileparse(inumerated) -> None:
     os.makedirs(lr_path.parent, exist_ok=True)
 
     if args.extension not in [None, 'None']:
-        hr_path = hr_path.with_suffix("." + args.extension)
-        lr_path = lr_path.with_suffix("." + args.extension)
+        hr_path = hr_path.with_suffix(f".{args.extension}")
+        lr_path = lr_path.with_suffix(f".{args.extension}")
 
     image = cv2.imread(str(args.input / inpath))
     thread_status(pid, inpath, anonymous=args.anonymous,
@@ -284,21 +285,21 @@ def main() -> None:
 
     # filter out blackisted/whitelisted items
     if args.whitelist:
-        image_list = [i for i in image_list if args.whitelist in str(i)]
         next_step(1, f"(whitelist: {args.whitelist}): {len(image_list)}")
+        image_list = [i for i in image_list if args.whitelist in str(i)]
     if args.blacklist:
-        image_list = [i for i in image_list if args.blacklist not in str(i)]
         next_step(1, f"(blacklist: {args.blacklist}): {len(image_list)}")
+        image_list = [i for i in image_list if args.blacklist not in str(i)]
 
     image_list = [i.relative_to(args.input) for i in image_list]
     if (args.extension) and (args.extension.startswith(".")):
         args.extension = args.extension[1:]
 
-    hr_folder = args.input.parent / (str(args.scale) + "xHR")
-    lr_folder = args.input.parent / (str(args.scale) + "xLR")
+    hr_folder = args.input.parent / (f"{str(args.scale)}xHR")
+    lr_folder = args.input.parent / (f"{str(args.scale)}xLR")
     if args.extension:
-        hr_folder = Path(str(hr_folder) + f"-{args.extension}")
-        lr_folder = Path(str(lr_folder) + f"-{args.extension}")
+        hr_folder = Path(f"{str(hr_folder)}-{args.extension}")
+        lr_folder = Path(f"{str(lr_folder)}-{args.extension}")
     os.makedirs(hr_folder, exist_ok=True)
     os.makedirs(lr_folder, exist_ok=True)
 
@@ -318,7 +319,7 @@ def main() -> None:
         str((hr_folder / "**" / "*"))) if not f.is_dir()])
     lr_files = set([f.relative_to(lr_folder).with_suffix("") for f in get_file_list(
         str((lr_folder / "**" / "*"))) if not f.is_dir()])
-    exist_list = set(intersect_lists(hr_files, lr_files))
+    exist_list = set(intersect_lists(hr_files, lr_files))  # type: ignore
     unfiltered_len = len(image_list)
     image_list = [i for i in image_list
                   if i.with_suffix("") not in exist_list]
@@ -364,9 +365,9 @@ def main() -> None:
         sys.exit(-1)
     next_step(3, f"processing: {len(imgs_filtered)} images...")
     with Pool(args.threads) as p:
-        intuple = [(i[0], len(imgs_filtered)) + i[1]
+        intuple = [(i[0], len(imgs_filtered), *i[1])
                    for i in enumerate(imgs_filtered)]
-        intuple = [i + (hr_folder, lr_folder) for i in intuple]
+        intuple = [(*i, hr_folder, lr_folder) for i in intuple]
         p.map(fileparse, intuple, chunksize=256)
 
 

@@ -18,8 +18,7 @@ def p_bar(iteration: int, total: int, length=20,
     filledLength = (length * iteration) // total
     #    [############################# --------------------------------]
     pbar = (fill*length)[:filledLength] + (nullp*(length - filledLength))
-    command = f"{color2}{corner[0]}{color1}{pbar}{color2}{corner[1]}\033[0m"
-    command = str(pref)+command+str(suff)
+    command = f"{str(pref)}{color2}{corner[0]}{color1}{pbar}{color2}{corner[1]}\033[0m{str(suff)}"
     return command
 
 
@@ -57,17 +56,17 @@ class numFmt:
                            'Ebit', 'Zbit', 'Ybit']
 
         def fmt_iec(self) -> tuple:
-            for fmt in enumerate(self.iec):
-                num = self.amount / (2**10)**fmt[0]
+            for count, fmt in enumerate(self.iec):
+                num = self.amount / (2**10)**count
                 if (num <= (2**10) and (num >= 1)):
-                    return (num, fmt[1])
+                    return (num, fmt)
             return (-1, "NaN")
 
         def fmt_metric(self) -> tuple:
-            for fmt in enumerate(self.metric):
-                num = self.amount / (10**3)**fmt[0]
+            for count,  fmt in enumerate(self.metric):
+                num = self.amount / (10**3)**count
                 if (num < (10**3)) and (num >= 1):
-                    return (num, fmt[1])
+                    return (num, fmt)
             return (-1, "NaN")
 
         def to_bytes(self):
@@ -96,17 +95,17 @@ class numFmt:
                            'EB', 'ZB', 'YB']
 
         def fmt_iec(self) -> tuple:
-            for fmt in enumerate(self.iec):
-                num = self.amount / (2**10)**fmt[0]
+            for count, fmt in enumerate(self.iec):
+                num = self.amount / (2**10)**count
                 if (num <= (2**10) and (num >= 1)):
-                    return (num, fmt[1])
+                    return (num, fmt)
             return (-1, "NaN")
 
         def fmt_metric(self) -> tuple:
-            for fmt in enumerate(self.metric):
-                num = self.amount / (10**3)**fmt[0]
+            for count, fmt in enumerate(self.metric):
+                num = self.amount / (10**3)**count
                 if (num < (10**3)) and (num >= 1):
-                    return (num, fmt[1])
+                    return (num, fmt)
             return (-1, "NaN")
 
         def __str__(self):
