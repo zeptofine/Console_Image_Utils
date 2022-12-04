@@ -1,4 +1,4 @@
-# Console-Image-Utils
+# Console_Image_Utils
 
 a bunch of cli files i have
 
