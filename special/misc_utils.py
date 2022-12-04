@@ -12,11 +12,17 @@ ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 def p_bar(iteration: int, total: int, length=20,
           fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
-    """returns a colored progress bar"""
+    """
+    Print a progress bar.
+
+    :param iteration: Current iteration.
+    :param total: Total iterations.
+    :param length: Progress bar length.
+    :param fill: Progress bar fill character."""
     color1, color2 = (
         "\033[93m", "\033[92m")
     filledLength = (length * iteration) // total
-    #    [############################# --------------------------------]
+    #    [#############################]
     pbar = (fill*length)[:filledLength] + (nullp*(length - filledLength))
     command = f"{str(pref)}{color2}{corner[0]}{color1}{pbar}{color2}{corner[1]}\033[0m{str(suff)}"
     return command
@@ -34,8 +40,6 @@ def thread_status(pid: int, item: str = "", extra: str = "", anonymous: bool = F
     print(output, end="\r")
 
 
-def next_step(order, text) -> None:
-    rprint(" "+f"{str(order)}: {text}", end="\n\033[K")
 
 
 class numFmt:

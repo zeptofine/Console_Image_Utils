@@ -9,10 +9,9 @@ import argparse
 import datetime
 import glob
 import importlib
-import importlib
+import io
 import multiprocessing
 import os
-import io
 import shutil
 import subprocess
 import sys
@@ -20,8 +19,8 @@ import time
 from multiprocessing import Pool
 from pathlib import Path
 
-from special.misc_utils import next_step, p_bar, thread_status
 from special.ConfigArgParser import ConfigParser
+from special.misc_utils import p_bar, thread_status
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
 
@@ -67,7 +66,7 @@ p_filters = parser.add_argument_group("Filters")
 p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
                        help="only allows paths with the given string.")
 p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
-                       help="strips paths with the given string.")
+                       help="excludes paths with the given string.")
 
 p_sort = parser.add_argument_group("Sorting")
 p_sort.add_argument("--sort", choices=["name", "ext", "len", "full"], default="full",
@@ -92,6 +91,7 @@ args = cparser.parse_args()
 
 
 def try_import(package) -> None | str:
+    """Try to import a module."""
     try:
         spec = importlib.util.find_spec(package)  # type: ignore
         if spec is not None:
@@ -135,9 +135,9 @@ except (ImportError, ModuleNotFoundError):
                 print(
                     f"{'-'*os.get_terminal_size().columns}\n{package} not detected. Attempting to install...")
                 with subprocess.Popen([sys.executable, '-m', 'pip', 'install', package],
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE) as importproc:
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE) as import_proc:
 
-                    for line in io.TextIOWrapper(importproc.stdout,  # type: ignore
+                    for line in io.TextIOWrapper(import_proc.stdout,  # type: ignore
                                                  encoding="utf-8"):
                         print(f'({package}) : {line.strip()}')
                 print()
@@ -174,11 +174,17 @@ if args.after or args.before:
         sys.exit(str(err))
 
 
-def getpid() -> int:
+def next_step(order, text) -> None:
+    rprint(" "+f"{str(order)}: {text}", end="\n\033[K")
+
+
+def get_pid() -> int:
+    """Get the current process PID."""
     return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
 
 
 def intersect_lists(x: list | tuple, y: list | tuple) -> list:
+    """Get list of items that occur in both lists."""
     outlist = []
     for i in x:
         if i in y:
@@ -187,26 +193,37 @@ def intersect_lists(x: list | tuple, y: list | tuple) -> list:
     return outlist
 
 
-def get_file_list(*paths) -> list[Path]:
+def get_file_list(*folders: Path | str) -> list[Path]:
+    """Return a list of file paths from a list of subfolders."""
     globlist = [glob.glob(str(p), recursive=True)
-                for p in paths]  # get list of lists of paths
+                for p in folders]
     return [Path(y) for x in globlist for y in x]
 
 
-def q_res(file) -> tuple:
+def q_res(file: str | Path | bytes) -> tuple:
+    """Return the size of an image."""
     try:
         return imagesize_get(file)
     except ValueError:
         return Image.open(file).size
 
 
-def to_recursive(path) -> Path:
-    return Path(str(path).replace(os.sep, "_"))
+def to_recursive(path: Path) -> Path:
+    if args.recursive:
+        return Path(str(path).replace(os.sep, "_"))
+    else:
+        return path
 
 
 def filter_imgs(inumerated) -> tuple[Path, os.stat_result] | None:
+    """Filter imgs using time, resolution, and division.
+
+    Returns:
+        None: If error
+        Tuple[Path, os.stat_result]: If valid, path continues to exist
+    """
     index, ptotal, inpath = inumerated
-    thread_status(getpid(), inpath, anonymous=args.anonymous,
+    thread_status(get_pid(), inpath, anonymous=args.anonymous,
                   extra=f"{index}/{ptotal} {p_bar(index, ptotal, 10)}")
     filestat = (args.input / inpath).stat()
     if before_time or after_time:
@@ -222,23 +239,22 @@ def filter_imgs(inumerated) -> tuple[Path, os.stat_result] | None:
     if args.maxsize and (width > args.maxsize or height > args.maxsize):
         return
     if not args.no_mod:
-        if (width % args.scale != 0 or height % args.scale != 0):
+        if width % args.scale != 0 or height % args.scale != 0:
             return
 
-    return (inpath, filestat)
+    return inpath, filestat
 
 
 def fileparse(inumerated) -> None:
+    """Process an image. Generates an hr/lr pair
+        Tuple[index, total, path, path.stat, hr_folder, lr_folder]
+    """
     index, ptotal, inpath, filestat, hr_folder, lr_folder = inumerated
     filestime = filestat.st_mtime
-    pid = getpid() - args.threads
+    pid = get_pid() - args.threads
 
-    if args.recursive:
-        hr_path = Path(hr_folder / inpath)
-        lr_path = Path(lr_folder / inpath)
-    else:
-        hr_path = Path(hr_folder / to_recursive(inpath))
-        lr_path = Path(lr_folder / to_recursive(inpath))
+    hr_path = Path(hr_folder / to_recursive(inpath))
+    lr_path = Path(lr_folder / to_recursive(inpath))
     os.makedirs(hr_path.parent, exist_ok=True)
     os.makedirs(lr_path.parent, exist_ok=True)
 
@@ -258,7 +274,7 @@ def fileparse(inumerated) -> None:
     os.utime(str(lr_path), (filestime, filestime))
 
 
-def main() -> None:
+if __name__ == "__main__":
     if not args.input:
         sys.exit("Please specify an input directory.")
 
@@ -278,25 +294,25 @@ def main() -> None:
     image_list = get_file_list(args.input / "**" / "*.png",
                                args.input / "**" / "*.jpg",
                                args.input / "**" / "*.webp")
-    if args.image_limit is not None:
+    if args.image_limit is not None:  # limit image number
         image_list = image_list[:args.image_limit]
 
     next_step(1, f"images: {len(image_list)}")
 
     # filter out blackisted/whitelisted items
     if args.whitelist:
-        next_step(1, f"(whitelist: {args.whitelist}): {len(image_list)}")
+        next_step(1, f"whitelist: ({args.whitelist}): {len(image_list)}")
         image_list = [i for i in image_list if args.whitelist in str(i)]
     if args.blacklist:
-        next_step(1, f"(blacklist: {args.blacklist}): {len(image_list)}")
+        next_step(1, f"blacklist: ({args.blacklist}): {len(image_list)}")
         image_list = [i for i in image_list if args.blacklist not in str(i)]
 
     image_list = [i.relative_to(args.input) for i in image_list]
-    if (args.extension) and (args.extension.startswith(".")):
+    if args.extension and args.extension.startswith("."):
         args.extension = args.extension[1:]
 
-    hr_folder = args.input.parent / (f"{str(args.scale)}xHR")
-    lr_folder = args.input.parent / (f"{str(args.scale)}xLR")
+    hr_folder = args.input.parent / f"{str(args.scale)}xHR"
+    lr_folder = args.input.parent / f"{str(args.scale)}xLR"
     if args.extension:
         hr_folder = Path(f"{str(hr_folder)}-{args.extension}")
         lr_folder = Path(f"{str(lr_folder)}-{args.extension}")
@@ -304,6 +320,7 @@ def main() -> None:
     os.makedirs(lr_folder, exist_ok=True)
 
     if args.purge:
+        # Gather a list of existing images and remove them
         next_step(1, "purging...")
         for i in get_file_list(str(hr_folder / "**" / "*"),
                                str(lr_folder / "**" / "*")):
@@ -321,13 +338,13 @@ def main() -> None:
         str((lr_folder / "**" / "*"))) if not f.is_dir()])
     exist_list = set(intersect_lists(hr_files, lr_files))  # type: ignore
     unfiltered_len = len(image_list)
-    image_list = [i for i in image_list
-                  if i.with_suffix("") not in exist_list]
+
+    # filter out files that exist in both folders
     image_list = [i for i in image_list
                   if to_recursive(i).with_suffix("") not in exist_list]
 
-    next_step(1,
-              f"(existing: {len(exist_list)}) (discarded: {unfiltered_len-len(image_list)})")
+    next_step(
+        1, f"(existing: {len(exist_list)}) (discarded: {unfiltered_len-len(image_list)})")
     next_step(1, f"images: {len(image_list)}")
 
     # Sort files based on different attributes
@@ -349,7 +366,7 @@ def main() -> None:
     with Pool(args.threads) as p:
         intuple = [(i[0], len(image_list), i[1])
                    for i in enumerate(image_list)]
-        imgs_filtered = list(p.map(filter_imgs, intuple, chunksize=256))
+        imgs_filtered = list(p.map(filter_imgs, intuple, chunksize=200))
     imgs_filtered = [i for i in imgs_filtered if i is not None]
     next_step(2, f"discarded {len(intuple)-len(imgs_filtered)} images")
     print()
@@ -357,7 +374,7 @@ def main() -> None:
     # exit if args.simulate
     if args.simulate:
         next_step(3, "Simulate == True")
-        return
+        sys.exit()
 
     # Process images
     if len(imgs_filtered) == 0:
@@ -368,8 +385,4 @@ def main() -> None:
         intuple = [(i[0], len(imgs_filtered), *i[1])
                    for i in enumerate(imgs_filtered)]
         intuple = [(*i, hr_folder, lr_folder) for i in intuple]
-        p.map(fileparse, intuple, chunksize=256)
-
-
-if __name__ == "__main__":
-    main()
+        p.map(fileparse, intuple, chunksize=200)

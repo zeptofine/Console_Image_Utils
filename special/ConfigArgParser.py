@@ -5,7 +5,8 @@ from sys import exit as sys_exit
 
 
 class ConfigParser:
-    '''Creates an easy argparse config utility. It saves arguments given to it to a path.'''
+    '''Creates an easy argparse config utility. 
+    It saves given args to a path, and returns them when args are parsed again.'''
 
     def __init__(self, parser: argparse.ArgumentParser,
                  config_path, autofill: bool = False, exit_on_change: bool = False, rewrite_help: bool = True) -> None:
