@@ -6,11 +6,6 @@ import sys
 
 from special.ConfigArgParser import ConfigParser
 
-try:
-    from rich.traceback import install
-    install()
-except ImportError as e:
-    print(e)
 parser = argparse.ArgumentParser()
 parser.add_argument('-s', '--sort', action="store_true",
                     help="Sorts the list of entries.")

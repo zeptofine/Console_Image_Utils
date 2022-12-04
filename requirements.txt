@@ -2,6 +2,6 @@ opencv-python
 imagesize
 pillow
 rich
-dateutil
+python-dateutil
 plyer
-python_argparse
+rich_argparse
