@@ -77,12 +77,10 @@ class ConfigParser:
                     config_file.write(json.dumps(self.kwargs, indent=4))
                 else:
                     config_file.write(json.dumps({}))
-                config_file.close()
 
         # Read config file
         with open(self.config_path, "r", encoding='utf-8') as config_file:
             self.edited_keys = json.loads(config_file.read())
-            config_file.close()
 
         # set defaults
         if self.parsed_args.set or \
@@ -112,7 +110,6 @@ class ConfigParser:
 
             with open(self.config_path, "w", encoding='utf-8') as config_file:
                 config_file.write(json.dumps(self.edited_keys, indent=4))
-                config_file.close()
             if exit_on_change:
                 sys_exit()
 

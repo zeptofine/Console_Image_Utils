@@ -23,7 +23,6 @@ if not os.path.exists("prefixes.txt"):
         "You don't have a prefixes.txt file! (a prompt per line)")
 with open("prefixes.txt", "r") as prfile:
     prefixes = prfile.readlines()
-    prfile.close()
 
 prefixes = [i.strip().split(" ") for i in prefixes]
 
@@ -54,4 +53,3 @@ for prompt in prefixes:
 
 with open("imgbrd_grabbergen.igl", "w") as outfile:
     outfile.write(json.dumps(outputJson, indent=4))
-    outfile.close()
