@@ -66,7 +66,7 @@ p_mods.add_argument("--simulate", action="store_true",
                     help="skips the conversion step.")
 p_mods.add_argument("--purge", action="store_true",
                     help="Clears every output before converting.")
-p_mods.add_argument("--sort", choices=["name", "ext", "len", "res"], default="name",
+p_mods.add_argument("--sort", choices=["name", "ext", "len", "res", "time"], default="name",
                     help="sorting method.")
 p_mods.add_argument("--reverse", action="store_true",
                     help="reverses the sorting direction.")
@@ -189,7 +189,7 @@ def q_res(file: Path) -> tuple:
 
 
 def to_recursive(path: Path, recursive: bool) -> Path:
-    if recursive:
+    if not recursive:
         return Path(str(path).replace(os.sep, "_"))
     else:
         return path
@@ -198,11 +198,11 @@ def to_recursive(path: Path, recursive: bool) -> Path:
 def within_res(inpath, minsize, maxsize, scale) -> tuple[bool, tuple]:
     res = q_res(args.input / inpath)
     width, height = res
+    if scale and (width % scale != 0 or height % scale != 0):
+        return (False, res)
     if minsize and (width < minsize or height < minsize):
         return (False, res)
     if maxsize and (width > maxsize or height > maxsize):
-        return (False, res)
-    if scale and (width % scale != 0 or height % scale != 0):
         return (False, res)
     return (True, res)
 
@@ -327,7 +327,7 @@ if __name__ == "__main__":
     print()
 
     next_step(
-        2, f"Filtering images outside of range:({after_time}<=x<={before_time})")
+        2, f"Filtering images outside of range: ({after_time}<=x<={before_time})")
     original_total = len(image_list)
     mtimes = poolmap(args.threads, within_time, [
         (args.input / i, before_time, after_time) for i in image_list],
@@ -338,7 +338,7 @@ if __name__ == "__main__":
     mtimes = {image_list[i]: v for i, v in enumerate(mtimes)}
 
     next_step(
-        2, f"Filtering images by resolution:({args.minsize} <= x <= {args.maxsize}) % {args.scale}")
+        2, f"Filtering images by resolution: ({args.minsize} <= x <= {args.maxsize}) % {args.scale}")
 
     mres = poolmap(args.threads, within_res,
                    [(args.input / i, args.minsize, args.maxsize, args.scale if not args.no_mod else 1) for i in image_list], chunksize=10, use_tqdm=True)
@@ -361,7 +361,6 @@ if __name__ == "__main__":
     next_step(3, f"Processing {len(image_list)} images...")
 
     # Sort files based on different attributes
-    next_step(1, "Sorting...")
     sorting_methods = {
         "name": lambda x: x,
         "ext": lambda x: x.suffix,
@@ -369,7 +368,7 @@ if __name__ == "__main__":
         "res": lambda x: mres[x][0] * mres[x][1],
         "time": lambda x: mtimes[x]
     }
-    image_list = sorted(image_list, key=sorting_methods[args.sort])
+    image_list = sorted(image_list, key=sorting_methods[args.sort], reverse=args.reverse)
 
     try:
         image_list = poolmap(args.threads, fileparse,
@@ -382,35 +381,3 @@ if __name__ == "__main__":
         next_step(-1, "KeyboardInterrupt")
     next_step(-1, "Done")
     sys.exit()
-
-    # Remove files that hit the arg limits
-    next_step(2, "Filtering bad images ...")
-    with Pool(args.threads) as p:
-        intuple = [(i[0], len(image_list), i[1])
-                   for i in enumerate(image_list)]
-        imgs_filtered = list(p.starmap(filter_imgs, intuple, chunksize=400))
-        imgs_filtered = [i for i in imgs_filtered if i[1] != -1]
-        next_step(2, f"discarded {len(intuple)-len(imgs_filtered)} images")
-        next_step(2, "Indexing...")
-        print()
-
-    if args.simulate:
-        next_step(3, "Simulate == True")
-        sys.exit()
-
-    # Process images
-    if len(imgs_filtered) == 0:
-        next_step(-1, "No images left to process")
-        sys.exit(-1)
-    next_step(3, f"processing: {len(imgs_filtered)} images...")
-    with Pool(args.threads) as p:
-        intuple = [(i[0], len(imgs_filtered), *i[1])
-                   for i in enumerate(imgs_filtered)]
-        intuple = [(*i, hr_folder, lr_folder) for i in intuple]
-        try:
-            p.map(fileparse, intuple, chunksize=400)
-        except KeyboardInterrupt:
-            p.terminate()
-            p.close()
-            p.join()
-            next_step(-1, "KeyboardInterrupt")
