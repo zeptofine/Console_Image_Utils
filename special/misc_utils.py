@@ -1,6 +1,76 @@
 '''misc_utils, mainly for CreateDataset'''
+import json
+import multiprocessing.pool as mpp
 import os
 import re
+import sys
+from multiprocessing import Pool
+
+from tqdm import tqdm
+
+# from multiprocessing import Pool, Queue
+
+
+def get_base_prefix_compat():
+    """Get base/real prefix, or sys.prefix if there is none."""
+    return getattr(sys, "base_prefix", None) or getattr(sys, "real_prefix", None) or sys.prefix
+
+
+def in_virtualenv() -> bool:
+    return get_base_prefix_compat() != sys.prefix
+
+
+def assert_virtualenv(errstring: str = "Not in virtualenv") -> None:
+    if not in_virtualenv():
+        raise AssertionError(errstring)
+
+
+# Stolen from: https://stackoverflow.com/a/57364423
+# istarmap.py for Python 3.8+
+def istarmap(self, func, iterable, chunksize=1):
+    """starmap-version of imap
+    """
+    self._check_running()
+    if chunksize < 1:
+        raise ValueError(
+            "Chunksize must be 1+, not {0:n}".format(
+                chunksize))
+
+    task_batches = mpp.Pool._get_tasks(  # type: ignore
+        func, iterable, chunksize)
+    result = mpp.IMapIterator(self)
+    self._taskqueue.put(
+        (
+            self._guarded_task_generation(result._job,  # type: ignore
+                                          mpp.starmapstar,  # type: ignore
+                                          task_batches),
+            result._set_length  # type: ignore
+        ))
+    return (item for chunk in result for item in chunk)
+
+
+mpp.Pool.istarmap = istarmap  # type: ignore
+
+
+def poolmap(threads, func, iterable, use_tqdm, chunksize=1, refresh=False, **tqargs) -> list:
+    with Pool(threads) as pool:
+        output = [None]*len(iterable)
+        if use_tqdm:
+            itqdm = tqdm(total=len(iterable), **tqargs)
+            for result in pool.istarmap(  # type: ignore
+                    func, iterable, chunksize=chunksize):
+                # itqdm.write(str(result))
+                itqdm.set_description_str(str(result), refresh=False)
+                output.append(result)
+                itqdm.update()
+                if refresh:
+                    itqdm.refresh()
+        else:
+            for result in pool.istarmap(func,  # type: ignore
+                                        iterable, total=len(iterable)):
+                output.append(result)
+    return [i for i in output if i is not None]
+
 
 try:
     from rich import print as rprint
@@ -38,8 +108,6 @@ def thread_status(pid: int, item: str = "", extra: str = "", anonymous: bool = F
     output += (" "*item_size + extra)[len(output)+len_extra+1:]
     output = ('\n'*pid) + output + ('\033[A'*pid)
     print(output, end="\r")
-
-
 
 
 class numFmt:

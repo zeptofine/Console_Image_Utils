@@ -4,7 +4,7 @@ import json
 import os
 import sys
 
-from special.ConfigArgParser import ConfigParser
+from ConfigArgParser import ConfigParser
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-s', '--sort', action="store_true",

@@ -10,19 +10,23 @@ import datetime
 import glob
 import importlib
 import io
+import logging
 import multiprocessing
 import os
 import shutil
 import subprocess
 import sys
 import time
-from multiprocessing import Pool
 from pathlib import Path
 
 from special.ConfigArgParser import ConfigParser
-from special.misc_utils import p_bar, thread_status
+from special.misc_utils import poolmap
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
+logging.basicConfig(
+    level=logging.WARNING,
+    format="[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",)
+
 
 if sys.platform == "win32":
     print("This application was not made for windows. Try Using WSL2 (untested)")
@@ -33,18 +37,19 @@ try:
 except (ModuleNotFoundError, ImportError):
     ArgumentDefaultsRichHelpFormatter = argparse.ArgumentDefaultsHelpFormatter
 
+# TODO: Parse args in __main__ within a method
 parser = argparse.ArgumentParser(
     formatter_class=ArgumentDefaultsRichHelpFormatter,
     description="""Hi! this script converts thousands of files to
 another format in a High-res/Low-res pair.""")
-parser.add_argument("--parse_error", action="store_true",
-                    help=argparse.SUPPRESS)
-p_req = parser.add_argument_group("Runtime options")
+
+p_req = parser.add_argument_group("Runtime")
 p_req.add_argument("-i", "--input",
                    help="Input folder.")
 p_req.add_argument("-x", "--scale", type=int, default=4,
                    help="scale to downscale LR images")
-
+p_req.add_argument("--parse_error", action="store_true",
+                   help=argparse.SUPPRESS)
 p_req.add_argument("-e", "--extension", metavar="EXT", default=None,
                    help="export extension.")
 p_req.add_argument("-r", "--recursive", action="store_true", default=False,
@@ -61,36 +66,34 @@ p_mods.add_argument("--simulate", action="store_true",
                     help="skips the conversion step.")
 p_mods.add_argument("--purge", action="store_true",
                     help="Clears every output before converting.")
+p_mods.add_argument("--sort", choices=["name", "ext", "len", "res"], default="name",
+                    help="sorting method.")
+p_mods.add_argument("--reverse", action="store_true",
+                    help="reverses the sorting direction.")
 
 p_filters = parser.add_argument_group("Filters")
 p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
                        help="only allows paths with the given string.")
 p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
                        help="excludes paths with the given string.")
+p_filters.add_argument("--minsize", type=int, metavar="MIN", default=128,
+                       help="smallest available image")
+p_filters.add_argument("--maxsize", type=int, metavar="MAX",
+                       help="largest allowed image.")
+p_filters.add_argument("--no_mod", action="store_true",
+                       help="disables the modulo check for if the file is divisible by scale. May encounter errors later on.")
+p_filters.add_argument("--after", type=str,
+                       help="Only uses files modified after a given date."
+                       "ex. '2020', or '2009 sept 16th'")
+p_filters.add_argument("--before", type=str,
+                       help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
 
-p_sort = parser.add_argument_group("Sorting")
-p_sort.add_argument("--sort", choices=["name", "ext", "len", "full"], default="full",
-                    help="sorting method.")
-p_sort.add_argument("--reverse", action="store_true",
-                    help="reverses the sorting direction.")
-
-p_thresh = parser.add_argument_group("Thresholds")
-p_thresh.add_argument("--no_mod", action="store_true",
-                      help="disables the modulo check for if the file is divisible by scale. May encounter errors later on.")
-p_thresh.add_argument("--minsize", type=int, metavar="MIN",
-                      help="smallest available image")
-p_thresh.add_argument("--maxsize", type=int, metavar="MAX",
-                      help="largest allowed image.")
-p_thresh.add_argument("--after", type=str,
-                      help="Only uses files modified after a given date."
-                      "ex. '2020', or '2009 sept 16th'")
-p_thresh.add_argument("--before", type=str,
-                      help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
 cparser = ConfigParser(parser, "config.json", exit_on_change=True)
+
 args = cparser.parse_args()
 
 
-def try_import(package) -> None | str:
+def try_import(package) -> int:
     """Try to import a module."""
     try:
         spec = importlib.util.find_spec(package)  # type: ignore
@@ -98,21 +101,19 @@ def try_import(package) -> None | str:
             module = importlib.util.module_from_spec(spec)  # type: ignore
             sys.modules[module] = package
             importlib.import_module(package)
-            return spec
+            return 0
         else:
-            return None
+            return 1
     except ModuleNotFoundError:
-        return None
+        return 1
 
 
-packages = {
-    'rich':            "rich",
-    'opencv-python':   "cv2",
-    'python-dateutil': "dateutil",
-    'imagesize':       "imagesize",
-    'pillow':          "PIL",
-    'rich-argparse':   "rich_argparse",
-}
+packages = {'rich':            "rich",
+            'opencv-python':   "cv2",
+            'python-dateutil': "dateutil",
+            'imagesize':       "imagesize",
+            'rich-argparse':   "rich_argparse",
+            'tqdm':            "tqdm"}
 
 try:
     from rich import print as rprint
@@ -121,16 +122,16 @@ try:
 
     import cv2
     import dateutil.parser
-    from imagesize import get as imagesize_get
-    from PIL import Image
+    from imagesize import get as imagesize_get  # type: ignore
     from rich_argparse import ArgumentDefaultsRichHelpFormatter
+    from tqdm import tqdm
 
 except (ImportError, ModuleNotFoundError):
     rprint = print
     try:
         import_failed = False
-        for package in packages.keys():
-            if try_import(packages[package]) is None:
+        for package in packages:
+            if try_import(packages[package]) == 1:
                 import_failed = True
                 print(
                     f"{'-'*os.get_terminal_size().columns}\n{package} not detected. Attempting to install...")
@@ -141,7 +142,7 @@ except (ImportError, ModuleNotFoundError):
                                                  encoding="utf-8"):
                         print(f'({package}) : {line.strip()}')
                 print()
-                if try_import(packages[package]) is None:
+                if try_import(packages[package]) == 1:
                     raise ModuleNotFoundError(
                         f"Failed to install '{package}'.")
         if import_failed and not args.parse_error:
@@ -152,30 +153,16 @@ except (ImportError, ModuleNotFoundError):
     except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
         print(f"{type(err2).__name__}: {err2}")
         sys.exit(127)  # command not found
+finally:
+    import dateutil.parser
+
+# I dont know why this is the only one that needs this
+timeparser = dateutil.parser
 
 
-timeparser = dateutil.parser  # type: ignore
-
-
-before_time, after_time = None, None
-if args.after or args.before:
-    try:
-        if args.after:
-            args.after = str(args.after)
-            after_time = timeparser.parse(args.after, fuzzy=True)
-        if args.before:
-            args.before = str(args.before)
-            before_time = timeparser.parse(args.before, fuzzy=True)
-        if args.after and args.before:
-            if args.after < args.before:
-                sys.exit(f"{before_time} is older than {after_time}!")
-    except timeparser.ParserError as err:
-        rprint("Given time is invalid!")
-        sys.exit(str(err))
-
-
-def next_step(order, text) -> None:
-    rprint(" "+f"{str(order)}: {text}", end="\n\033[K")
+def next_step(order, *args) -> None:
+    output = [" "+f"{str(order)}: {text}" for text in args]
+    rprint("\n".join(output), end="\n\033[K")
 
 
 def get_pid() -> int:
@@ -183,127 +170,115 @@ def get_pid() -> int:
     return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
 
 
-def intersect_lists(x: list | tuple, y: list | tuple) -> list:
+def intersect_lists(x: list, y: list) -> list:
     """Get list of items that occur in both lists."""
-    outlist = []
-    for i in x:
-        if i in y:
-            outlist.append(i)
-            y.remove(i)  # type: ignore
-    return outlist
+    outlist = [i for i in x if i in y]
+    return [i for i in outlist if i is not None]
 
 
-def get_file_list(*folders: Path | str) -> list[Path]:
+def get_file_list(*folders: Path) -> list[Path]:
     """Return a list of file paths from a list of subfolders."""
     globlist = [glob.glob(str(p), recursive=True)
                 for p in folders]
     return [Path(y) for x in globlist for y in x]
 
 
-def q_res(file: str | Path | bytes) -> tuple:
+def q_res(file: Path) -> tuple:
     """Return the size of an image."""
-    try:
-        return imagesize_get(file)
-    except ValueError:
-        return Image.open(file).size
+    return imagesize_get(file)
 
 
-def to_recursive(path: Path) -> Path:
-    if args.recursive:
+def to_recursive(path: Path, recursive: bool) -> Path:
+    if recursive:
         return Path(str(path).replace(os.sep, "_"))
     else:
         return path
 
 
-def filter_imgs(inumerated) -> tuple[Path, os.stat_result] | None:
-    """Filter imgs using time, resolution, and division.
-
-    Returns:
-        None: If error
-        Tuple[Path, os.stat_result]: If valid, path continues to exist
-    """
-    index, ptotal, inpath = inumerated
-    thread_status(get_pid(), inpath, anonymous=args.anonymous,
-                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 10)}")
-    filestat = (args.input / inpath).stat()
-    if before_time or after_time:
-        filetime = datetime.datetime.fromtimestamp(filestat.st_mtime)
-        if before_time and (filetime > before_time):
-            return
-        if after_time and (filetime < after_time):
-            return
-    width, height = q_res(str(args.input / inpath))
-
-    if args.minsize and (width < args.minsize or height < args.minsize):
-        return
-    if args.maxsize and (width > args.maxsize or height > args.maxsize):
-        return
-    if not args.no_mod:
-        if width % args.scale != 0 or height % args.scale != 0:
-            return
-
-    return inpath, filestat
+def within_res(inpath, minsize, maxsize, scale) -> tuple[bool, tuple]:
+    res = q_res(args.input / inpath)
+    width, height = res
+    if minsize and (width < minsize or height < minsize):
+        return (False, res)
+    if maxsize and (width > maxsize or height > maxsize):
+        return (False, res)
+    if scale and (width % scale != 0 or height % scale != 0):
+        return (False, res)
+    return (True, res)
 
 
-def fileparse(inumerated) -> None:
-    """Process an image. Generates an hr/lr pair
-        Tuple[index, total, path, path.stat, hr_folder, lr_folder]
-    """
-    index, ptotal, inpath, filestat, hr_folder, lr_folder = inumerated
-    filestime = filestat.st_mtime
-    pid = get_pid() - args.threads
+def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
+    mtime = inpath.stat().st_mtime
+    filetime = datetime.datetime.fromtimestamp(mtime)
+    if before_time and (before_time < filetime):
+        return (False, mtime)
+    if after_time and (after_time > filetime):
+        return (False, mtime)
+    return (True, mtime)
 
-    hr_path = Path(hr_folder / to_recursive(inpath))
-    lr_path = Path(lr_folder / to_recursive(inpath))
+
+def fileparse(inpath, source, mtime, scale, hr_folder, lr_folder, recursive, extension=None):
+    hr_path = Path(hr_folder / to_recursive(inpath, recursive))
+    lr_path = Path(lr_folder / to_recursive(inpath, recursive))
     os.makedirs(hr_path.parent, exist_ok=True)
     os.makedirs(lr_path.parent, exist_ok=True)
 
-    if args.extension not in [None, 'None']:
-        hr_path = hr_path.with_suffix(f".{args.extension}")
-        lr_path = lr_path.with_suffix(f".{args.extension}")
+    if extension not in [None, 'None']:
+        hr_path = hr_path.with_suffix(f".{extension}")
+        lr_path = lr_path.with_suffix(f".{extension}")
 
-    image = cv2.imread(str(args.input / inpath))
-    thread_status(pid, inpath, anonymous=args.anonymous,
-                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 6)}{p_bar(1, 2, 2)}")
+    image = cv2.imread(source)
     cv2.imwrite(str(hr_path), image)  # type: ignore
-    thread_status(pid, inpath, anonymous=args.anonymous,
-                  extra=f"{index}/{ptotal} {p_bar(index, ptotal, 6)}{p_bar(2, 2, 2)}")
     cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
-        image, (0, 0), fx=1 / args.scale, fy=1 / args.scale))
-    os.utime(str(hr_path), (filestime, filestime))
-    os.utime(str(lr_path), (filestime, filestime))
+        image, (0, 0), fx=1 / scale, fy=1 / scale))
+    os.utime(str(hr_path), (mtime, mtime))
+    os.utime(str(lr_path), (mtime, mtime))
+    return inpath
 
 
 if __name__ == "__main__":
+
     if not args.input:
         sys.exit("Please specify an input directory.")
 
-    next_step(0, f"(input: {args.input})")
-    next_step(0, f"(scale: {args.scale})"
-              f" (threads: {args.threads})"
-              f" (recursive: {args.recursive})")
-    next_step(0, f"(extension: {args.extension})"
-              f" (anonymous: {args.anonymous})")
-    next_step(0, f"Size threshold: ({args.minsize} <= x <= {args.maxsize})")
-    next_step(0, f"Time threshold: ({after_time} <= x <= {before_time})")
-    next_step(0, f"(sort: {args.sort}) (reverse: {args.reverse})")
+    next_step(0,
+              f"(input: {args.input})",
+              f"(scale: {args.scale})",
+              f"(threads: {args.threads})",
+              f"(recursive: {args.recursive})",
+              f"(extension: {args.extension})",
+              f"(anonymous: {args.anonymous})",
+              f"(sort: {args.sort}) (reverse: {args.reverse})")
     print()
 
-    next_step(1, "gathering images")
+    before_time, after_time = None, None
+    if args.after or args.before:
+        try:
+            if args.after and args.before:
+                if args.after < args.before:
+                    sys.exit(f"{before_time} is older than {after_time}!")
+            elif args.after:
+                after_time = timeparser.parse(str(args.after))
+            elif args.before:
+                before_time = timeparser.parse(str(args.before))
+        except timeparser.ParserError as err:
+            rprint("Given time is invalid!")
+            sys.exit(str(err))
+
+    next_step(1, "gathering images...")
     args.input = Path(args.input)
     image_list = get_file_list(args.input / "**" / "*.png",
                                args.input / "**" / "*.jpg",
                                args.input / "**" / "*.webp")
-    if args.image_limit is not None:  # limit image number
+    if args.image_limit:  # limit image number
         image_list = image_list[:args.image_limit]
 
-    next_step(1, f"images: {len(image_list)}")
+    next_step(1, f"(images: {len(image_list)})")
 
     # filter out blackisted/whitelisted items
-    if args.whitelist:
+    if args.blacklist or args.whitelist:
         next_step(1, f"whitelist: ({args.whitelist}): {len(image_list)}")
         image_list = [i for i in image_list if args.whitelist in str(i)]
-    if args.blacklist:
         next_step(1, f"blacklist: ({args.blacklist}): {len(image_list)}")
         image_list = [i for i in image_list if args.blacklist not in str(i)]
 
@@ -322,8 +297,8 @@ if __name__ == "__main__":
     if args.purge:
         # Gather a list of existing images and remove them
         next_step(1, "purging...")
-        for i in get_file_list(str(hr_folder / "**" / "*"),
-                               str(lr_folder / "**" / "*")):
+        for i in get_file_list(hr_folder / "**" / "*",
+                               lr_folder / "**" / "*"):
             if i.is_dir():
                 shutil.rmtree(i)
             elif i.is_file():
@@ -331,47 +306,94 @@ if __name__ == "__main__":
         next_step(1, "purged.")
 
     # get files that were already converted
-    next_step(1, "filtering existing ...")
+    next_step(1, "removing existing...")
     hr_files = set([f.relative_to(hr_folder).with_suffix("") for f in get_file_list(
-        str((hr_folder / "**" / "*"))) if not f.is_dir()])
+        (hr_folder / "**" / "*")) if not f.is_dir()])
     lr_files = set([f.relative_to(lr_folder).with_suffix("") for f in get_file_list(
-        str((lr_folder / "**" / "*"))) if not f.is_dir()])
+        (lr_folder / "**" / "*")) if not f.is_dir()])
     exist_list = set(intersect_lists(hr_files, lr_files))  # type: ignore
     unfiltered_len = len(image_list)
 
     # filter out files that exist in both folders
     image_list = [i for i in image_list
-                  if to_recursive(i).with_suffix("") not in exist_list]
+                  if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
 
-    next_step(
-        1, f"(existing: {len(exist_list)}) (discarded: {unfiltered_len-len(image_list)})")
-    next_step(1, f"images: {len(image_list)}")
+    next_step(1, f"(existing: {len(exist_list)})",
+              f"(discarded: {unfiltered_len-len(image_list)})",
+              f"(images: {len(image_list)})")
 
-    # Sort files based on different attributes
-    if args.sort:
-        next_step(1, "Sorting...")
-        sorting_methods = {
-            "name": lambda x: x.stem,
-            "ext": lambda x: x.suffix,
-            "len": lambda x: len(str(x)),
-            "full": lambda x: x
-        }
-        image_list = sorted(image_list, key=sorting_methods[args.sort])
     if args.reverse:
         image_list = image_list[::-1]
     print()
+
+    next_step(
+        2, f"Filtering images outside of range:({after_time}<=x<={before_time})")
+    original_total = len(image_list)
+    mtimes = poolmap(args.threads, within_time, [
+        (args.input / i, before_time, after_time) for i in image_list],
+        chunksize=10, use_tqdm=True)
+    image_list = [image_list[i]
+                  for i, _ in enumerate(image_list) if mtimes[i][0]]
+    mtimes = [m for v, m in mtimes if v]
+    mtimes = {image_list[i]: v for i, v in enumerate(mtimes)}
+
+    next_step(
+        2, f"Filtering images by resolution:({args.minsize} <= x <= {args.maxsize}) % {args.scale}")
+
+    mres = poolmap(args.threads, within_res,
+                   [(args.input / i, args.minsize, args.maxsize, args.scale if not args.no_mod else 1) for i in image_list], chunksize=10, use_tqdm=True)
+    image_list = [image_list[i]
+                  for i, _ in enumerate(image_list) if mres[i][0]]
+    mres = [m for v, m in mres if v]
+    mres = {image_list[i]: v for i, v in enumerate(mres)}
+
+    next_step(
+        2, f"Discarded {original_total - len(image_list)} images")
+
+    if args.simulate:
+        next_step(3, "Simulated")
+        sys.exit(-1)
+
+    if not image_list:
+        next_step(-1, "No images left to process")
+        sys.exit(-1)
+
+    next_step(3, f"Processing {len(image_list)} images...")
+
+    # Sort files based on different attributes
+    next_step(1, "Sorting...")
+    sorting_methods = {
+        "name": lambda x: x,
+        "ext": lambda x: x.suffix,
+        "len": lambda x: len(str(x)),
+        "res": lambda x: mres[x][0] * mres[x][1],
+        "time": lambda x: mtimes[x]
+    }
+    image_list = sorted(image_list, key=sorting_methods[args.sort])
+
+    try:
+        image_list = poolmap(args.threads, fileparse,
+                             [(v, str(args.input / v),
+                               mtimes[v], args.scale,
+                               hr_folder, lr_folder,
+                               args.recursive, args.extension)
+                              for i, v in enumerate(image_list)], use_tqdm=True)
+    except KeyboardInterrupt:
+        next_step(-1, "KeyboardInterrupt")
+    next_step(-1, "Done")
+    sys.exit()
 
     # Remove files that hit the arg limits
     next_step(2, "Filtering bad images ...")
     with Pool(args.threads) as p:
         intuple = [(i[0], len(image_list), i[1])
                    for i in enumerate(image_list)]
-        imgs_filtered = list(p.map(filter_imgs, intuple, chunksize=200))
-    imgs_filtered = [i for i in imgs_filtered if i is not None]
-    next_step(2, f"discarded {len(intuple)-len(imgs_filtered)} images")
-    print()
+        imgs_filtered = list(p.starmap(filter_imgs, intuple, chunksize=400))
+        imgs_filtered = [i for i in imgs_filtered if i[1] != -1]
+        next_step(2, f"discarded {len(intuple)-len(imgs_filtered)} images")
+        next_step(2, "Indexing...")
+        print()
 
-    # exit if args.simulate
     if args.simulate:
         next_step(3, "Simulate == True")
         sys.exit()
@@ -385,4 +407,10 @@ if __name__ == "__main__":
         intuple = [(i[0], len(imgs_filtered), *i[1])
                    for i in enumerate(imgs_filtered)]
         intuple = [(*i, hr_folder, lr_folder) for i in intuple]
-        p.map(fileparse, intuple, chunksize=200)
+        try:
+            p.map(fileparse, intuple, chunksize=400)
+        except KeyboardInterrupt:
+            p.terminate()
+            p.close()
+            p.join()
+            next_step(-1, "KeyboardInterrupt")
