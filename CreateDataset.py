@@ -32,7 +32,6 @@ try:
 except (ModuleNotFoundError, ImportError):
     ArgumentDefaultsRichHelpFormatter = argparse.ArgumentDefaultsHelpFormatter
 
-
 packages = {'rich':            "rich",
             'opencv-python':   "cv2",
             'python-dateutil': "dateutil",
