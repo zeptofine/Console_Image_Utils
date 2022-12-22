@@ -1,0 +1,32 @@
+import os
+from re import compile as rcompile
+
+try:
+    from rich import print as rprint
+except ImportError:
+    rprint = print
+
+
+ansi_escape = rcompile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+
+def p_bar(iteration: int, total: int, length=20,
+          fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
+    color1, color2 = ("\033[93m", "\033[92m")
+    filledLength = (length * iteration) // total
+    #    [#############################]
+    pbar = (fill*length)[:filledLength] + (nullp*(length - filledLength))
+    command = f"{str(pref)}{color2}{corner[0]}{color1}{pbar}{color2}{corner[1]}\033[0m{str(suff)}"
+    return command
+
+
+def thread_status(pid: int, item: str = "", extra: str = "", anonymous: bool = False,
+                  item_size=None) -> None:
+    len_extra = len(ansi_escape.sub('', extra))
+    item_size = item_size if item_size else os.get_terminal_size().columns
+    output = f"{pid}: "
+    output += f"{item}" if not anonymous else ""
+    output = output[:item_size-len_extra-2]
+    output += (" "*item_size + extra)[len(output)+len_extra+1:]
+    output = f"{'\n'*pid}{output}{'\033[A'*pid}"
+    print(output, end="\r")

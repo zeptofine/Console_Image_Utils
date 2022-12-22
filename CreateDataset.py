@@ -8,10 +8,6 @@
 import argparse
 import datetime
 import glob
-import importlib
-import io
-import logging
-import multiprocessing
 import os
 import shutil
 import subprocess
@@ -19,13 +15,12 @@ import sys
 import time
 from pathlib import Path
 
-from special.ConfigArgParser import ConfigParser
-from special.misc_utils import poolmap
+from ConfigArgParser import ConfigParser
+from util.iterable_starmap import StarPool, poolmap
+from util.pip_helpers import ensureinstall, is_installed, try_install
+from util.process_funcs import is_subprocess
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
-logging.basicConfig(
-    level=logging.WARNING,
-    format="[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",)
 
 
 if sys.platform == "win32":
@@ -38,21 +33,6 @@ except (ModuleNotFoundError, ImportError):
     ArgumentDefaultsRichHelpFormatter = argparse.ArgumentDefaultsHelpFormatter
 
 
-def try_import(package) -> int:
-    """Try to import a module."""
-    try:
-        spec = importlib.util.find_spec(package)  # type: ignore
-        if spec is not None:
-            module = importlib.util.module_from_spec(spec)  # type: ignore
-            sys.modules[module] = package
-            importlib.import_module(package)
-            return 0
-        else:
-            return 1
-    except ModuleNotFoundError:
-        return 1
-
-
 packages = {'rich':            "rich",
             'opencv-python':   "cv2",
             'python-dateutil': "dateutil",
@@ -62,48 +42,48 @@ packages = {'rich':            "rich",
             'shtab':           "shtab"}
 
 try:
+    import time
+    print(time.perf_counter())
+    for package in packages:
+        if not is_installed(packages[package]):
+            raise ImportError
+    print(time.perf_counter())
+
+except (ImportError, ModuleNotFoundError):
+    ensureinstall()
+    try:
+        import_failed = False
+        for package in packages:
+            if not is_installed(packages[package]):
+                import_failed = True
+                columns = os.get_terminal_size().columns
+                print(
+                    f"{'-'*columns}\n" + str(f"{package} not detected. Attempting to install...").center(columns))
+                try_install(package)
+                print()
+                if not is_installed(packages[package]):
+                    raise ModuleNotFoundError(
+                        f"Failed to install '{package}'.")
+        if import_failed and not is_subprocess():
+            os.execv(sys.executable, ['python', *sys.argv])
+        elif import_failed:
+            raise ModuleNotFoundError(
+                f'Packages not found after relaunching. Please properly install {"".join(packages.keys())}')
+
+    except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
+        print(f"{type(err2).__name__}: {err2}")
+        sys.exit(127)  # command not found
+
+finally:
     from rich import print as rprint
     from rich.traceback import install
     install()
 
     import cv2
-    import dateutil.parser
+    import dateutil.parser as timeparser
     from imagesize import get as imagesize_get  # type: ignore
     from rich_argparse import ArgumentDefaultsRichHelpFormatter
     from tqdm import tqdm
-    import shtab
-
-except (ImportError, ModuleNotFoundError):
-    rprint = print
-    try:
-        import_failed = False
-        for package in packages:
-            if try_import(packages[package]) == 1:
-                import_failed = True
-                print(
-                    f"{'-'*os.get_terminal_size().columns}\n{package} not detected. Attempting to install...")
-                with subprocess.Popen([sys.executable, '-m', 'pip', 'install', package],
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE) as import_proc:
-
-                    for line in io.TextIOWrapper(import_proc.stdout,  # type: ignore
-                                                 encoding="utf-8"):
-                        print(f'({package}) : {line.strip()}')
-                print()
-                if try_import(packages[package]) == 1:
-                    raise ModuleNotFoundError(
-                        f"Failed to install '{package}'.")
-        if import_failed and not "parse_error" in str(sys.argv):
-            os.execv(sys.executable, ['python', *sys.argv, '--parse_error'])
-        elif import_failed and "parse_error" in str(sys.argv):
-            raise ModuleNotFoundError(
-                f'Packages not found after relaunching. Please properly install {"".join(packages.keys())}')
-    except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
-        print(f"{type(err2).__name__}: {err2}")
-        sys.exit(127)  # command not found
-finally:
-    # I dont know why this is the only one that needs this
-    import dateutil.parser
-    timeparser = dateutil.parser
 
 
 def main_parser() -> argparse.ArgumentParser:
@@ -112,12 +92,8 @@ def main_parser() -> argparse.ArgumentParser:
         description="""Hi! this script converts thousands of files to
     another format in a High-res/Low-res pairs for data science.""")
 
-    # shtab is used for printing completion if available. I highly encourage this to be enabled.
-    try:
-        import shtab
-        shtab.add_argument_to(parser)
-    except:
-        print("shtab not found")
+    import shtab
+    shtab.add_argument_to(parser)
 
     p_req = parser.add_argument_group("Runtime")
     p_req.add_argument("-i", "--input",
@@ -128,16 +104,15 @@ def main_parser() -> argparse.ArgumentParser:
                        help="export extension.")
     p_req.add_argument("-r", "--recursive", action="store_true", default=False,
                        help="preserves the tree hierarchy.")
-    p_req.add_argument("--parse_error", action=argparse.SUPPRESS
     # by default, images in subfolders will be saved as hr/path_to_image.png if the name was input/path/to/image.png. This stops that.
 
     p_mods = parser.add_argument_group("Modifiers")
     p_mods.add_argument("--threads", type=int, default=int((CPU_COUNT / 4) * 3),
-                        help="number of total threads.") # used for multiprocessing
+                        help="number of total threads.")  # used for multiprocessing
     p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
-                        help="only gathers a given number of images. None disables it entirely.") # max numbers to be given to the filters
-    p_mods.add_argument("--limit_mode", choices=["before", "after"], default="before", 
-                        help="Changes the order of the limiter. By default, it happens before filtering out bad images.") 
+                        help="only gathers a given number of images. None disables it entirely.")  # max numbers to be given to the filters
+    p_mods.add_argument("--limit_mode", choices=["before", "after"], default="before",
+                        help="Changes the order of the limiter. By default, it happens before filtering out bad images.")
     # ^^ this choice is for if you want to convert n images, or only search n images.
     p_mods.add_argument("--anonymous", action="store_true",
                         help="hides path names in progress. Doesn't affect the result.")
@@ -150,7 +125,6 @@ def main_parser() -> argparse.ArgumentParser:
     p_mods.add_argument("--reverse", action="store_true",
                         help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
 
-    
     # certain criteria that images must meet in order to be included in the processing.
     p_filters = parser.add_argument_group("Filters")
     p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
@@ -176,19 +150,15 @@ def main_parser() -> argparse.ArgumentParser:
 
 
 def next_step(order, *args) -> None:
-    output = [" "+f"{str(order)}: {text}" for text in args]
+    if order == -9:
+        order = f"[red]ERROR[/red]"
+    output = [f" {str(order)}: {text}" for text in args]
     rprint("\n".join(output), end="\n\033[K")
 
 
-def get_pid() -> int:
-    """Get the current process PID."""
-    return int(multiprocessing.current_process().name.rsplit("-", 1)[-1])
-
-
-def intersect_lists(x: list, y: list) -> list:
+def intersect_lists(x: list, y: list):
     """Get list of items that occur in both lists."""
-    outlist = [i for i in x if i in y]
-    return [i for i in outlist if i is not None]
+    return set(x).intersection(set(y))
 
 
 def get_file_list(*folders: Path) -> list[Path]:
@@ -204,10 +174,7 @@ def q_res(file: Path) -> tuple:
 
 
 def to_recursive(path: Path, recursive: bool) -> Path:
-    if not recursive:
-        return Path(str(path).replace(os.sep, "_"))
-    else:
-        return path
+    return path if recursive else Path(str(path).replace(os.sep, "_"))
 
 
 def within_res(inpath, minsize, maxsize, scale) -> tuple[bool, tuple]:
@@ -235,17 +202,18 @@ def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
 def fileparse(inpath, source, mtime, scale, hr_folder, lr_folder, recursive, extension=None):
     hr_path = Path(hr_folder / to_recursive(inpath, recursive))
     lr_path = Path(lr_folder / to_recursive(inpath, recursive))
-    os.makedirs(hr_path.parent, exist_ok=True)
-    os.makedirs(lr_path.parent, exist_ok=True)
+    hr_path.parent.mkdir(parents=True, exist_ok=True)
+    lr_path.parent.mkdir(parents=True, exist_ok=True)
 
     if extension not in [None, 'None']:
         hr_path = hr_path.with_suffix(f".{extension}")
         lr_path = lr_path.with_suffix(f".{extension}")
 
-    image = cv2.imread(source)
+    image = cv2.imread(source)  # type: ignore
     cv2.imwrite(str(hr_path), image)  # type: ignore
     cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
         image, (0, 0), fx=1 / scale, fy=1 / scale))
+
     os.utime(str(hr_path), (mtime, mtime))
     os.utime(str(lr_path), (mtime, mtime))
     return inpath
@@ -254,6 +222,7 @@ def fileparse(inpath, source, mtime, scale, hr_folder, lr_folder, recursive, ext
 if __name__ == "__main__":
 
     parser = main_parser()
+
     cparser = ConfigParser(parser, "config.json", exit_on_change=True)
     args = cparser.parse_args()
 
@@ -273,16 +242,16 @@ if __name__ == "__main__":
     before_time, after_time = None, None
     if args.after or args.before:
         try:
-            if args.after and args.before:
-                if args.after < args.before:
-                    sys.exit(f"{before_time} is older than {after_time}!")
-            elif args.after:
+            if args.after:
                 after_time = timeparser.parse(str(args.after))
-            elif args.before:
+            if args.before:
                 before_time = timeparser.parse(str(args.before))
+            if args.after and args.before:
+                if args.after > args.before:
+                    raise timeparser.ParserError(
+                        f"{before_time} (--before) is older than {after_time} (--after)!")
         except timeparser.ParserError as err:
-            rprint("Given time is invalid!")
-            sys.exit(str(err))
+            next_step(-9, err)
 
     next_step(1, "gathering images...")
     args.input = Path(args.input)
@@ -293,7 +262,6 @@ if __name__ == "__main__":
         image_list = image_list[:args.image_limit]
 
     next_step(1, f"(images: {len(image_list)})")
-
     # filter out blackisted/whitelisted items
     if args.blacklist or args.whitelist:
         next_step(1, f"whitelist: ({args.whitelist}): {len(image_list)}")
@@ -391,12 +359,16 @@ if __name__ == "__main__":
 
     next_step(3, f"Processing {len(image_list)} images...")
     try:
-        image_list = poolmap(args.threads, fileparse,
-                             [(v, str(args.input / v),
-                               mtimes[v], args.scale,
-                               hr_folder, lr_folder,
-                               args.recursive, args.extension)
-                              for v in image_list], chunksize=2, refresh=True, use_tqdm=True)
+        pargs = [(v, str(args.input / v),
+                  mtimes[v], args.scale,
+                  hr_folder, lr_folder,
+                  args.recursive, args.extension)
+                 for v in image_list]
+        image_list = poolmap(args.threads, fileparse, pargs,
+                             chunksize=2,
+                             just=max([len(str(x)) for x in image_list]),
+                             postfix=not args.anonymous,
+                             use_tqdm=True)
     except KeyboardInterrupt:
         next_step(-1, "KeyboardInterrupt")
     next_step(-1, "Done")

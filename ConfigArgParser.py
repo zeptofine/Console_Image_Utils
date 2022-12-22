@@ -4,10 +4,10 @@ import json
 from sys import exit as sys_exit
 
 class ConfigFile:
-    def __init__(self, cfg_path, config: dict={}):
+    def __init__(self, cfg_path, config: dict = {}):
         self.cfg_path = cfg_path
-        
         self.config: dict = config
+        return self.load()
 
     def set_path(self, path):
         self.cfg_path = path
@@ -15,10 +15,10 @@ class ConfigFile:
 
     def replace(self, values: dict):
         self.config = values
-    
+
     def update(self, values: dict):
         self.config.update(values)
-        
+
     def save(self, outdict=None):
         if not outdict:
             outdict = self.config
@@ -27,11 +27,12 @@ class ConfigFile:
 
     def load(self):
         if os.path.exists(self.cfg_path):
-           with open(self.cfg_path, 'r', encoding='utf-8') as config_file:
-               self.config = json.load(config_file)
+            with open(self.cfg_path, 'r', encoding='utf-8') as config_file:
+                self.config = json.load(config_file)
         else:
             self.save({})
-    
+        return self
+
     def __getitem__(self, item, replacement=""):
         if item in self.config:
             return self.config[item]
@@ -39,10 +40,8 @@ class ConfigFile:
             if replacement != "":
                 return replacement
 
-
     def __repr__(self) -> dict:
         return self.config
-
 
 
 class ConfigParser:
@@ -68,9 +67,8 @@ class ConfigParser:
         self.rewrite_help = rewrite_help
         self.autofill = autofill
 
-
         self._remove_help()
-        
+
         # set up subparser
         self.parser = argparse.ArgumentParser(
             prog=self._parent.prog,
@@ -87,18 +85,18 @@ class ConfigParser:
             allow_abbrev=self._parent.allow_abbrev,
             exit_on_error=True
         )
-        
-        
+
         # Add config options
-        self.config_option_group = self.parser.add_argument_group('Config options')
-        self.config_options = self.config_option_group.add_mutually_exclusive_group() 
+        self.config_option_group = self.parser.add_argument_group(
+            'Config options')
+        self.config_options = self.config_option_group.add_mutually_exclusive_group()
         setattr(self.config_option_group, "config_path", self.config_path)
         self.config_option_group.add_argument(self.default_prefix*2+"config_path", type=str,
                                               default=self.config_path, metavar="PATH",
                                               help="select a config to read from.")
         self.config_options.add_argument(self.default_prefix*2+"set", nargs=2, metavar=('KEY', 'VAL'),
                                          help="change a default argument's options")
-        self.config_options.add_argument(self.default_prefix*2+"reset", metavar='VALUE',
+        self.config_options.add_argument(self.default_prefix*2+"reset", metavar='VALUE', nargs="*",
                                          help="removes a changed option.")
         self.config_options.add_argument(self.default_prefix*2+"reset_all", action="store_true",
                                          help="resets every option.")
@@ -113,19 +111,18 @@ class ConfigParser:
         self.kwargs.pop('reset', None)
         self.kwargs.pop('reset_all', None)
 
-
         # get args from config_path
         self.edited_keys = self._get_config()
-        
+
         if not self.edited_keys:
             self._save_config({})
-        
+
         self.edited_keys = self._get_config()
 
         self.set_defaults(self.edited_keys)
 
-
     # modified from argparse.py ( self.set_defaults(**kwargs) )
+
     def set_defaults(self, argdict: dict):
         self.parser._defaults.update(argdict)
         for action in self.parser._actions:
@@ -149,20 +146,22 @@ class ConfigParser:
 
                 self.edited_keys[potential_args[0]] = potential_args[1]
             elif self.parsed_args.reset:
-                self.edited_keys.pop(self.parsed_args.reset, None)
+                for arg in self.parsed_args.reset:
+                    self.edited_keys.pop(arg, None)
             elif self.parsed_args.reset_all:
                 self.edited_keys = {}
-                
+
             self._save_config(self.edited_keys)
-            
+            self.set_defaults(self.edited_keys)
+
             if self.exit_on_change:
                 sys_exit()
 
         self._add_help()
-        
+
         return self.parser.parse_args()
 
-    def _convert_type(self, potential_args: list) :
+    def _convert_type(self, potential_args: list):
         if potential_args[1].lower() in ["true", "false"]:
             if potential_args[1].lower() == "true":
                 potential_args[1] = True
@@ -201,4 +200,3 @@ class ConfigParser:
         else:
             self._save_config({})
             return {}
-
