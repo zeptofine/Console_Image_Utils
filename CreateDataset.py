@@ -107,12 +107,12 @@ finally:
 
 
 def main_parser() -> argparse.ArgumentParser:
-    # TODO: Parse args in __main__ within a method
     parser = argparse.ArgumentParser(
         formatter_class=ArgumentDefaultsRichHelpFormatter,
         description="""Hi! this script converts thousands of files to
-    another format in a High-res/Low-res pair.""")
+    another format in a High-res/Low-res pairs for data science.""")
 
+    # shtab is used for printing completion if available. I highly encourage this to be enabled.
     try:
         import shtab
         shtab.add_argument_to(parser)
@@ -124,45 +124,54 @@ def main_parser() -> argparse.ArgumentParser:
                        help="Input folder.")
     p_req.add_argument("-x", "--scale", type=int, default=4,
                        help="scale to downscale LR images")
-    p_req.add_argument("--parse_error", action="store_true",
-                       help=argparse.SUPPRESS)
     p_req.add_argument("-e", "--extension", metavar="EXT", default=None,
                        help="export extension.")
     p_req.add_argument("-r", "--recursive", action="store_true", default=False,
                        help="preserves the tree hierarchy.")
+    p_req.add_argument("--parse_error", action=argparse.SUPPRESS
+    # by default, images in subfolders will be saved as hr/path_to_image.png if the name was input/path/to/image.png. This stops that.
 
     p_mods = parser.add_argument_group("Modifiers")
     p_mods.add_argument("--threads", type=int, default=int((CPU_COUNT / 4) * 3),
-                        help="number of total threads.")
+                        help="number of total threads.") # used for multiprocessing
     p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
-                        help="only gathers a given number of images. None if disabled.")
+                        help="only gathers a given number of images. None disables it entirely.") # max numbers to be given to the filters
+    p_mods.add_argument("--limit_mode", choices=["before", "after"], default="before", 
+                        help="Changes the order of the limiter. By default, it happens before filtering out bad images.") 
+    # ^^ this choice is for if you want to convert n images, or only search n images.
     p_mods.add_argument("--anonymous", action="store_true",
                         help="hides path names in progress. Doesn't affect the result.")
     p_mods.add_argument("--simulate", action="store_true",
-                        help="skips the conversion step.")
+                        help="skips the conversion step. Used for debugging.")
     p_mods.add_argument("--purge", action="store_true",
-                        help="Clears every output before converting.")
+                        help="Clears the output folder before running.")
     p_mods.add_argument("--sort", choices=["name", "ext", "len", "res", "time", "size"], default="res",
                         help="sorting method.")
     p_mods.add_argument("--reverse", action="store_true",
-                        help="reverses the sorting direction.")
+                        help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
 
+    
+    # certain criteria that images must meet in order to be included in the processing.
     p_filters = parser.add_argument_group("Filters")
     p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
                            help="only allows paths with the given string.")
     p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
                            help="excludes paths with the given string.")
+    # ^^ used for restricting the names allowed in the paths.
+
     p_filters.add_argument("--minsize", type=int, metavar="MIN", default=128,
                            help="smallest available image")
     p_filters.add_argument("--maxsize", type=int, metavar="MAX",
                            help="largest allowed image.")
     p_filters.add_argument("--no_mod", action="store_true",
                            help="disables the modulo check for if the file is divisible by scale. May encounter errors later on.")
+    # ^^ used for filtering out too small or too big images.
     p_filters.add_argument("--after", type=str,
                            help="Only uses files modified after a given date."
-                           "ex. '2020', or '2009 sept 16th'")
+                           "ex. '2020', or '2009 Sept 16th'")
     p_filters.add_argument("--before", type=str,
                            help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
+    # ^^ Used for filtering out too old or too new images.
     return parser
 
 
