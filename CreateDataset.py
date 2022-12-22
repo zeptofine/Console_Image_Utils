@@ -37,61 +37,6 @@ try:
 except (ModuleNotFoundError, ImportError):
     ArgumentDefaultsRichHelpFormatter = argparse.ArgumentDefaultsHelpFormatter
 
-# TODO: Parse args in __main__ within a method
-parser = argparse.ArgumentParser(
-    formatter_class=ArgumentDefaultsRichHelpFormatter,
-    description="""Hi! this script converts thousands of files to
-another format in a High-res/Low-res pair.""")
-
-p_req = parser.add_argument_group("Runtime")
-p_req.add_argument("-i", "--input",
-                   help="Input folder.")
-p_req.add_argument("-x", "--scale", type=int, default=4,
-                   help="scale to downscale LR images")
-p_req.add_argument("--parse_error", action="store_true",
-                   help=argparse.SUPPRESS)
-p_req.add_argument("-e", "--extension", metavar="EXT", default=None,
-                   help="export extension.")
-p_req.add_argument("-r", "--recursive", action="store_true", default=False,
-                   help="preserves the tree hierarchy.")
-
-p_mods = parser.add_argument_group("Modifiers")
-p_mods.add_argument("--threads", type=int, default=int((CPU_COUNT / 4) * 3),
-                    help="number of total threads.")
-p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
-                    help="only gathers a given number of images. None if disabled.")
-p_mods.add_argument("--anonymous", action="store_true",
-                    help="hides path names in progress. Doesn't affect the result.")
-p_mods.add_argument("--simulate", action="store_true",
-                    help="skips the conversion step.")
-p_mods.add_argument("--purge", action="store_true",
-                    help="Clears every output before converting.")
-p_mods.add_argument("--sort", choices=["name", "ext", "len", "res", "time"], default="name",
-                    help="sorting method.")
-p_mods.add_argument("--reverse", action="store_true",
-                    help="reverses the sorting direction.")
-
-p_filters = parser.add_argument_group("Filters")
-p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
-                       help="only allows paths with the given string.")
-p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
-                       help="excludes paths with the given string.")
-p_filters.add_argument("--minsize", type=int, metavar="MIN", default=128,
-                       help="smallest available image")
-p_filters.add_argument("--maxsize", type=int, metavar="MAX",
-                       help="largest allowed image.")
-p_filters.add_argument("--no_mod", action="store_true",
-                       help="disables the modulo check for if the file is divisible by scale. May encounter errors later on.")
-p_filters.add_argument("--after", type=str,
-                       help="Only uses files modified after a given date."
-                       "ex. '2020', or '2009 sept 16th'")
-p_filters.add_argument("--before", type=str,
-                       help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
-
-cparser = ConfigParser(parser, "config.json", exit_on_change=True)
-
-args = cparser.parse_args()
-
 
 def try_import(package) -> int:
     """Try to import a module."""
@@ -113,7 +58,8 @@ packages = {'rich':            "rich",
             'python-dateutil': "dateutil",
             'imagesize':       "imagesize",
             'rich-argparse':   "rich_argparse",
-            'tqdm':            "tqdm"}
+            'tqdm':            "tqdm",
+            'shtab':           "shtab"}
 
 try:
     from rich import print as rprint
@@ -125,6 +71,7 @@ try:
     from imagesize import get as imagesize_get  # type: ignore
     from rich_argparse import ArgumentDefaultsRichHelpFormatter
     from tqdm import tqdm
+    import shtab
 
 except (ImportError, ModuleNotFoundError):
     rprint = print
@@ -145,19 +92,78 @@ except (ImportError, ModuleNotFoundError):
                 if try_import(packages[package]) == 1:
                     raise ModuleNotFoundError(
                         f"Failed to install '{package}'.")
-        if import_failed and not args.parse_error:
+        if import_failed and not "parse_error" in str(sys.argv):
             os.execv(sys.executable, ['python', *sys.argv, '--parse_error'])
-        elif import_failed and args.parse_error:
+        elif import_failed and "parse_error" in str(sys.argv):
             raise ModuleNotFoundError(
                 f'Packages not found after relaunching. Please properly install {"".join(packages.keys())}')
     except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
         print(f"{type(err2).__name__}: {err2}")
         sys.exit(127)  # command not found
 finally:
+    # I dont know why this is the only one that needs this
     import dateutil.parser
+    timeparser = dateutil.parser
 
-# I dont know why this is the only one that needs this
-timeparser = dateutil.parser
+
+def main_parser() -> argparse.ArgumentParser:
+    # TODO: Parse args in __main__ within a method
+    parser = argparse.ArgumentParser(
+        formatter_class=ArgumentDefaultsRichHelpFormatter,
+        description="""Hi! this script converts thousands of files to
+    another format in a High-res/Low-res pair.""")
+
+    try:
+        import shtab
+        shtab.add_argument_to(parser)
+    except:
+        print("shtab not found")
+
+    p_req = parser.add_argument_group("Runtime")
+    p_req.add_argument("-i", "--input",
+                       help="Input folder.")
+    p_req.add_argument("-x", "--scale", type=int, default=4,
+                       help="scale to downscale LR images")
+    p_req.add_argument("--parse_error", action="store_true",
+                       help=argparse.SUPPRESS)
+    p_req.add_argument("-e", "--extension", metavar="EXT", default=None,
+                       help="export extension.")
+    p_req.add_argument("-r", "--recursive", action="store_true", default=False,
+                       help="preserves the tree hierarchy.")
+
+    p_mods = parser.add_argument_group("Modifiers")
+    p_mods.add_argument("--threads", type=int, default=int((CPU_COUNT / 4) * 3),
+                        help="number of total threads.")
+    p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
+                        help="only gathers a given number of images. None if disabled.")
+    p_mods.add_argument("--anonymous", action="store_true",
+                        help="hides path names in progress. Doesn't affect the result.")
+    p_mods.add_argument("--simulate", action="store_true",
+                        help="skips the conversion step.")
+    p_mods.add_argument("--purge", action="store_true",
+                        help="Clears every output before converting.")
+    p_mods.add_argument("--sort", choices=["name", "ext", "len", "res", "time", "size"], default="res",
+                        help="sorting method.")
+    p_mods.add_argument("--reverse", action="store_true",
+                        help="reverses the sorting direction.")
+
+    p_filters = parser.add_argument_group("Filters")
+    p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
+                           help="only allows paths with the given string.")
+    p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
+                           help="excludes paths with the given string.")
+    p_filters.add_argument("--minsize", type=int, metavar="MIN", default=128,
+                           help="smallest available image")
+    p_filters.add_argument("--maxsize", type=int, metavar="MAX",
+                           help="largest allowed image.")
+    p_filters.add_argument("--no_mod", action="store_true",
+                           help="disables the modulo check for if the file is divisible by scale. May encounter errors later on.")
+    p_filters.add_argument("--after", type=str,
+                           help="Only uses files modified after a given date."
+                           "ex. '2020', or '2009 sept 16th'")
+    p_filters.add_argument("--before", type=str,
+                           help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
+    return parser
 
 
 def next_step(order, *args) -> None:
@@ -196,7 +202,7 @@ def to_recursive(path: Path, recursive: bool) -> Path:
 
 
 def within_res(inpath, minsize, maxsize, scale) -> tuple[bool, tuple]:
-    res = q_res(args.input / inpath)
+    res = q_res(inpath)
     width, height = res
     if scale and (width % scale != 0 or height % scale != 0):
         return (False, res)
@@ -237,6 +243,10 @@ def fileparse(inpath, source, mtime, scale, hr_folder, lr_folder, recursive, ext
 
 
 if __name__ == "__main__":
+
+    parser = main_parser()
+    cparser = ConfigParser(parser, "config.json", exit_on_change=True)
+    args = cparser.parse_args()
 
     if not args.input:
         sys.exit("Please specify an input directory.")
@@ -341,7 +351,7 @@ if __name__ == "__main__":
         2, f"Filtering images by resolution: ({args.minsize} <= x <= {args.maxsize}) % {args.scale}")
 
     mres = poolmap(args.threads, within_res,
-                   [(args.input / i, args.minsize, args.maxsize, args.scale if not args.no_mod else 1) for i in image_list], chunksize=10, use_tqdm=True)
+                   [(args.input / i, args.minsize, args.maxsize, (args.scale if not args.no_mod else 1)) for i in image_list], use_tqdm=True)
     image_list = [image_list[i]
                   for i, _ in enumerate(image_list) if mres[i][0]]
     mres = [m for v, m in mres if v]
@@ -358,25 +368,26 @@ if __name__ == "__main__":
         next_step(-1, "No images left to process")
         sys.exit(-1)
 
-    next_step(3, f"Processing {len(image_list)} images...")
-
+    next_step(3, "Sorting...")
     # Sort files based on different attributes
-    sorting_methods = {
-        "name": lambda x: x,
-        "ext": lambda x: x.suffix,
-        "len": lambda x: len(str(x)),
-        "res": lambda x: mres[x][0] * mres[x][1],
-        "time": lambda x: mtimes[x]
-    }
-    image_list = sorted(image_list, key=sorting_methods[args.sort], reverse=args.reverse)
+    sorting_methods = {"name": lambda x: x,
+                       "ext": lambda x: x.suffix,
+                       "len": lambda x: len(str(x)),
+                       "res": lambda x: mres[x][0] * mres[x][1],
+                       "time": lambda x: mtimes[x],
+                       "size": lambda x: (args.input / x).stat().st_size}
+    image_list = sorted(
+        image_list,
+        key=sorting_methods[args.sort], reverse=args.reverse)
 
+    next_step(3, f"Processing {len(image_list)} images...")
     try:
         image_list = poolmap(args.threads, fileparse,
                              [(v, str(args.input / v),
                                mtimes[v], args.scale,
                                hr_folder, lr_folder,
                                args.recursive, args.extension)
-                              for i, v in enumerate(image_list)], use_tqdm=True)
+                              for v in image_list], chunksize=2, refresh=True, use_tqdm=True)
     except KeyboardInterrupt:
         next_step(-1, "KeyboardInterrupt")
     next_step(-1, "Done")
