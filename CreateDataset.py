@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ConfigArgParser import ConfigParser
 from util.iterable_starmap import StarPool, poolmap
-from util.pip_helpers import ensureinstall, is_installed, try_install
+from util.pip_helpers import PipInstaller
 from util.process_funcs import is_subprocess
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
@@ -40,34 +40,27 @@ packages = {'rich':            "rich",
             'tqdm':            "tqdm",
             'shtab':           "shtab"}
 
+p = PipInstaller()
 try:
-    import time
-    print(time.perf_counter())
     for package in packages:
-        if not is_installed(packages[package]):
+        print(f"importing {package}")
+        if not p.available(packages[package]):
             raise ImportError
-    print(time.perf_counter())
 
 except (ImportError, ModuleNotFoundError):
-    ensureinstall()
     try:
-        import_failed = False
         for package in packages:
-            if not is_installed(packages[package]):
+            if not p.available(packages[package]):
                 import_failed = True
                 columns = os.get_terminal_size().columns
                 print(
                     f"{'-'*columns}\n" + str(f"{package} not detected. Attempting to install...").center(columns))
-                try_install(package)
-                print()
-                if not is_installed(packages[package]):
+                p.install(package)
+                if not p.available(packages[package]):
                     raise ModuleNotFoundError(
                         f"Failed to install '{package}'.")
-        if import_failed and not is_subprocess():
+        if not is_subprocess():
             os.execv(sys.executable, ['python', *sys.argv])
-        elif import_failed:
-            raise ModuleNotFoundError(
-                f'Packages not found after relaunching. Please properly install {"".join(packages.keys())}')
 
     except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
         print(f"{type(err2).__name__}: {err2}")
@@ -82,7 +75,6 @@ finally:
     import dateutil.parser as timeparser
     from imagesize import get as imagesize_get  # type: ignore
     from rich_argparse import ArgumentDefaultsRichHelpFormatter
-    from tqdm import tqdm
 
 
 def main_parser() -> argparse.ArgumentParser:
@@ -155,7 +147,7 @@ def next_step(order, *args) -> None:
     rprint("\n".join(output), end="\n\033[K")
 
 
-def intersect_lists(x: list, y: list):
+def intersect_lists(x: list, y: list) -> set:
     """Get list of items that occur in both lists."""
     return set(x).intersection(set(y))
 
@@ -176,7 +168,7 @@ def to_recursive(path: Path, recursive: bool) -> Path:
     return path if recursive else Path(str(path).replace(os.sep, "_"))
 
 
-def within_res(inpath, minsize, maxsize, scale) -> tuple[bool, tuple]:
+def within_res(inpath, minsize, maxsize, scale) -> tuple:
     res = q_res(inpath)
     width, height = res
     if scale and (width % scale != 0 or height % scale != 0):
@@ -188,7 +180,7 @@ def within_res(inpath, minsize, maxsize, scale) -> tuple[bool, tuple]:
     return (True, res)
 
 
-def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
+def within_time(inpath, before_time, after_time) -> tuple:
     mtime = inpath.stat().st_mtime
     filetime = datetime.datetime.fromtimestamp(mtime)
     if before_time and (before_time < filetime):
