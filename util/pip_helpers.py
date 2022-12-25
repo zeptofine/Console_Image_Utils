@@ -1,8 +1,9 @@
 import importlib
 import io
-from pkgutil import find_loader
 import sys
+from pkgutil import find_loader
 from subprocess import PIPE, Popen
+
 
 def is_installed(package_name) -> bool:
     loader = find_loader(package_name)
@@ -17,14 +18,12 @@ def ensureinstall():
 def try_install(package, post=['pip', 'install']):
     subprocess_input = [sys.executable, '-m', *post,
                         package] if package else [sys.executable, '-m', *post]
-    output = []
     with Popen(subprocess_input,
                stdout=PIPE, stderr=PIPE) as import_proc:
         for line in io.TextIOWrapper(import_proc.stdout,  # type: ignore
                                      encoding="utf-8"):
             print(f'<{package.ljust(10)}> {line.strip()}')
-            output.append(line)
-    return output
+    return import_proc.returncode
 
 
 class PipInstaller:
@@ -32,7 +31,13 @@ class PipInstaller:
         self.pip_functions = False
         self.failed_once = False
 
-    def available(self, package_name):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        del self
+
+    def available(self, package_name) -> bool:
         if self.failed_once:
             self.ensure()
         try:
@@ -42,7 +47,7 @@ class PipInstaller:
             return False
         return True
 
-    def install(self, package, post=['pip', 'install']):
+    def install(self, package, post=['pip', 'install']) -> int:
         subprocess_input = [sys.executable, '-m', *post,
                             package] if package else [sys.executable, '-m', *post]
         output = []
@@ -52,9 +57,9 @@ class PipInstaller:
                                          encoding="utf-8"):
                 print(f'<{package.ljust(10)}> {line.strip()}')
                 output.append(line)
-            return import_proc.pid
+            return import_proc.returncode
 
-    def ensure(self):
+    def ensure(self) -> None:
         if not self.pip_functions:
             self.install("", post=["ensurepip", "--upgrade"])
             self.pip_functions = True

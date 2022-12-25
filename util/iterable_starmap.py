@@ -30,14 +30,13 @@ class StarPool(pool.__class__):
 
 
 pool.close()
+del pool
 
-
-def poolmap(threads, func, iterable, use_tqdm, chunksize=1, refresh=False, just=30, postfix=True, **tqargs) -> list:
+def poolmap(threads, func, iterable, use_tqdm, chunksize=1, refresh=False, just=20, postfix=True, **tqargs) -> list:
     from tqdm import tqdm
     with StarPool(threads) as pool:
-        output = [None]*len(iterable)
+        output = []
         if use_tqdm:
-
             itqdm = tqdm(total=len(iterable), dynamic_ncols=True, **tqargs)
             for result in pool.istarmap(  # type: ignore
                     func, iterable, chunksize=chunksize):

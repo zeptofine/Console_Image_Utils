@@ -40,41 +40,40 @@ packages = {'rich':            "rich",
             'tqdm':            "tqdm",
             'shtab':           "shtab"}
 
-p = PipInstaller()
-try:
-    for package in packages:
-        print(f"importing {package}")
-        if not p.available(packages[package]):
-            raise ImportError
-
-except (ImportError, ModuleNotFoundError):
+with PipInstaller() as p:
     try:
         for package in packages:
             if not p.available(packages[package]):
-                import_failed = True
-                columns = os.get_terminal_size().columns
-                print(
-                    f"{'-'*columns}\n" + str(f"{package} not detected. Attempting to install...").center(columns))
-                p.install(package)
+                raise ImportError
+
+    except (ImportError, ModuleNotFoundError):
+        try:
+            for package in packages:
                 if not p.available(packages[package]):
-                    raise ModuleNotFoundError(
-                        f"Failed to install '{package}'.")
-        if not is_subprocess():
-            os.execv(sys.executable, ['python', *sys.argv])
+                    import_failed = True
+                    columns = os.get_terminal_size().columns
+                    print(
+                        f"{'-'*columns}\n" + str(f"{package} not detected. Attempting to install...").center(columns))
+                    p.install(package)
+                    if not p.available(packages[package]):
+                        raise ModuleNotFoundError(
+                            f"Failed to install '{package}'.")
+            if not is_subprocess():
+                os.execv(sys.executable, ['python', *sys.argv])
 
-    except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
-        print(f"{type(err2).__name__}: {err2}")
-        sys.exit(127)  # command not found
+        except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
+            print(f"{type(err2).__name__}: {err2}")
+            sys.exit(127)  # command not found
 
-finally:
-    from rich import print as rprint
-    from rich.traceback import install
-    install()
+    finally:
+        from rich import print as rprint
+        from rich.traceback import install
+        install()
 
-    import cv2
-    import dateutil.parser as timeparser
-    from imagesize import get as imagesize_get  # type: ignore
-    from rich_argparse import ArgumentDefaultsRichHelpFormatter
+        import cv2
+        import dateutil.parser as timeparser
+        from imagesize import get as imagesize_get  # type: ignore
+        from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
 
 def main_parser() -> argparse.ArgumentParser:

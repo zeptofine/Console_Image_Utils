@@ -3,7 +3,6 @@ import argparse
 import json
 import os
 import sys
-
 from ConfigArgParser import ConfigParser
 
 parser = argparse.ArgumentParser()
@@ -15,6 +14,8 @@ parser.add_argument('-w', '--web', default="e621.net",
                     help="input the website. will use settings.txt if not omitted.")
 parser.add_argument('--max', type=int, default=1000,
                     help="max images to give per item. will use settings.txt if not omitted.")
+parser.add_argument('--post-filter', action="store_true",
+                    help="puts blacklisted terms in the postFiltering section. will pass onto tags otherwise.")
 cparser = ConfigParser(parser, "config.json", autofill=True)
 args = cparser.parse_args()
 
@@ -25,6 +26,11 @@ with open("prefixes.txt", "r") as prfile:
     prefixes = prfile.readlines()
 
 prefixes = [i.strip().split(" ") for i in prefixes]
+blacklist = [
+    "watersports",
+    "urine",
+    "gore",
+]
 
 assert len(prefixes) > 0, "Your prefixes.txt is empty. Fill it up with prompts"
 
@@ -33,23 +39,23 @@ outputJson = {
     "uniques": [],
     "version": 3
 }
-
+blacklist = [f"-{i}" for i in blacklist]
 for prompt in prefixes:
     tmpdict = {
         'filename': "%search%/%date:format=yyyy-MM-dd-hh-mm-ss%_%md5%_%rating%.%ext%",
         'galleriesCountAsOne': True, 'getBlacklisted': False,
         'page': 1, 'perpage': 60,
         'path': args.batch_path,
-        'postFiltering': [
-            "-piss"
-        ],
-        'query': {
-            'tags': prompt
-        },
         'site': args.web,
         "total": args.max}
-    outputJson['batchs'].append(tmpdict)
+    tmpdict.update({'query': {'tags': prompt}})
+    # if not --postFilter, then add blacklist to the prompt with --
+    if not args.post_filter:
+        tmpdict['query']['tags'] += blacklist
+    else:
+        tmpdict['postFiltering'] = blacklist
 
+    outputJson['batchs'].append(tmpdict)
 
 with open("imgbrd_grabbergen.igl", "w") as outfile:
     outfile.write(json.dumps(outputJson, indent=4))

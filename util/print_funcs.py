@@ -12,11 +12,10 @@ ansi_escape = rcompile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 def p_bar(iteration: int, total: int, length=20,
           fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
-    color1, color2 = ("\033[93m", "\033[92m")
     filledLength = (length * iteration) // total
     #    [#############################]
     pbar = (fill*length)[:filledLength] + (nullp*(length - filledLength))
-    command = f"{str(pref)}{color2}{corner[0]}{color1}{pbar}{color2}{corner[1]}\033[0m{str(suff)}"
+    command = f"{str(pref)}\033[92m{corner[0]}\033[93m{pbar}\033[92m{corner[1]}\033[0m{str(suff)}"
     return command
 
 
