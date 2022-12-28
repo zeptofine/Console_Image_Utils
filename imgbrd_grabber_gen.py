@@ -14,6 +14,7 @@ parser.add_argument('-w', '--web', default="e621.net",
                     help="input the website. will use settings.txt if not omitted.")
 parser.add_argument('--max', type=int, default=1000,
                     help="max images to give per item. will use settings.txt if not omitted.")
+parser.add_argument("--output-fmt", default="%search_1%/%date:format=yyyy-MM-dd-hh-mm-ss%_%md5%_%rating%.%ext%")
 parser.add_argument('--post-filter', action="store_true",
                     help="puts blacklisted terms in the postFiltering section. will pass onto tags otherwise.")
 cparser = ConfigParser(parser, "config.json", autofill=True)
@@ -42,7 +43,7 @@ outputJson = {
 blacklist = [f"-{i}" for i in blacklist]
 for prompt in prefixes:
     tmpdict = {
-        'filename': "%search%/%date:format=yyyy-MM-dd-hh-mm-ss%_%md5%_%rating%.%ext%",
+        'filename': args.output_fmt,
         'galleriesCountAsOne': True, 'getBlacklisted': False,
         'page': 1, 'perpage': 60,
         'path': args.batch_path,

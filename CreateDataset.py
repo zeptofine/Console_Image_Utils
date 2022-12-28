@@ -24,7 +24,7 @@ CPU_COUNT: int = os.cpu_count()  # type: ignore
 
 
 if sys.platform == "win32":
-    print("This application was not made for windows. Try Using WSL2 (untested)")
+    print("This application was not made for windows. Try Using WSL2")
     time.sleep(3)
 
 try:
@@ -114,7 +114,6 @@ def main_parser() -> argparse.ArgumentParser:
                         help="sorting method.")
     p_mods.add_argument("--reverse", action="store_true",
                         help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
-
     # certain criteria that images must meet in order to be included in the processing.
     p_filters = parser.add_argument_group("Filters")
     p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
@@ -268,8 +267,8 @@ if __name__ == "__main__":
     if args.extension:
         hr_folder = Path(f"{str(hr_folder)}-{args.extension}")
         lr_folder = Path(f"{str(lr_folder)}-{args.extension}")
-    os.makedirs(hr_folder, exist_ok=True)
-    os.makedirs(lr_folder, exist_ok=True)
+    hr_folder.parent.mkdir(parents=True, exist_ok=True)
+    lr_folder.parent.mkdir(parents=True, exist_ok=True)
 
     if args.purge:
         # Gather a list of existing images and remove them
@@ -288,7 +287,8 @@ if __name__ == "__main__":
         (hr_folder / "**" / "*")) if not f.is_dir()])
     lr_files = set([f.relative_to(lr_folder).with_suffix("") for f in get_file_list(
         (lr_folder / "**" / "*")) if not f.is_dir()])
-    exist_list = set(intersect_lists(hr_files, lr_files))  # type: ignore
+    exist_list = intersect_lists(hr_files, lr_files)  # type: ignore
+
     unfiltered_len = len(image_list)
 
     # filter out files that exist in both folders
@@ -299,8 +299,6 @@ if __name__ == "__main__":
               f"(discarded: {unfiltered_len-len(image_list)})",
               f"(images: {len(image_list)})")
 
-    if args.reverse:
-        image_list = image_list[::-1]
     print()
 
     next_step(
@@ -343,9 +341,9 @@ if __name__ == "__main__":
                        "res": lambda x: mres[x][0] * mres[x][1],
                        "time": lambda x: mtimes[x],
                        "size": lambda x: (args.input / x).stat().st_size}
-    image_list = sorted(
+    image_list = set(sorted(
         image_list,
-        key=sorting_methods[args.sort], reverse=args.reverse)
+        key=sorting_methods[args.sort], reverse=args.reverse))
 
     next_step(3, f"Processing {len(image_list)} images...")
     try:
