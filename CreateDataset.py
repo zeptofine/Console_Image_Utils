@@ -183,6 +183,7 @@ def has_broken(paths: list[Path], scale):
             return True
     return False
 
+
 def to_recursive(path: Path, recursive: bool) -> Path:
     return path if recursive else Path(str(path).replace(os.sep, "_"))
 
