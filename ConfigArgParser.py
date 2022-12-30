@@ -7,7 +7,7 @@ class ConfigFile:
     def __init__(self, cfg_path, config: dict = {}):
         self.cfg_path = cfg_path
         self.config: dict = config
-        return self.load()
+        self.load()
 
     def set_path(self, path):
         self.cfg_path = path
@@ -31,7 +31,7 @@ class ConfigFile:
                 self.config = json.load(config_file)
         else:
             self.save({})
-        return self
+        return self.config
 
     def __getitem__(self, item, replacement=""):
         if item in self.config:
@@ -43,6 +43,8 @@ class ConfigFile:
     def __repr__(self) -> dict:
         return self.config
 
+    def __call__(self):
+        return self.config
 
 class ConfigParser:
     '''Creates an easy argparse config utility. 
@@ -66,7 +68,8 @@ class ConfigParser:
         self.exit_on_change = exit_on_change
         self.rewrite_help = rewrite_help
         self.autofill = autofill
-
+        self.file = ConfigFile(self.config_path)
+        
         self._remove_help()
 
         # set up subparser
@@ -112,12 +115,12 @@ class ConfigParser:
         self.kwargs.pop('reset_all', None)
 
         # get args from config_path
-        self.edited_keys = self._get_config()
-
+        self.edited_keys = self.file.config
+        
         if not self.edited_keys:
-            self._save_config({})
+            self.file.save({})
 
-        self.edited_keys = self._get_config()
+        self.edited_keys = self.file.config
 
         self.set_defaults(self.edited_keys)
 
@@ -128,6 +131,7 @@ class ConfigParser:
         for action in self.parser._actions:
             if action.dest in argdict:
                 action.default = argdict[action.dest]
+        self.file.save(self.parser._defaults)
 
     def parse_args(self, **kwargs) -> argparse.Namespace:
         '''args.set, reset, reset_all logic '''
@@ -151,7 +155,6 @@ class ConfigParser:
             elif self.parsed_args.reset_all:
                 self.edited_keys = {}
 
-            self._save_config(self.edited_keys)
             self.set_defaults(self.edited_keys)
 
             if self.exit_on_change:
@@ -188,15 +191,3 @@ class ConfigParser:
                 action='help', default=argparse.SUPPRESS,
                 help=('show this help message and exit')
             )
-
-    def _save_config(self, config_dict):
-        with open(self.config_path, 'w', encoding='utf-8') as config_file:
-            config_file.write(json.dumps(config_dict, indent=4))
-
-    def _get_config(self) -> dict:
-        if os.path.exists(self.config_path):
-            with open(self.config_path, 'r', encoding='utf-8') as config_file:
-                return json.load(config_file)
-        else:
-            self._save_config({})
-            return {}
