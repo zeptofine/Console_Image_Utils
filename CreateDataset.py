@@ -80,7 +80,7 @@ def main_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
             formatter_class=ArgumentDefaultsRichHelpFormatter,
             description="""Hi! this script converts thousands of files to
-	another format in a High-res/Low-res pairs for data science.""")
+    another format in a High-res/Low-res pairs for data science.""")
 
     import shtab
     shtab.add_argument_to(parser)
@@ -118,8 +118,8 @@ def main_parser() -> argparse.ArgumentParser:
     p_filters = parser.add_argument_group("Filters")
     p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
                            help="only allows paths with the given string.")
-    p_filters.add_argument("--list-filter-mode",
-                           choices=["str", "list"], default="list")
+    p_filters.add_argument("--list-filter-whole", action="store_true",
+                           help="treats the whole whitelist as a single string. By default it separates it by spaces and only allows files that accept every criteria.")
     p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
                            help="excludes paths with the given string.")
     # ^^ used for restricting the names allowed in the paths.
@@ -263,12 +263,11 @@ if __name__ == "__main__":
     # filter out blackisted/whitelisted items
     for f, j in [("whitelist", True), ("blacklist", False)]:
         if i := getattr(args, f):
-            i = i.split(" ") if args.list_filter_mode == "list" else [i]
+            i = i.split(" ") if not args.list_filter_whole else [i]
             # iterate through each given whitelist item
-            for v, l in enumerate(i):
-
-                image_list = [i for i in image_list if (l in str(i)) == j]
-                next_step(1, f"{f} {v}: ({l}): {len(image_list)}")
+            image_list = [k for k in image_list if 
+                          (any(i in str(k) for i in i)) == j]
+            next_step(1, f"{f} {i}: {len(image_list)}")
 
     next_step(1, "Resolving...")
     original_total = len(image_list)
@@ -300,7 +299,8 @@ if __name__ == "__main__":
                 hr_path.unlink()
             if lr_path.exists():
                 lr_path.unlink()
-        next_step(1, "Purged.")
+                
+        next_step(1, f"Purged {len(image_list)} images.")
     # get files that were already converted
     next_step(1, "removing existing...")
 
