@@ -3,7 +3,8 @@ import os
 import json
 from sys import exit as sys_exit
 
-class ConfigFile(dict):
+
+class CfgDict(dict):
     def __init__(self, cfg_path, config: dict = {}):
         self.cfg_path = cfg_path
         self.load()
@@ -13,21 +14,28 @@ class ConfigFile(dict):
         self.cfg_path = path
         self.load()
         return self
-        
-    def save(self, outdict=None):
+
+    def save(self, outdict=None, indent=4):
         if not outdict:
             outdict = self
         with open(self.cfg_path, 'w+') as f:
-            f.write(json.dumps(outdict, indent=4))
+            f.write(json.dumps(outdict, indent=indent))
+        self.load()
         return self
-        
+
     def load(self):
         if os.path.exists(self.cfg_path):
             with open(self.cfg_path, 'r', encoding='utf-8') as config_file:
-                self.update(json.load(config_file))
+                try:
+                    self.update(json.load(config_file))
+                except (json.decoder.JSONDecodeError, TypeError):
+                    print(
+                        f'[!] failed to load config.json from {self.cfg_path}, making an empty one')
+                    self.save({})
         else:
             self.save({})
         return self
+
 
 class ConfigParser:
     '''Creates an easy argparse config utility. 
@@ -51,8 +59,8 @@ class ConfigParser:
         self.exit_on_change = exit_on_change
         self.rewrite_help = rewrite_help
         self.autofill = autofill
-        self.file = ConfigFile(self.config_path).save()
-        
+        self.file = CfgDict(config_path).save()
+
         self._remove_help()
 
         # set up subparser
@@ -93,18 +101,13 @@ class ConfigParser:
         self.config_path = self.kwargs['config_path']
 
         # exclude set, reset from config
-        self.kwargs.pop('set', None)
-        self.kwargs.pop('reset', None)
-        self.kwargs.pop('reset_all', None)
+        for i in ['set', 'reset', 'reset_all']:
+            self.kwargs.pop(i, None)
 
         # get args from config_path
-        if not self.file:
-            self.file.save({})
         self.file.load()
 
-        self.edited_keys = self.file
-
-        self.set_defaults(self.edited_keys)
+        self.set_defaults(self.file)
 
     # modified from argparse.py ( self.set_defaults(**kwargs) )
 
@@ -130,14 +133,14 @@ class ConfigParser:
                 if not potential_args[0] in self.kwargs:
                     sys_exit("Given key not found")
 
-                self.edited_keys[potential_args[0]] = potential_args[1]
+                self.file[potential_args[0]] = potential_args[1]
             elif self.parsed_args.reset:
                 for arg in self.parsed_args.reset:
-                    self.edited_keys.pop(arg, None)
+                    self.file.pop(arg, None)
             elif self.parsed_args.reset_all:
-                self.edited_keys = {}
+                self.file = {}
 
-            self.set_defaults(self.edited_keys)
+            self.set_defaults(self.file)
 
             if self.exit_on_change:
                 sys_exit()

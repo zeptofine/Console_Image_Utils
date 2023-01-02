@@ -6,7 +6,6 @@ import argparse
 import datetime
 import glob
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -16,9 +15,6 @@ from ConfigArgParser import ConfigParser
 from util.iterable_starmap import poolmap
 from util.pip_helpers import PipInstaller
 from util.process_funcs import is_subprocess
-
-# from tqdm import tqdm
-
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
 
@@ -74,12 +70,13 @@ with PipInstaller() as p:
         import dateutil.parser as timeparser
         import imagesize
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
+        from tqdm import tqdm
 
 
 def main_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-            formatter_class=ArgumentDefaultsRichHelpFormatter,
-            description="""Hi! this script converts thousands of files to
+        formatter_class=ArgumentDefaultsRichHelpFormatter,
+        description="""Hi! this script converts thousands of files to
     another format in a High-res/Low-res pairs for data science.""")
 
     import shtab
@@ -128,7 +125,7 @@ def main_parser() -> argparse.ArgumentParser:
                            help="smallest available image")
     p_filters.add_argument("--maxsize", type=int, metavar="MAX",
                            help="largest allowed image.")
-    p_filters.add_argument("--crop_mod", action="store_true",
+    p_filters.add_argument("--crop_mod", type=bool, default=False,
                            help="changes mod mode so that it crops the image to an image that actually is divisible by scale, typically by a few px")
     # ^^ used for filtering out too small or too big images.
     p_filters.add_argument("--after", type=str,
@@ -146,8 +143,13 @@ def next_step(order, *args) -> None:
               -3: "[grey]DEBUG[/grey]",
               -9: "[red]ERROR[/red]",
               }
-    output = [f" {str(orderd.get(order, order))}: {text}" for text in args]
+    output = [
+        f" [blue]{str(orderd.get(order, order))}[/blue]: {text}" for text in args]
     rprint("\n".join(output), end="\n\033[K")
+
+
+def get_resolution(path: Path):
+    return imagesize.get(path)
 
 
 def get_file_list(*folders: Path) -> list[Path]:
@@ -166,6 +168,12 @@ def get_existing_files(hr_folder, lr_folder):
 
 def to_recursive(path: Path, recursive: bool) -> Path:
     return path if recursive else Path(str(path).replace(os.sep, "_"))
+
+
+def check_for_images(image_list):
+    if not len(image_list):
+        next_step(-1, "No images left to process")
+        sys.exit(-1)
 
 
 def hrlr_pair(path, hr_folder, lr_folder, recursive=False, ext=None):
@@ -189,7 +197,7 @@ def within_time(inpath, before_time, after_time) -> tuple:
 
 
 def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple:
-    res = imagesize.get(inpath)
+    res = get_resolution(inpath)
     width, height = res
     if crop_mod:
         width, height = (width//scale)*scale, (height//scale)*scale
@@ -218,6 +226,40 @@ def fileparse(inpath, source, mtime, scale,
     return inpath
 
 
+def white_black_list(args, imglist):
+    for f, j in [("whitelist", True), ("blacklist", False)]:
+        if i := getattr(args, f):
+            i = i.split(" ") if not args.list_filter_whole else [i]
+            imglist = [k for k in imglist if
+                       (any(i in str(k) for i in i)) == j]
+            next_step(1, f"{f} {i}: {len(imglist)}")
+    return imglist
+
+
+def filter_images(args, imglist, cparser):
+    pargs = [(args.input / i, args.before, args.after) for i in imglist]
+    mtimes = poolmap(args.threads, within_time, pargs,
+                     desc=f"Filtering by time ({args.before}<=x<={args.after})")
+    mtimes = filter(lambda x: x[1][0], zip(imglist, mtimes))
+    imglist, mtimes = zip(*mtimes)
+    mtimes = {imglist[i]: mtimes[i][1] for i in range(len(imglist))}
+
+    if not cparser.file.get("cropped_before", False):
+        next_step(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
+        cparser.file.update({"cropped_before": True})
+        cparser.file.save()
+
+    pargs = [(args.input / i, args.minsize, args.maxsize,
+              args.scale, args.crop_mod) for i in imglist]
+    mres = poolmap(args.threads, within_res, pargs,
+                   desc=f"Filtering by resolution ({args.minsize} <= x <= {args.maxsize}) % {args.scale}")
+    mres = filter(lambda x: x[1][0], zip(imglist, mres))
+    imglist, mres = zip(*mres)
+    mres = {imglist[i]: mres[i][1] for i in range(len(imglist))}
+
+    return imglist, mtimes, mres
+
+
 if __name__ == "__main__":
 
     parser = main_parser()
@@ -229,24 +271,23 @@ if __name__ == "__main__":
         sys.exit("Please specify an input directory.")
 
     next_step(0,
-              f"(input: {args.input})",
-              f"(scale: {args.scale})",
-              f"(threads: {args.threads})",
-              f"(recursive: {args.recursive})",
-              f"(extension: {args.extension})",
-              f"(anonymous: {args.anonymous})",
-              f"(sort: {args.sort}) (reverse: {args.reverse})\n")
+              f"input: {args.input}",
+              f"scale: {args.scale}",
+              f"threads: {args.threads}",
+              f"recursive: {args.recursive}",
+              f"extension: {args.extension}",
+              f"anonymous: {args.anonymous}",
+              f"sort: {args.sort}, reverse: {args.reverse}\n")
 
-    before_time, after_time = None, None
     if args.after or args.before:
         try:
             if args.after:
-                after_time = timeparser.parse(str(args.after))
+                args.after = timeparser.parse(str(args.after))
             if args.before:
-                before_time = timeparser.parse(str(args.before))
+                args.before = timeparser.parse(str(args.before))
             if args.after and args.before and args.after > args.before:
                 raise timeparser.ParserError(
-                    f"{before_time} (--before) is older than {after_time} (--after)!")
+                    f"{args.before} (--before) is older than {args.after} (--after)!")
         except timeparser.ParserError as err:
             next_step(-9, err)
 
@@ -255,25 +296,18 @@ if __name__ == "__main__":
     image_list = get_file_list(args.input / "**" / "*.png",
                                args.input / "**" / "*.jpg",
                                args.input / "**" / "*.webp")
-
     if args.image_limit and args.limit_mode == "before":  # limit image number
         image_list = image_list[:args.image_limit]
+    next_step(1, f"Gathered {len(image_list)} images")
 
-    next_step(1, f"(images: {len(image_list)})")
     # filter out blackisted/whitelisted items
-    for f, j in [("whitelist", True), ("blacklist", False)]:
-        if i := getattr(args, f):
-            i = i.split(" ") if not args.list_filter_whole else [i]
-            # iterate through each given whitelist item
-            image_list = [k for k in image_list if 
-                          (any(i in str(k) for i in i)) == j]
-            next_step(1, f"{f} {i}: {len(image_list)}")
+    image_list = white_black_list(args, image_list)
 
-    next_step(1, "Resolving...")
+    # next_step(1, "Resolving...")
     original_total = len(image_list)
     # vv This naturally removes the possibility of multiple files pointing to the same image
     image_list = {i.resolve(): i.relative_to(args.input)
-                  for i in image_list}.values()
+                  for i in tqdm(image_list, desc="Resolving")}.values()
 
     if len(image_list) is not original_total:
         next_step(1, f"Discarded {original_total - len(image_list)} links")
@@ -281,6 +315,7 @@ if __name__ == "__main__":
     if args.extension and args.extension.startswith("."):
         args.extension = args.extension[1:]
 
+    # get hr and lr folders
     hr_folder = args.input.parent / f"{str(args.scale)}xHR"
     lr_folder = args.input.parent / f"{str(args.scale)}xLR"
     if ext := args.extension:
@@ -289,7 +324,7 @@ if __name__ == "__main__":
     hr_folder.parent.mkdir(parents=True, exist_ok=True)
     lr_folder.parent.mkdir(parents=True, exist_ok=True)
 
-    # Gather a list of exi sting images and remove them
+    # Purge existing images with respect to the filter
     if args.purge:
         next_step(1, "Purging...")
         for path in image_list:
@@ -299,63 +334,30 @@ if __name__ == "__main__":
                 hr_path.unlink()
             if lr_path.exists():
                 lr_path.unlink()
-                
-        next_step(1, f"Purged {len(image_list)} images.")
-    # get files that were already converted
-    next_step(1, "removing existing...")
 
+        next_step(1, f"Purged {len(image_list)} images.")
+
+    # get files that were already converted
     h, l = get_existing_files(hr_folder, lr_folder)
     exist_list = h.intersection(l)
-
-    image_list = [i for i in image_list
+    image_list = [i for i in tqdm(image_list, desc="Removing existing")
                   if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
 
-    next_step(1, f"Discarded: {original_total-len(image_list)} images")
-    print()
-    if not image_list:
-        next_step(-1, "No images left to process")
-        sys.exit(-1)
+    next_step(1, f"Discarded: {original_total-len(image_list)} images\n")
+    check_for_images(image_list)
 
-    next_step(2, "Filtering images outside of range: "
-              f"({after_time}<=x<={before_time})")
+    # remove files based on resolution and time
     original_total = len(image_list)
-    mtimes = poolmap(args.threads, within_time, [
-        (args.input / i, before_time, after_time) for i in image_list],
-        chunksize=10, use_tqdm=True)
-    image_list = [image_list[i]
-                  for i in range(len(image_list)) if mtimes[i][0]]
-    # filter based on v, and make dictionary for sorting
-    mtimes = {image_list[i]: m for i, (v, m) in enumerate(mtimes) if v}
+    image_list, mtimes, mres = filter_images(args, image_list, cparser)
+    next_step(2, f"Discarded {original_total - len(image_list)} images\n")
 
-    next_step(
-        2, "Filtering images by resolution: "
-        f"({args.minsize} <= x <= {args.maxsize}) % {args.scale}")
-    if args.crop_mod:
-        next_step(
-            -1, "cropping mode on!")
-    elif not cparser.file.get("cropped_before", False):
-        next_step(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
-        cparser.file.update({"cropped_before": True})
-        cparser.file.save()
-    pargs = [(args.input / i, args.minsize, args.maxsize,
-              args.scale, args.crop_mod) for i in image_list]
-    mres = poolmap(args.threads, within_res, pargs, use_tqdm=True)
-    # magic
-    image_list = [image_list[i]
-                  for i, _ in enumerate(image_list) if mres[i][0]]
-    mres = [m for v, m in mres if v]
-    mres = {image_list[i]: v for i, v in enumerate(mres)}
-
-    next_step(2, f"Discarded {original_total - len(image_list)} images")
+    # exit()
 
     if args.simulate:
         next_step(3, "Simulated")
         sys.exit(-1)
-    elif not image_list:
-        next_step(-1, "No images left to process")
-        sys.exit(-1)
 
-    next_step(3, "Sorting...")
+    next_step(3, "Sorting...\n")
     # Sort files based on different attributes
     sorting_methods = {"name": lambda x: x,
                        "ext": lambda x: x.suffix,
@@ -370,7 +372,7 @@ if __name__ == "__main__":
     if args.image_limit and args.limit_mode == "after":
         image_list = set(image_list[: args.image_limit])
 
-    next_step(3, f"Processing {len(image_list)} images...")
+    next_step(4, f"{len(image_list)} images in queue")
     try:
         pargs = [(v, str(args.input / v),
                   mtimes[v], args.scale,
@@ -380,8 +382,8 @@ if __name__ == "__main__":
         image_list = poolmap(args.threads, fileparse, pargs,
                              chunksize=2,
                              just=max([len(str(x)) for x in image_list]),
-                             postfix=not args.anonymous,
-                             use_tqdm=True)
+                             #  postfix=not args.anonymous,
+                             use_tqdm=True, desc="Processing")
     except KeyboardInterrupt:
         next_step(-1, "KeyboardInterrupt")
     next_step(-1, "Done")
