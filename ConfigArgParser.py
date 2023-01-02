@@ -3,48 +3,29 @@ import os
 import json
 from sys import exit as sys_exit
 
-class ConfigFile:
+class ConfigFile(dict):
     def __init__(self, cfg_path, config: dict = {}):
         self.cfg_path = cfg_path
-        self.config: dict = config
         self.load()
+        self.update(config)
 
     def set_path(self, path):
         self.cfg_path = path
         self.load()
-
-    def replace(self, values: dict):
-        self.config = values
-
-    def update(self, values: dict):
-        self.config.update(values)
-
+        
     def save(self, outdict=None):
         if not outdict:
-            outdict = self.config
+            outdict = self
         with open(self.cfg_path, 'w+') as f:
             f.write(json.dumps(outdict, indent=4))
-
+        
     def load(self):
         if os.path.exists(self.cfg_path):
             with open(self.cfg_path, 'r', encoding='utf-8') as config_file:
-                self.config = json.load(config_file)
+                self.update(json.load(config_file))
         else:
             self.save({})
-        return self.config
-
-    def __getitem__(self, item, replacement=""):
-        if item in self.config:
-            return self.config[item]
-        else:
-            if replacement != "":
-                return replacement
-
-    def __repr__(self) -> dict:
-        return self.config
-
-    def __call__(self):
-        return self.config
+        return self
 
 class ConfigParser:
     '''Creates an easy argparse config utility. 
@@ -115,12 +96,11 @@ class ConfigParser:
         self.kwargs.pop('reset_all', None)
 
         # get args from config_path
-        self.edited_keys = self.file.config
-        
-        if not self.edited_keys:
+        if not self.file:
             self.file.save({})
+        self.file.load()
 
-        self.edited_keys = self.file.config
+        self.edited_keys = self.file
 
         self.set_defaults(self.edited_keys)
 
