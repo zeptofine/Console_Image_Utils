@@ -1,10 +1,7 @@
 """Conversion script from folder to hr/lr pair.
 
-@author xpsyc
-@version 11-15-22-0
+@author zeptofine
 """
-
-
 import argparse
 import datetime
 import glob
@@ -16,7 +13,7 @@ import time
 from pathlib import Path
 
 from ConfigArgParser import ConfigParser
-from util.iterable_starmap import StarPool, poolmap
+from util.iterable_starmap import poolmap
 from util.pip_helpers import PipInstaller
 from util.process_funcs import is_subprocess
 
@@ -75,15 +72,15 @@ with PipInstaller() as p:
 
         import cv2
         import dateutil.parser as timeparser
-        from imagesize import get as imagesize_get  # type: ignore
+        import imagesize
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
 
 def main_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        formatter_class=ArgumentDefaultsRichHelpFormatter,
-        description="""Hi! this script converts thousands of files to
-    another format in a High-res/Low-res pairs for data science.""")
+            formatter_class=ArgumentDefaultsRichHelpFormatter,
+            description="""Hi! this script converts thousands of files to
+	another format in a High-res/Low-res pairs for data science.""")
 
     import shtab
     shtab.add_argument_to(parser)
@@ -116,11 +113,13 @@ def main_parser() -> argparse.ArgumentParser:
     p_mods.add_argument("--sort", choices=["name", "ext", "len", "res", "time", "size"], default="res",
                         help="sorting method.")
     p_mods.add_argument("--reverse", action="store_true",
-                        help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
+                                            help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
     # certain criteria that images must meet in order to be included in the processing.
     p_filters = parser.add_argument_group("Filters")
     p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
                            help="only allows paths with the given string.")
+    p_filters.add_argument("--list-filter-mode",
+                           choices=["str", "list"], default="list")
     p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
                            help="excludes paths with the given string.")
     # ^^ used for restricting the names allowed in the paths.
@@ -142,78 +141,69 @@ def main_parser() -> argparse.ArgumentParser:
 
 
 def next_step(order, *args) -> None:
-    if order == -9:
-        order = f"[red]ERROR[/red]"
-    elif order == -1:
-        order = f"[yellow]INFO[/yellow]"
-    output = [f" {str(order)}: {text}" for text in args]
+    orderd = {-1: "[yellow]INFO[/yellow]",
+              -2: "[orange]WARNING[/orange]",
+              -3: "[grey]DEBUG[/grey]",
+              -9: "[red]ERROR[/red]",
+              }
+    output = [f" {str(orderd.get(order, order))}: {text}" for text in args]
     rprint("\n".join(output), end="\n\033[K")
 
 
-def intersect_lists(x: list, y: list) -> set:
-    """Get list of items that occur in both lists."""
-    return set(x).intersection(set(y))
-
-
 def get_file_list(*folders: Path) -> list[Path]:
-    """Return a list of file paths from a list of subfolders."""
     globlist = [glob.glob(str(p), recursive=True)
                 for p in folders]
     return [Path(y) for x in globlist for y in x]
 
 
-def q_res(file: Path) -> tuple:
-    """Return the size of an image."""
-    return imagesize_get(file)
-
-
-def has_broken(paths: list[Path], scale):
-    for path in paths:
-        width, height = q_res(path)
-        if width % scale != 0 or height % scale != 0:
-            return True
-    return False
+def get_existing_files(hr_folder, lr_folder):
+    h = {f.relative_to(hr_folder).with_suffix("")
+         for f in get_file_list((hr_folder / "**" / "*"))}
+    l = {f.relative_to(lr_folder).with_suffix("")
+         for f in get_file_list((lr_folder / "**" / "*"))}
+    return h, l
 
 
 def to_recursive(path: Path, recursive: bool) -> Path:
     return path if recursive else Path(str(path).replace(os.sep, "_"))
 
 
-def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple:
-    res = q_res(inpath)
-    width, height = res
-    if crop_mod:
-        width, height = width - (width % scale), height - (height % scale)
-    elif (width % scale != 0 or height % scale != 0):
-        return (False, res)
-    if minsize and (width < minsize or height < minsize):
-        return (False, res)
-    if maxsize and (width > maxsize or height > maxsize):
-        return (False, res)
-    return (True, (width, height))
+def hrlr_pair(path, hr_folder, lr_folder, recursive=False, ext=None):
+    hr_path = hr_folder / to_recursive(path, recursive)
+    lr_path = lr_folder / to_recursive(path, recursive)
+    hr_path.parent.mkdir(parents=True, exist_ok=True)
+    lr_path.parent.mkdir(parents=True, exist_ok=True)
+    if ext:
+        hr_path = hr_path.with_suffix(f".{ext}")
+        lr_path = lr_path.with_suffix(f".{ext}")
+    return hr_path, lr_path
 
 
 def within_time(inpath, before_time, after_time) -> tuple:
     mtime = inpath.stat().st_mtime
     filetime = datetime.datetime.fromtimestamp(mtime)
-    if before_time and (before_time < filetime):
-        return (False, mtime)
-    if after_time and (after_time > filetime):
+    if before_time and (before_time < filetime) \
+            or after_time and (after_time > filetime):
         return (False, mtime)
     return (True, mtime)
 
 
+def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple:
+    res = imagesize.get(inpath)
+    width, height = res
+    if crop_mod:
+        width, height = (width//scale)*scale, (height//scale)*scale
+    elif (width % scale != 0 or height % scale != 0) \
+            or (minsize and (width < minsize or height < minsize)) \
+            or (maxsize and (width > maxsize or height > maxsize)):
+        return (False, res)
+    return (True, (width, height))
+
+
 def fileparse(inpath, source, mtime, scale,
-              hr_folder, lr_folder, recursive, crop_mod, extension=None):
-    hr_path = Path(hr_folder / to_recursive(inpath, recursive))
-    lr_path = Path(lr_folder / to_recursive(inpath, recursive))
-    hr_path.parent.mkdir(parents=True, exist_ok=True)
-    lr_path.parent.mkdir(parents=True, exist_ok=True)
+              hr_folder, lr_folder, recursive, crop_mod, ext=None):
 
-    if extension not in [None, 'None']:
-        hr_path = hr_path.with_suffix(f".{extension}")
-        lr_path = lr_path.with_suffix(f".{extension}")
-
+    hr_path, lr_path = hrlr_pair(inpath, hr_folder, lr_folder, recursive, ext)
     image = cv2.imread(source)  # type: ignore
     width, height, _ = image.shape
 
@@ -245,8 +235,7 @@ if __name__ == "__main__":
               f"(recursive: {args.recursive})",
               f"(extension: {args.extension})",
               f"(anonymous: {args.anonymous})",
-              f"(sort: {args.sort}) (reverse: {args.reverse})")
-    print()
+              f"(sort: {args.sort}) (reverse: {args.reverse})\n")
 
     before_time, after_time = None, None
     if args.after or args.before:
@@ -266,90 +255,92 @@ if __name__ == "__main__":
     image_list = get_file_list(args.input / "**" / "*.png",
                                args.input / "**" / "*.jpg",
                                args.input / "**" / "*.webp")
+
     if args.image_limit and args.limit_mode == "before":  # limit image number
         image_list = image_list[:args.image_limit]
 
     next_step(1, f"(images: {len(image_list)})")
     # filter out blackisted/whitelisted items
-    if args.whitelist:
-        next_step(1, f"whitelist: ({args.whitelist}): {len(image_list)}")
-        image_list = [i for i in image_list if args.whitelist in str(i)]
-    if args.blacklist:
-        next_step(1, f"blacklist: ({args.blacklist}): {len(image_list)}")
-        image_list = [i for i in image_list if args.blacklist not in str(i)]
+    for f, j in [("whitelist", True), ("blacklist", False)]:
+        if i := getattr(args, f):
+            i = i.split(" ") if args.list_filter_mode == "list" else [i]
+            # iterate through each given whitelist item
+            for v, l in enumerate(i):
+
+                image_list = [i for i in image_list if (l in str(i)) == j]
+                next_step(1, f"{f} {v}: ({l}): {len(image_list)}")
 
     next_step(1, "Resolving...")
     original_total = len(image_list)
-    # vv This naturally removes the possibility of multiple images pointing to the same image
+    # vv This naturally removes the possibility of multiple files pointing to the same image
     image_list = {i.resolve(): i.relative_to(args.input)
                   for i in image_list}.values()
 
     if len(image_list) is not original_total:
         next_step(1, f"Discarded {original_total - len(image_list)} links")
 
-    # exit()
     if args.extension and args.extension.startswith("."):
         args.extension = args.extension[1:]
 
     hr_folder = args.input.parent / f"{str(args.scale)}xHR"
     lr_folder = args.input.parent / f"{str(args.scale)}xLR"
-    if args.extension:
-        hr_folder = Path(f"{str(hr_folder)}-{args.extension}")
-        lr_folder = Path(f"{str(lr_folder)}-{args.extension}")
+    if ext := args.extension:
+        hr_folder = Path(f"{str(hr_folder)}-{ext}")
+        lr_folder = Path(f"{str(lr_folder)}-{ext}")
     hr_folder.parent.mkdir(parents=True, exist_ok=True)
     lr_folder.parent.mkdir(parents=True, exist_ok=True)
 
+    # Gather a list of exi sting images and remove them
     if args.purge:
-        # Gather a list of existing images and remove them
         next_step(1, "Purging...")
-        for i in get_file_list(hr_folder / "**" / "*",
-                               lr_folder / "**" / "*"):
-            if i.is_dir():
-                shutil.rmtree(i)
-            elif i.is_file():
-                i.unlink(missing_ok=True)
+        for path in image_list:
+            hr_path, lr_path = hrlr_pair(
+                path, hr_folder, lr_folder, args.recursive, args.extension)
+            if hr_path.exists():
+                hr_path.unlink()
+            if lr_path.exists():
+                lr_path.unlink()
         next_step(1, "Purged.")
-
-    # exit()
     # get files that were already converted
     next_step(1, "removing existing...")
-    hr_files = set([f.relative_to(hr_folder).with_suffix("") for f in get_file_list(
-        (hr_folder / "**" / "*")) if not f.is_dir()])
-    lr_files = set([f.relative_to(lr_folder).with_suffix("") for f in get_file_list(
-        (lr_folder / "**" / "*")) if not f.is_dir()])
-    exist_list = intersect_lists(hr_files, lr_files)  # type: ignore
-    original_total = len(image_list)
+
+    h, l = get_existing_files(hr_folder, lr_folder)
+    exist_list = h.intersection(l)
+
     image_list = [i for i in image_list
                   if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
 
     next_step(1, f"Discarded: {original_total-len(image_list)} images")
-
     print()
+    if not image_list:
+        next_step(-1, "No images left to process")
+        sys.exit(-1)
 
-    next_step(
-        2, f"Filtering images outside of range: ({after_time}<=x<={before_time})")
+    next_step(2, "Filtering images outside of range: "
+              f"({after_time}<=x<={before_time})")
     original_total = len(image_list)
     mtimes = poolmap(args.threads, within_time, [
         (args.input / i, before_time, after_time) for i in image_list],
         chunksize=10, use_tqdm=True)
     image_list = [image_list[i]
-                  for i, _ in enumerate(image_list) if mtimes[i][0]]
-    mtimes = [m for v, m in mtimes if v]
-    mtimes = {image_list[i]: v for i, v in enumerate(mtimes)}
+                  for i in range(len(image_list)) if mtimes[i][0]]
+    # filter based on v, and make dictionary for sorting
+    mtimes = {image_list[i]: m for i, (v, m) in enumerate(mtimes) if v}
 
     next_step(
-        2, f"Filtering images by resolution: ({args.minsize} <= x <= {args.maxsize}) % {args.scale}")
+        2, "Filtering images by resolution: "
+        f"({args.minsize} <= x <= {args.maxsize}) % {args.scale}")
     if args.crop_mod:
         next_step(
             -1, "cropping mode on!")
-    elif not "cropped_before" in cparser.file.config:
-        next_step(
-            -1, "Try the cropping mode! It crops the image instead of outright ignoring it."
-        )
-        cparser.file.config.update({"cropped_before": True})
+    elif not cparser.file.get("cropped_before", False):
+        next_step(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
+        cparser.file.update({"cropped_before": True})
         cparser.file.save()
-    mres = poolmap(args.threads, within_res,
-                   [(args.input / i, args.minsize, args.maxsize, args.scale, args.crop_mod) for i in image_list], use_tqdm=True)
+    pargs = [(args.input / i, args.minsize, args.maxsize,
+              args.scale, args.crop_mod) for i in image_list]
+    mres = poolmap(args.threads, within_res, pargs, use_tqdm=True)
+    # magic
     image_list = [image_list[i]
                   for i, _ in enumerate(image_list) if mres[i][0]]
     mres = [m for v, m in mres if v]
@@ -360,8 +351,7 @@ if __name__ == "__main__":
     if args.simulate:
         next_step(3, "Simulated")
         sys.exit(-1)
-
-    if not image_list:
+    elif not image_list:
         next_step(-1, "No images left to process")
         sys.exit(-1)
 

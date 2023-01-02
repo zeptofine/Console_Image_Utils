@@ -1,12 +1,6 @@
 import os
 from re import compile as rcompile
 
-try:
-    from rich import print as rprint
-except ImportError:
-    rprint = print
-
-
 ansi_escape = rcompile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 

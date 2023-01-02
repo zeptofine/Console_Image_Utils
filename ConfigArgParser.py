@@ -12,12 +12,14 @@ class ConfigFile(dict):
     def set_path(self, path):
         self.cfg_path = path
         self.load()
+        return self
         
     def save(self, outdict=None):
         if not outdict:
             outdict = self
         with open(self.cfg_path, 'w+') as f:
             f.write(json.dumps(outdict, indent=4))
+        return self
         
     def load(self):
         if os.path.exists(self.cfg_path):
@@ -49,7 +51,7 @@ class ConfigParser:
         self.exit_on_change = exit_on_change
         self.rewrite_help = rewrite_help
         self.autofill = autofill
-        self.file = ConfigFile(self.config_path)
+        self.file = ConfigFile(self.config_path).save()
         
         self._remove_help()
 
