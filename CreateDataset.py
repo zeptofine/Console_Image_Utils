@@ -94,8 +94,6 @@ def main_parser() -> argparse.ArgumentParser:
                        help="export extension.")
     p_req.add_argument("-r", "--recursive", action="store_true", default=False,
                        help="preserves the tree hierarchy.")
-    # by default, images in subfolders will be saved as hr/path_to_image.png if the name was input/path/to/image.png. This stops that.
-
     p_mods = parser.add_argument_group("Modifiers")
     p_mods.add_argument("-t", "--threads", type=int, default=int((CPU_COUNT / 4) * 3),
                         help="number of total threads.")  # used for multiprocessing

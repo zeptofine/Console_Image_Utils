@@ -4,10 +4,6 @@ from sys import executable
 from subprocess import PIPE, Popen
 
 
-def is_installed(package_name) -> bool:
-    loader = find_loader(package_name)
-    return loader is not None
-
 
 class PipInstaller:
     def __init__(self):
@@ -21,12 +17,11 @@ class PipInstaller:
         del self
 
     def available(self, package_name) -> bool:
-        if self.failed_once:
-            self.ensure()
-            self.failed_once = False
         try:
             importlib.import_module(package_name)
         except ImportError:
+            if not self.pip_functions:
+                self.ensure()
             self.failed_once = True
             return False
         return True
@@ -46,3 +41,4 @@ class PipInstaller:
     def ensure(self) -> None:
         self.install("", post=["ensurepip", "--upgrade"])
         self.install("pip", post=["pip", "install", "--upgrade"])
+        self.pip_functions = True
