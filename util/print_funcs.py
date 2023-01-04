@@ -23,3 +23,21 @@ def thread_status(pid: int, item: str = "", extra: str = "", anonymous: bool = F
     output += (" "*item_size + extra)[len(output)+len_extra+1:]
     output = f"{'\n'*pid}{output}{'\033[A'*pid}"
     print(output, end="\r")
+
+class Timer:
+    def __init__(self):
+        self.reset()
+        
+    def print(self, msg):
+        self.poll(msg)
+        self.reset()
+        return self
+    
+    def poll(self, msg):
+        print(f"{time.perf_counter() - self.time}: {msg}")
+        return self
+
+    def reset(self):
+        self.time = time.perf_counter()
+        return self.time
+        return self
