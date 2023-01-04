@@ -1,4 +1,5 @@
 import os
+import time
 from re import compile as rcompile
 
 ansi_escape = rcompile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
