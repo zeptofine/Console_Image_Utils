@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-
+from typing import Tuple
 from ConfigArgParser import ConfigParser
 from util.iterable_starmap import poolmap
 from util.pip_helpers import PipInstaller
@@ -38,11 +38,13 @@ packages = {'rich':            "rich",
 
 with PipInstaller() as p:
     try:
+        # loop import packages
         for package in packages:
             if not p.available(packages[package]):
                 raise ImportError
 
     except (ImportError, ModuleNotFoundError):
+        # Try to install packages and restart
         try:
             for package in packages:
                 if not p.available(packages[package]):
@@ -56,7 +58,8 @@ with PipInstaller() as p:
                             f"Failed to install '{package}'.")
             if not is_subprocess():
                 os.execv(sys.executable, ['python', *sys.argv])
-
+            else:
+                raise subprocess.SubprocessError("Failed to install packages.")
         except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
             print(f"{type(err2).__name__}: {err2}")
             sys.exit(127)  # command not found
@@ -147,18 +150,30 @@ def next_step(order, *args) -> None:
         f" [blue]{str(orderd.get(order, order))}[/blue]: {text}" for text in args]
     rprint("\n".join(output), end="\n\033[K")
 
-
 def get_resolution(path: Path):
+    """path: The path to the image file.
+    Returns the resolution of the image file as a tuple of (width, height).
+    """
     return imagesize.get(path)
 
 
-def get_file_list(*folders: Path) -> list[Path]:
+def get_file_list(*folders: Path) -> List[Path]:
+    """folders: One or more folder paths.
+    Returns a list of file paths in the specified folders.
+    """
     globlist = [glob.glob(str(p), recursive=True)
                 for p in folders]
     return [Path(y) for x in globlist for y in x]
 
 
 def get_existing_files(hr_folder, lr_folder):
+    """Returns the HR and LR files that already exist in the specified folders.
+    Args:
+        hr_folder: The folder where the HR files are stored.
+        lr_folder: The folder where the LR files are stored.    
+    Returns:
+        A tuple of sets of HR and LR file paths.
+    """
     h = {f.relative_to(hr_folder).with_suffix("")
          for f in get_file_list((hr_folder / "**" / "*"))}
     l = {f.relative_to(lr_folder).with_suffix("")
@@ -167,20 +182,25 @@ def get_existing_files(hr_folder, lr_folder):
 
 
 def to_recursive(path: Path, recursive: bool) -> Path:
+    # Convert the file path to a recursive path if recursive is False
+    # i/path/to/image.png => i/path_to_image.png
     return path if recursive else Path(str(path).replace(os.sep, "_"))
 
 
 def check_for_images(image_list):
-    if not len(image_list):
+    if not image_list:
         next_step(-1, "No images left to process")
         sys.exit(-1)
 
 
-def hrlr_pair(path, hr_folder, lr_folder, recursive=False, ext=None):
+def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path, 
+            recursive: bool=False, ext=None):
     hr_path = hr_folder / to_recursive(path, recursive)
     lr_path = lr_folder / to_recursive(path, recursive)
+    # Create the HR and LR folders if they do not exist
     hr_path.parent.mkdir(parents=True, exist_ok=True)
     lr_path.parent.mkdir(parents=True, exist_ok=True)
+    # If an extension is provided, append it to the HR and LR file paths
     if ext:
         hr_path = hr_path.with_suffix(f".{ext}")
         lr_path = lr_path.with_suffix(f".{ext}")
@@ -190,40 +210,73 @@ def hrlr_pair(path, hr_folder, lr_folder, recursive=False, ext=None):
 def within_time(inpath, before_time, after_time) -> tuple:
     mtime = inpath.stat().st_mtime
     filetime = datetime.datetime.fromtimestamp(mtime)
+    # compare the file time to given threshold
     if before_time and (before_time < filetime) \
             or after_time and (after_time > filetime):
         return (False, mtime)
     return (True, mtime)
 
 
-def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple:
-    res = get_resolution(inpath)
+def within_res(inpath, minsize, maxsize, scale, crop_mod) -> Tuple[Path, Path]:
+    """Checks if an image is within specified resolution limits.
+        inpath: The path to the image file.
+        minsize: The minimum allowed resolution for the image.
+        maxsize: The maximum allowed resolution for the image.
+        scale: The scale factor to use when checking the resolution.
+        crop_mod: A boolean value indicating whether to crop the image to the
+            nearest multiple of the scale factor.
+    Returns:
+        A tuple of (success, resolution). If the image is within the specified
+        resolution limits, success is True and resolution is the resolution of
+        the image. If the image is not within the limits, success is False and
+        resolution is the original resolution of the image.
+    """
+    # Get the resolution of the image
+    res = get_resolution(inpath) # => (width, height)
     width, height = res
+
     if crop_mod:
+        # crop the image to the nearest multiple of the scale factor
         width, height = (width//scale)*scale, (height//scale)*scale
     elif (width % scale != 0 or height % scale != 0):
         return (False, res)
     if (minsize and (width < minsize or height < minsize)) \
             or (maxsize and (width > maxsize or height > maxsize)):
         return (False, res)
+
+    # If the image is within the specified resolution limits, return True and the resolution of the image
     return (True, (width, height))
 
-
-def fileparse(inpath, source, mtime, scale,
-              hr_folder, lr_folder, recursive, crop_mod, ext=None):
-
+def fileparse(inpath: Path, source: Path, mtime, scale: int, 
+              hr_folder: Path, lr_folder: Path, 
+              recursive: bool, crop_mod: bool, ext=None):
+    """Converts an image file to HR and LR versions and saves them to the specified folders.
+    Returns:
+        The input path of the image file, to be printed.
+    """
+    # Generate the HR and LR file paths
     hr_path, lr_path = hrlr_pair(inpath, hr_folder, lr_folder, recursive, ext)
+
+    # Read the image file
     image = cv2.imread(source)  # type: ignore
     width, height, _ = image.shape
 
-    if crop_mod and (width % scale != 0 or height % scale != 0):
+    if crop_mod:
+        # crop the image
         image = image[0:(width//scale)*scale, 0:(height//scale)*scale]
+
+    # Save the HR version of the image
     cv2.imwrite(str(hr_path), image)  # type: ignore
+
+    # Save the LR version of the image
     cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
         image, (0, 0), fx=1 / scale, fy=1 / scale))
 
+    # Set the modification time of the HR and LR image files to the original image's modification time
     os.utime(str(hr_path), (mtime, mtime))
     os.utime(str(lr_path), (mtime, mtime))
+
+    # Return the input path of the image file
     return inpath
 
 
@@ -304,7 +357,6 @@ if __name__ == "__main__":
     # filter out blackisted/whitelisted items
     image_list = white_black_list(args, image_list)
 
-    # next_step(1, "Resolving...")
     original_total = len(image_list)
     # vv This naturally removes the possibility of multiple files pointing to the same image
     image_list = {i.resolve(): i.relative_to(args.input)
@@ -352,14 +404,12 @@ if __name__ == "__main__":
     image_list, mtimes, mres = filter_images(args, image_list, cparser)
     next_step(2, f"Discarded {original_total - len(image_list)} images\n")
 
-    # exit()
-
     if args.simulate:
         next_step(3, "Simulated")
         sys.exit(-1)
 
-    next_step(3, "Sorting...\n")
     # Sort files based on different attributes
+    next_step(3, "Sorting...\n")
     sorting_methods = {"name": lambda x: x,
                        "ext": lambda x: x.suffix,
                        "len": lambda x: len(str(x)),
@@ -373,6 +423,7 @@ if __name__ == "__main__":
     if args.image_limit and args.limit_mode == "after":
         image_list = set(image_list[: args.image_limit])
 
+    # create hr/lr pairs from list of valid images
     next_step(4, f"{len(image_list)} images in queue")
     try:
         pargs = [(v, str(args.input / v),

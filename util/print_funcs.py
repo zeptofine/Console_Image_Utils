@@ -1,8 +1,4 @@
-import os
 import time
-from re import compile as rcompile
-
-ansi_escape = rcompile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 def p_bar(iteration: int, total: int, length=20,
@@ -13,30 +9,28 @@ def p_bar(iteration: int, total: int, length=20,
     command = f"{str(pref)}\033[92m{corner[0]}\033[93m{pbar}\033[92m{corner[1]}\033[0m{str(suff)}"
     return command
 
-
-def thread_status(pid: int, item: str = "", extra: str = "", anonymous: bool = False,
-                  item_size=None) -> None:
-    len_extra = len(ansi_escape.sub('', extra))
-    item_size = item_size if item_size else os.get_terminal_size().columns
-    output = f"{pid}: "
-    output += f"{item}" if not anonymous else ""
-    output = output[:item_size-len_extra-2]
-    output += (" "*item_size + extra)[len(output)+len_extra+1:]
-    output = f"{'\n'*pid}{output}{'\033[A'*pid}"
-    print(output, end="\r")
+def thread_status(pid: int, item: str = "", extra: str = "", item_size=None):
+    item_size = item_size or os.get_terminal_size().columns
+    message = f"{pid}: {item}"
+    message = message[:item_size - len(extra) - 2] + extra
+    message += " " * (item_size - len(message))
+    print(f"{'\n' * pid}{message}{'\033[A' * pid}", end="\r")
 
 class Timer:
-    def __init__(self):
-        self.reset()
+    def __init__(self, timestamp: int = None):
+        self.time = timestamp or time.perf_counter()
 
     def print(self, msg):
+        '''print and resets time'''
         return self.poll(msg).reset()
 
     def poll(self, msg):
+        '''print without resetting time'''
         print(f"{time.perf_counter() - self.time}: {msg}")
         return self
 
     def reset(self):
+        '''resets time'''
         self.time = time.perf_counter()
         return self.time
 

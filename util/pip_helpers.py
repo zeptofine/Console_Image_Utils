@@ -24,6 +24,7 @@ class PipInstaller:
     def available(self, package_name) -> bool:
         if self.failed_once:
             self.ensure()
+            self.failed_once = False
         try:
             importlib.import_module(package_name)
         except ImportError:
@@ -44,7 +45,5 @@ class PipInstaller:
             return import_proc.returncode
 
     def ensure(self) -> None:
-        if not self.pip_functions:
-            self.install("", post=["ensurepip", "--upgrade"])
-            self.pip_functions = True
-            self.install("pip", post=["pip", "install", "--upgrade"])
+        self.install("", post=["ensurepip", "--upgrade"])
+        self.install("pip", post=["pip", "install", "--upgrade"])
