@@ -29,12 +29,11 @@ class Timer:
         self.reset()
 
     def print(self, msg):
-        self.poll(msg)
-        self.reset()
-        return self
+        return self.poll(msg).reset()
 
     def poll(self, msg):
         print(f"{time.perf_counter() - self.time}: {msg}")
+        return self
 
     def reset(self):
         self.time = time.perf_counter()
