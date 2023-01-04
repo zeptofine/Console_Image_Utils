@@ -201,8 +201,9 @@ def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple:
     width, height = res
     if crop_mod:
         width, height = (width//scale)*scale, (height//scale)*scale
-    elif (width % scale != 0 or height % scale != 0) \
-            or (minsize and (width < minsize or height < minsize)) \
+    elif (width % scale != 0 or height % scale != 0):
+        return (False, res)
+    if (minsize and (width < minsize or height < minsize)) \
             or (maxsize and (width > maxsize or height > maxsize)):
         return (False, res)
     return (True, (width, height))
