@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, List
 from ConfigArgParser import ConfigParser
 from util.iterable_starmap import poolmap
 from util.pip_helpers import PipInstaller
@@ -150,8 +150,10 @@ def next_step(order, *args) -> None:
         f" [blue]{str(orderd.get(order, order))}[/blue]: {text}" for text in args]
     rprint("\n".join(output), end="\n\033[K")
 
+
 def get_resolution(path: Path):
     """path: The path to the image file.
+
     Returns the resolution of the image file as a tuple of (width, height).
     """
     return imagesize.get(path)
@@ -170,14 +172,14 @@ def get_existing_files(hr_folder, lr_folder):
     """Returns the HR and LR files that already exist in the specified folders.
     Args:
         hr_folder: The folder where the HR files are stored.
-        lr_folder: The folder where the LR files are stored.    
+        lr_folder: The folder where the LR files are stored.
     Returns a tuple of sets of HR and LR file paths.
     """
-    h = {f.relative_to(hr_folder).with_suffix("")
-         for f in get_file_list((hr_folder / "**" / "*"))}
-    l = {f.relative_to(lr_folder).with_suffix("")
-         for f in get_file_list((lr_folder / "**" / "*"))}
-    return h, l
+    hfiles = {f.relative_to(hr_folder).with_suffix("")
+              for f in get_file_list((hr_folder / "**" / "*"))}
+    lfiles = {f.relative_to(lr_folder).with_suffix("")
+              for f in get_file_list((lr_folder / "**" / "*"))}
+    return hfiles, lfiles
 
 
 def to_recursive(path: Path, recursive: bool) -> Path:
@@ -192,8 +194,8 @@ def check_for_images(image_list):
         sys.exit(-1)
 
 
-def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path, 
-            recursive: bool=False, ext=None):
+def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
+              recursive: bool = False, ext=None):
     hr_path = hr_folder / to_recursive(path, recursive)
     lr_path = lr_folder / to_recursive(path, recursive)
     # Create the HR and LR folders if they do not exist
@@ -213,7 +215,7 @@ def within_time(inpath, before_time, after_time) -> tuple:
         after_time: the image must be after this time.
     Returns:
         A tuple of (success, modification time).
-    """ 
+    """
     mtime = inpath.stat().st_mtime
     filetime = datetime.datetime.fromtimestamp(mtime)
     # compare the file time to given threshold
@@ -235,12 +237,12 @@ def within_res(inpath, minsize, maxsize, scale, crop_mod) -> Tuple[Path, Path]:
         A tuple of (success, resolution).
     """
     # Get the resolution of the image
-    res = get_resolution(inpath) # => (width, height)
+    res = get_resolution(inpath)  # => (width, height)
     width, height = res
 
     if crop_mod:
         # crop the image to the nearest multiple of the scale factor
-        width, height = (width//scale)*scale, (height//scale)*scale
+        width, height = (width // scale) * scale, (height // scale) * scale
     elif (width % scale != 0 or height % scale != 0):
         return (False, res)
     if (minsize and (width < minsize or height < minsize)) \
@@ -249,8 +251,9 @@ def within_res(inpath, minsize, maxsize, scale, crop_mod) -> Tuple[Path, Path]:
 
     return (True, (width, height))
 
-def fileparse(inpath: Path, source: Path, mtime, scale: int, 
-              hr_folder: Path, lr_folder: Path, 
+
+def fileparse(inpath: Path, source: Path, mtime, scale: int,
+              hr_folder: Path, lr_folder: Path,
               recursive: bool, crop_mod: bool, ext=None):
     """Converts an image file to HR and LR versions and saves them to the specified folders.
     Returns:
@@ -265,7 +268,7 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
 
     if crop_mod:
         # crop the image
-        image = image[0:(width//scale)*scale, 0:(height//scale)*scale]
+        image = image[0:(width // scale) * scale, 0:(height // scale) * scale]
 
     # Save the HR version of the image
     cv2.imwrite(str(hr_path), image)  # type: ignore
@@ -397,8 +400,8 @@ if __name__ == "__main__":
         next_step(1, f"Purged {len(image_list)} images.")
 
     # get files that were already converted
-    h, l = get_existing_files(hr_folder, lr_folder)
-    exist_list = h.intersection(l)
+    hfiles, lfiles = get_existing_files(hr_folder, lr_folder)
+    exist_list = hfiles.intersection(lfiles)
     image_list = [i for i in tqdm(image_list, desc="Removing existing")
                   if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
 
