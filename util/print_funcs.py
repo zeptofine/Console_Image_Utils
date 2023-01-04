@@ -5,11 +5,11 @@ def p_bar(iteration: int, total: int, length=20,
           fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
     filledLength = (length * iteration) // total
     #    [#############################]
-    pbar = (fill*length)[:filledLength] + (nullp*(length - filledLength))
-    command = f"{str(pref)}\033[92m{corner[0]}\033[93m{pbar}\033[92m{corner[1]}\033[0m{str(suff)}"
-    return command
+    return f"{str(pref)}\033[92m{corner[0]}\033[93m" + \
+            (fill*length)[:filledLength] + (nullp*(length - filledLength)) + \
+            f"\033[92m{corner[1]}\033[0m{str(suff)}"
 
-def thread_status(pid: int, item: str = "", extra: str = "", item_size=None):
+def thread_status(pid: int, item: str = "", extra: str = "", item_size = None):
     item_size = item_size or os.get_terminal_size().columns
     message = f"{pid}: {item}"
     message = message[:item_size - len(extra) - 2] + extra

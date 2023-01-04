@@ -171,8 +171,7 @@ def get_existing_files(hr_folder, lr_folder):
     Args:
         hr_folder: The folder where the HR files are stored.
         lr_folder: The folder where the LR files are stored.    
-    Returns:
-        A tuple of sets of HR and LR file paths.
+    Returns a tuple of sets of HR and LR file paths.
     """
     h = {f.relative_to(hr_folder).with_suffix("")
          for f in get_file_list((hr_folder / "**" / "*"))}
@@ -208,6 +207,13 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
 
 
 def within_time(inpath, before_time, after_time) -> tuple:
+    """Checks if an image is within specified time limits.
+        inpath: the path to the image file.
+        before_time: the image must be before this time.
+        after_time: the image must be after this time.
+    Returns:
+        A tuple of (success, modification time).
+    """ 
     mtime = inpath.stat().st_mtime
     filetime = datetime.datetime.fromtimestamp(mtime)
     # compare the file time to given threshold
@@ -226,10 +232,7 @@ def within_res(inpath, minsize, maxsize, scale, crop_mod) -> Tuple[Path, Path]:
         crop_mod: A boolean value indicating whether to crop the image to the
             nearest multiple of the scale factor.
     Returns:
-        A tuple of (success, resolution). If the image is within the specified
-        resolution limits, success is True and resolution is the resolution of
-        the image. If the image is not within the limits, success is False and
-        resolution is the original resolution of the image.
+        A tuple of (success, resolution).
     """
     # Get the resolution of the image
     res = get_resolution(inpath) # => (width, height)
@@ -244,7 +247,6 @@ def within_res(inpath, minsize, maxsize, scale, crop_mod) -> Tuple[Path, Path]:
             or (maxsize and (width > maxsize or height > maxsize)):
         return (False, res)
 
-    # If the image is within the specified resolution limits, return True and the resolution of the image
     return (True, (width, height))
 
 def fileparse(inpath: Path, source: Path, mtime, scale: int, 
@@ -282,7 +284,9 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
 
 def white_black_list(args, imglist):
     for f, j in [("whitelist", True), ("blacklist", False)]:
+        # get the whitelist or blacklist from args
         if i := getattr(args, f):
+            # if filter is not considered whole, use every element separated by spaces
             i = i.split(" ") if not args.list_filter_whole else [i]
             imglist = [k for k in imglist if
                        (any(i in str(k) for i in i)) == j]
@@ -291,6 +295,7 @@ def white_black_list(args, imglist):
 
 
 def filter_images(args, imglist, cparser):
+    # filter images that are too young or too old
     pargs = [(args.input / i, args.before, args.after) for i in imglist]
     mtimes = poolmap(args.threads, within_time, pargs,
                      desc=f"Filtering by time ({args.before}<=x<={args.after})")
@@ -303,6 +308,7 @@ def filter_images(args, imglist, cparser):
         cparser.file.update({"cropped_before": True})
         cparser.file.save()
 
+    # filter images that are too small or too big, or not divisible by scale
     pargs = [(args.input / i, args.minsize, args.maxsize,
               args.scale, args.crop_mod) for i in imglist]
     mres = poolmap(args.threads, within_res, pargs,

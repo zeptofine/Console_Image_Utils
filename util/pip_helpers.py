@@ -1,7 +1,6 @@
 import importlib
 import io
-import sys
-from pkgutil import find_loader
+from sys import executable
 from subprocess import PIPE, Popen
 
 
@@ -33,8 +32,8 @@ class PipInstaller:
         return True
 
     def install(self, package, post=['pip', 'install']) -> int:
-        subprocess_input = [sys.executable, '-m', *post,
-                            package] if package else [sys.executable, '-m', *post]
+        subprocess_input = [executable, '-m', *post,
+                            package] if package else [executable, '-m', *post]
         output = []
         with Popen(subprocess_input,
                    stdout=PIPE, stderr=PIPE) as import_proc:
