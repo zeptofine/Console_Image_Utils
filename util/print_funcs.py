@@ -27,17 +27,21 @@ def thread_status(pid: int, item: str = "", extra: str = "", anonymous: bool = F
 class Timer:
     def __init__(self):
         self.reset()
-        
+
     def print(self, msg):
         self.poll(msg)
         self.reset()
         return self
-    
+
     def poll(self, msg):
         print(f"{time.perf_counter() - self.time}: {msg}")
-        return self
 
     def reset(self):
         self.time = time.perf_counter()
         return self.time
-        return self
+
+    def __repr__(self):
+        output = str((newtime := time.perf_counter()) - self.time)
+        self.time = newtime
+        return output
+
