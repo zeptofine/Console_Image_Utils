@@ -6,7 +6,7 @@ import multiprocessing.pool as mpp
 pool = multiprocessing.Pool()
 
 
-class StarPool(pool.__class__):
+class CustomPool(pool.__class__):
     def istarmap(self, func, iterable, chunksize=1):
         """starmap-version of imap
         """
@@ -34,7 +34,7 @@ del pool
 
 def poolmap(threads, func, iterable, use_tqdm=True, chunksize=1, refresh=False, just=20, postfix=True, **tqargs) -> list:
     from tqdm import tqdm
-    with StarPool(threads) as pool:
+    with CustomPool(threads) as pool:
         output = []
         maxlen = just
         if use_tqdm:

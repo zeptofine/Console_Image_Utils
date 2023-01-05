@@ -10,10 +10,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Tuple, List
+
 from ConfigArgParser import ConfigParser
 from util.iterable_starmap import poolmap
 from util.pip_helpers import PipInstaller
+from util.print_funcs import p_bar_stat
 from util.process_funcs import is_subprocess
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
@@ -39,16 +40,17 @@ packages = {'rich':            "rich",
 with PipInstaller() as p:
     try:
         # loop import packages
-        for package in packages:
+        for i, package in enumerate(packages):
+            print(f"{p_bar_stat(i, len(packages))}", end="\r")
             if not p.available(packages[package]):
                 raise ImportError
 
     except (ImportError, ModuleNotFoundError):
         # Try to install packages and restart
         try:
-            for package in packages:
+            for i, package in enumerate(packages):
                 if not p.available(packages[package]):
-                    import_failed = True
+                    print(f"{p_bar_stat(i, len(packages))}")
                     columns = os.get_terminal_size().columns
                     print(
                         f"{'-'*columns}\n" + str(f"{package} not detected. Attempting to install...").center(columns))
@@ -85,16 +87,16 @@ def main_parser() -> argparse.ArgumentParser:
     import shtab
     shtab.add_argument_to(parser)
 
-    p_req = parser.add_argument_group("Runtime")
-    p_req.add_argument("-i", "--input",
-                       help="Input folder.")
-    p_req.add_argument("-x", "--scale", type=int, default=4,
-                       help="scale to downscale LR images")
-    p_req.add_argument("-e", "--extension", metavar="EXT", default=None,
-                       help="export extension.")
-    p_req.add_argument("-r", "--recursive", action="store_true", default=False,
-                       help="preserves the tree hierarchy.")
+    p_reqs = parser.add_argument_group("Runtime")
+    p_reqs.add_argument("-i", "--input",
+                        help="Input folder.")
+    p_reqs.add_argument("-x", "--scale", type=int, default=4,
+                        help="scale to downscale LR images")
+    p_reqs.add_argument("-e", "--extension", metavar="EXT", default=None,
+                        help="export extension.")
     p_mods = parser.add_argument_group("Modifiers")
+    p_mods.add_argument("-r", "--recursive", action="store_true", default=False,
+                        help="preserves the tree hierarchy.")
     p_mods.add_argument("-t", "--threads", type=int, default=int((CPU_COUNT / 4) * 3),
                         help="number of total threads.")  # used for multiprocessing
     p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
@@ -111,7 +113,9 @@ def main_parser() -> argparse.ArgumentParser:
     p_mods.add_argument("--sort", choices=["name", "ext", "len", "res", "time", "size"], default="res",
                         help="sorting method.")
     p_mods.add_argument("--reverse", action="store_true",
-                                            help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
+                        help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
+    p_mods.add_argument("--overwrite", action="store_true",
+                        help="Skips checking for existing files, and by proxy, overwrites existing files.")
     # certain criteria that images must meet in order to be included in the processing.
     p_filters = parser.add_argument_group("Filters")
     p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
@@ -144,8 +148,8 @@ def next_step(order, *args) -> None:
               -3: "[grey]DEBUG[/grey]",
               -9: "[red]ERROR[/red]",
               }
-    output = [
-        f" [blue]{str(orderd.get(order, order))}[/blue]: {text}" for text in args]
+    output = orderd.get(order, f"[blue]{order}[/blue]")
+    output = [f" {output}: {text}" for text in args]
     rprint("\n".join(output), end="\n\033[K")
 
 
@@ -157,7 +161,7 @@ def get_resolution(path: Path):
     return imagesize.get(path)
 
 
-def get_file_list(*folders: Path) -> List[Path]:
+def get_file_list(*folders: Path) -> list[Path]:
     """folders: One or more folder paths.
     Returns a list of file paths in the specified folders.
     """
@@ -166,7 +170,7 @@ def get_file_list(*folders: Path) -> List[Path]:
     return [Path(y) for x in globlist for y in x]
 
 
-def get_existing_files(hr_folder, lr_folder):
+def get_existing_files(hr_folder, lr_folder) -> tuple[set[Path], set[Path]]:
     """Returns the HR and LR files that already exist in the specified folders.
     Args:
         hr_folder: The folder where the HR files are stored.
@@ -181,19 +185,19 @@ def get_existing_files(hr_folder, lr_folder):
 
 
 def to_recursive(path: Path, recursive: bool) -> Path:
-    # Convert the file path to a recursive path if recursive is False
-    # i/path/to/image.png => i/path_to_image.png
+    """ Convert the file path to a recursive path if recursive is False
+    Ex: i/path/to/image.png => i/path_to_image.png"""
     return path if recursive else Path(str(path).replace(os.sep, "_"))
 
 
-def check_for_images(image_list):
+def check_for_images(image_list) -> None:
     if not image_list:
         next_step(-1, "No images left to process")
-        sys.exit(-1)
+        sys.exit(0)
 
 
 def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
-              recursive: bool = False, ext=None):
+              recursive: bool = False, ext=None) -> tuple[Path, Path]:
     hr_path = hr_folder / to_recursive(path, recursive)
     lr_path = lr_folder / to_recursive(path, recursive)
     # Create the HR and LR folders if they do not exist
@@ -206,7 +210,7 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
     return hr_path, lr_path
 
 
-def within_time(inpath, before_time, after_time) -> tuple:
+def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
     """Checks if an image is within specified time limits.
         inpath: the path to the image file.
         before_time: the image must be before this time.
@@ -214,16 +218,16 @@ def within_time(inpath, before_time, after_time) -> tuple:
     Returns:
         A tuple of (success, modification time).
     """
-    mtime = inpath.stat().st_mtime
-    filetime = datetime.datetime.fromtimestamp(mtime)
+    mstat = inpath.stat()
+    filetime = datetime.datetime.fromtimestamp(mstat.st_mtime)
     # compare the file time to given threshold
     if before_time and (before_time < filetime) \
             or after_time and (after_time > filetime):
-        return (False, mtime)
-    return (True, mtime)
+        return (False, mstat)
+    return (True, mstat)
 
 
-def within_res(inpath, minsize, maxsize, scale, crop_mod) -> Tuple[Path, Path]:
+def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[Path, Path]:
     """Checks if an image is within specified resolution limits.
         inpath: The path to the image file.
         minsize: The minimum allowed resolution for the image.
@@ -295,30 +299,31 @@ def white_black_list(args, imglist):
     return imglist
 
 
-def filter_images(args, imglist, cparser):
+def filter_images(args, imglist, cparser: ConfigParser):
     # filter images that are too young or too old
     pargs = [(args.input / i, args.before, args.after) for i in imglist]
-    mtimes = poolmap(args.threads, within_time, pargs,
-                     desc=f"Filtering by time ({args.before}<=x<={args.after})")
-    mtimes = filter(lambda x: x[1][0], zip(imglist, mtimes))
-    imglist, mtimes = zip(*mtimes)
-    mtimes = {imglist[i]: mtimes[i][1] for i in range(len(imglist))}
+    mstat = poolmap(args.threads, within_time, pargs,
+                    desc=f"Filtering by time ({args.before}<=x<={args.after})",
+                    postfix=False)
+    mstat = filter(lambda x: x[1][0], zip(imglist, mstat))
+    imglist, mstat = zip(*mstat)
+    mstat = {imglist[i]: mstat[i][1] for i in range(len(imglist))}
 
     if not cparser.file.get("cropped_before", False):
         next_step(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
-        cparser.file.update({"cropped_before": True})
-        cparser.file.save()
+        cparser.file.update({"cropped_before": True}).save()
 
     # filter images that are too small or too big, or not divisible by scale
     pargs = [(args.input / i, args.minsize, args.maxsize,
               args.scale, args.crop_mod) for i in imglist]
     mres = poolmap(args.threads, within_res, pargs,
-                   desc=f"Filtering by resolution ({args.minsize} <= x <= {args.maxsize}) % {args.scale}")
+                   desc=f"Filtering by resolution ({args.minsize} <= x <= {args.maxsize}) % {args.scale}",
+                   postfix=False)
     mres = filter(lambda x: x[1][0], zip(imglist, mres))
     imglist, mres = zip(*mres)
     mres = {imglist[i]: mres[i][1] for i in range(len(imglist))}
 
-    return imglist, mtimes, mres
+    return imglist, mstat, mres
 
 
 if __name__ == "__main__":
@@ -370,7 +375,8 @@ if __name__ == "__main__":
                   for i in tqdm(image_list, desc="Resolving")}.values()
 
     if len(image_list) is not original_total:
-        next_step(1, f"Discarded {original_total - len(image_list)} links")
+        next_step(
+            1, f"Discarded {original_total - len(image_list)} symbolic links")
 
     if args.extension and args.extension.startswith("."):
         args.extension = args.extension[1:]
@@ -397,18 +403,20 @@ if __name__ == "__main__":
 
         next_step(1, f"Purged {len(image_list)} images.")
 
-    # get files that were already converted
-    hfiles, lfiles = get_existing_files(hr_folder, lr_folder)
-    exist_list = hfiles.intersection(lfiles)
-    image_list = [i for i in tqdm(image_list, desc="Removing existing")
-                  if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
+    if not args.overwrite:
+        # get files that were already converted
+        hfiles, lfiles = get_existing_files(hr_folder, lr_folder)
+        exist_list = hfiles.intersection(lfiles)
+        image_list = [i for i in tqdm(image_list, desc="Removing existing")
+                      if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
 
-    next_step(1, f"Discarded: {original_total-len(image_list)} images\n")
+    next_step(
+        1, f"Discarded {original_total-len(image_list)} images which already exist\n")
     check_for_images(image_list)
 
     # remove files based on resolution and time
     original_total = len(image_list)
-    image_list, mtimes, mres = filter_images(args, image_list, cparser)
+    image_list, mstat, mres = filter_images(args, image_list, cparser)
     next_step(2, f"Discarded {original_total - len(image_list)} images\n")
 
     if args.simulate:
@@ -421,8 +429,8 @@ if __name__ == "__main__":
                        "ext": lambda x: x.suffix,
                        "len": lambda x: len(str(x)),
                        "res": lambda x: mres[x][0] * mres[x][1],
-                       "time": lambda x: mtimes[x],
-                       "size": lambda x: (args.input / x).stat().st_size}
+                       "time": lambda x: mstat[x].st_mtime,
+                       "size": lambda x: mstat[x].st_size}
     image_list = sorted(
         image_list,
         key=sorting_methods[args.sort], reverse=args.reverse)
@@ -433,15 +441,14 @@ if __name__ == "__main__":
     # create hr/lr pairs from list of valid images
     next_step(4, f"{len(image_list)} images in queue")
     try:
-        pargs = [(v, str(args.input / v),
-                  mtimes[v], args.scale,
+        pargs = [(v, str(args.input / v), mstat[v].st_mtime, args.scale,
                   hr_folder, lr_folder,
                   args.recursive, args.crop_mod, args.extension)
                  for v in image_list]
         image_list = poolmap(args.threads, fileparse, pargs,
                              chunksize=2,
                              just=max([len(str(x)) for x in image_list]),
-                             #  postfix=not args.anonymous,
+                             postfix=not args.anonymous,
                              use_tqdm=True, desc="Processing")
     except KeyboardInterrupt:
         next_step(-1, "KeyboardInterrupt")

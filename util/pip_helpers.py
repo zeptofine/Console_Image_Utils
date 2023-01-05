@@ -4,11 +4,9 @@ from sys import executable
 from subprocess import PIPE, Popen
 
 
-
 class PipInstaller:
     def __init__(self):
         self.pip_functions = False
-        self.failed_once = False
 
     def __enter__(self):
         return self
@@ -22,7 +20,6 @@ class PipInstaller:
         except ImportError:
             if not self.pip_functions:
                 self.ensure()
-            self.failed_once = True
             return False
         return True
 

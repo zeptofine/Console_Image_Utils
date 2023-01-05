@@ -2,7 +2,6 @@
 import argparse
 import json
 import os
-import sys
 from ConfigArgParser import ConfigParser
 
 parser = argparse.ArgumentParser()

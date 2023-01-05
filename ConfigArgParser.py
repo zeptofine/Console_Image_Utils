@@ -1,21 +1,23 @@
+from __future__ import annotations
+
 import argparse
-import os
 import json
+import os
 from sys import exit as sys_exit
 
 
 class CfgDict(dict):
-    def __init__(self, cfg_path, config: dict = {}):
+    def __init__(self, cfg_path, config: dict = {}) -> CfgDict:
         self.cfg_path = cfg_path
         self.load()
         self.update(config)
 
-    def set_path(self, path):
+    def set_path(self, path) -> CfgDict:
         self.cfg_path = path
         self.load()
         return self
 
-    def save(self, outdict=None, indent=4):
+    def save(self, outdict=None, indent=4) -> CfgDict:
         if not outdict:
             outdict = self
         with open(self.cfg_path, 'w+') as f:
@@ -23,7 +25,11 @@ class CfgDict(dict):
         self.load()
         return self
 
-    def load(self):
+    def update(self, *args, **kwargs) -> CfgDict:
+        super().update(*args, **kwargs)
+        return self
+
+    def load(self) -> CfgDict:
         if os.path.exists(self.cfg_path):
             with open(self.cfg_path, 'r', encoding='utf-8') as config_file:
                 try:
@@ -94,7 +100,6 @@ class ConfigParser:
                                          help="removes a changed option.")
         self.config_options.add_argument(self.default_prefix*2+"reset_all", action="store_true",
                                          help="resets every option.")
-        # get args without triggering help
         self.parsed_args, _ = self.parser.parse_known_args()
         # Add flags
         self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
@@ -110,7 +115,6 @@ class ConfigParser:
         self.set_defaults(self.file)
 
     # modified from argparse.py ( self.set_defaults(**kwargs) )
-
     def set_defaults(self, argdict: dict):
         self.parser._defaults.update(argdict)
         for action in self.parser._actions:
