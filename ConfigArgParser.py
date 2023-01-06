@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import argparse
 import json
@@ -7,29 +6,37 @@ from sys import exit as sys_exit
 
 
 class CfgDict(dict):
-    def __init__(self, cfg_path, config: dict = {}) -> CfgDict:
+    def __init__(self, cfg_path, config: dict = {}):
+        super().__init__()
         self.cfg_path = cfg_path
         self.load()
         self.update(config)
 
-    def set_path(self, path) -> CfgDict:
+    def set_path(self, path):
         self.cfg_path = path
         self.load()
         return self
 
-    def save(self, outdict=None, indent=4) -> CfgDict:
-        if not outdict:
+    def save(self, outdict=None, indent=4):
+        if not isinstance(outdict, dict):
             outdict = self
         with open(self.cfg_path, 'w+') as f:
             f.write(json.dumps(outdict, indent=indent))
-        self.load()
         return self
 
-    def update(self, *args, **kwargs) -> CfgDict:
+    def update(self, *args, **kwargs):
         super().update(*args, **kwargs)
         return self
 
-    def load(self) -> CfgDict:
+    def clear(self):
+        super().clear()
+        return self
+
+    def pop(self, key):
+        super().pop(key)
+        return self
+
+    def load(self):
         if os.path.exists(self.cfg_path):
             with open(self.cfg_path, 'r', encoding='utf-8') as config_file:
                 try:
@@ -65,8 +72,7 @@ class ConfigParser:
         self.exit_on_change = exit_on_change
         self.rewrite_help = rewrite_help
         self.autofill = autofill
-        self.file = CfgDict(config_path).save()
-
+        self.file = CfgDict(config_path)
         self._remove_help()
 
         # set up subparser
@@ -120,32 +126,28 @@ class ConfigParser:
         for action in self.parser._actions:
             if action.dest in argdict:
                 action.default = argdict[action.dest]
-        self.file.save(self.parser._defaults)
 
     def parse_args(self, **kwargs) -> argparse.Namespace:
         '''args.set, reset, reset_all logic '''
         self.parsed_args, _ = self.parser.parse_known_args(**kwargs)
         # set defaults
-        if self.parsed_args.set or \
-                self.parsed_args.reset or \
-                self.parsed_args.reset_all:
+        if self.parsed_args.set or self.parsed_args.reset or self.parsed_args.reset_all:
             if self.parsed_args.set:
                 potential_args = self.parsed_args.set
                 # convert potential_args to respective types
                 potential_args = self._convert_type(potential_args)
-
                 if not potential_args[0] in self.kwargs:
                     sys_exit("Given key not found")
 
-                self.file[potential_args[0]] = potential_args[1]
+                self.file.update({potential_args[0]: potential_args[1]})
             elif self.parsed_args.reset:
                 for arg in self.parsed_args.reset:
                     self.file.pop(arg, None)
             elif self.parsed_args.reset_all:
-                self.file = {}
+                self.file.clear()
+            self.file.save()
 
             self.set_defaults(self.file)
-
             if self.exit_on_change:
                 sys_exit()
 
@@ -154,14 +156,11 @@ class ConfigParser:
         return self.parser.parse_args()
 
     def _convert_type(self, potential_args: list):
-        if potential_args[1].lower() in ["true", "false"]:
-            if potential_args[1].lower() == "true":
-                potential_args[1] = True
-            else:
-                potential_args[1] = False
-        elif potential_args[1].lower() in ["none", "null"]:
-            potential_args[1] = None
-        elif potential_args[1].isdigit():
+        arg_replacements = {"true": True, "false": False,
+                            "none": None, "null": None}
+        potential_args[1] = arg_replacements.get(
+            potential_args[1].lower(), potential_args[1])
+        if str(potential_args[1]).isdigit():
             potential_args[1] = int(potential_args[1])
         return potential_args
 

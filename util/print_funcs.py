@@ -1,5 +1,5 @@
 import time
-import os
+from os import get_terminal_size
 
 def p_bar(iteration: int, total: int, length=20,
           fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
@@ -13,7 +13,7 @@ def p_bar_stat(iteration, total, **kwargs):
     return f"{p_bar(iteration, total, **kwargs)} {iteration}/{total}"
 
 def thread_status(pid: int, item: str = "", extra: str = "", item_size = None):
-    item_size = item_size or os.get_terminal_size().columns
+    item_size = item_size or get_terminal_size().columns
     message = f"{pid}: {item}".ljust(item_size)[:item_size - len(extra)] + extra
     print(('\n' * pid) + message + ('\033[A' * pid), end="\r")
 

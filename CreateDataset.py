@@ -10,7 +10,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-
 from ConfigArgParser import ConfigParser
 from util.iterable_starmap import poolmap
 from util.pip_helpers import PipInstaller
@@ -82,7 +81,9 @@ def main_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         formatter_class=ArgumentDefaultsRichHelpFormatter,
         description="""Hi! this script converts thousands of files to
-    another format in a High-res/Low-res pairs for data science.""")
+    another format in a High-res/Low-res pairs for data science.
+    @ is available to follow a file.""",
+        fromfile_prefix_chars="@")
 
     import shtab
     shtab.add_argument_to(parser)
@@ -110,6 +111,8 @@ def main_parser() -> argparse.ArgumentParser:
                         help="skips the conversion step. Used for debugging.")
     p_mods.add_argument("--purge", action="store_true",
                         help="Clears the output folder before running.")
+    p_mods.add_argument("--purge_only", action="store_true",
+                        help="--purge, but finishes afterwards.")
     p_mods.add_argument("--sort", choices=["name", "ext", "len", "res", "time", "size"], default="res",
                         help="sorting method.")
     p_mods.add_argument("--reverse", action="store_true",
@@ -191,7 +194,7 @@ def to_recursive(path: Path, recursive: bool) -> Path:
 
 
 def check_for_images(image_list) -> None:
-    if not image_list:
+    if not list(image_list):
         next_step(-1, "No images left to process")
         sys.exit(0)
 
@@ -227,7 +230,7 @@ def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
     return (True, mstat)
 
 
-def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[Path, Path]:
+def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple]:
     """Checks if an image is within specified resolution limits.
         inpath: The path to the image file.
         minsize: The minimum allowed resolution for the image.
@@ -239,7 +242,7 @@ def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[Path, Path]:
         A tuple of (success, resolution).
     """
     # Get the resolution of the image
-    res = get_resolution(inpath)  # => (width, height)
+    res: tuple = get_resolution(inpath)  # => (width, height)
     width, height = res
 
     if crop_mod:
@@ -308,6 +311,7 @@ def filter_images(args, imglist, cparser: ConfigParser):
     mstat = filter(lambda x: x[1][0], zip(imglist, mstat))
     imglist, mstat = zip(*mstat)
     mstat = {imglist[i]: mstat[i][1] for i in range(len(imglist))}
+    check_for_images(mstat)
 
     if not cparser.file.get("cropped_before", False):
         next_step(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
@@ -319,30 +323,29 @@ def filter_images(args, imglist, cparser: ConfigParser):
     mres = poolmap(args.threads, within_res, pargs,
                    desc=f"Filtering by resolution ({args.minsize} <= x <= {args.maxsize}) % {args.scale}",
                    postfix=False)
-    mres = filter(lambda x: x[1][0], zip(imglist, mres))
+    mres = list(filter(lambda x: x[1][0], zip(imglist, mres)))
+    check_for_images(mres)
     imglist, mres = zip(*mres)
     mres = {imglist[i]: mres[i][1] for i in range(len(imglist))}
 
     return imglist, mstat, mres
 
 
-if __name__ == "__main__":
-
+def main():
     parser = main_parser()
 
     cparser = ConfigParser(parser, "config.json", exit_on_change=True)
     args = cparser.parse_args()
 
-    if not args.input:
+    if not (args.input):
         sys.exit("Please specify an input directory.")
 
     next_step(0,
-              f"input: {args.input}",
-              f"scale: {args.scale}",
-              f"threads: {args.threads}",
+              f"input: {args.input}", f"scale: {args.scale}",
+              f"threads: {args.threads}", f"extension: {args.extension}",
               f"recursive: {args.recursive}",
-              f"extension: {args.extension}",
               f"anonymous: {args.anonymous}",
+              f"crop_mod: {args.crop_mod}",
               f"sort: {args.sort}, reverse: {args.reverse}\n")
 
     if args.after or args.before:
@@ -373,8 +376,7 @@ if __name__ == "__main__":
     # vv This naturally removes the possibility of multiple files pointing to the same image
     image_list = {i.resolve(): i.relative_to(args.input)
                   for i in tqdm(image_list, desc="Resolving")}.values()
-
-    if len(image_list) is not original_total:
+    if len(image_list) != original_total:
         next_step(
             1, f"Discarded {original_total - len(image_list)} symbolic links")
 
@@ -391,18 +393,19 @@ if __name__ == "__main__":
     lr_folder.parent.mkdir(parents=True, exist_ok=True)
 
     # Purge existing images with respect to the filter
-    if args.purge:
+    if args.purge or args.purge_only:
         next_step(1, "Purging...")
         for path in image_list:
-            hr_path, lr_path = hrlr_pair(
-                path, hr_folder, lr_folder, args.recursive, args.extension)
+            hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder,
+                                         args.recursive, args.extension)
             if hr_path.exists():
                 hr_path.unlink()
             if lr_path.exists():
                 lr_path.unlink()
 
         next_step(1, f"Purged {len(image_list)} images.")
-
+    if args.purge_only:
+        return 0
     if not args.overwrite:
         # get files that were already converted
         hfiles, lfiles = get_existing_files(hr_folder, lr_folder)
@@ -421,7 +424,7 @@ if __name__ == "__main__":
 
     if args.simulate:
         next_step(3, "Simulated")
-        sys.exit(-1)
+        return 0
 
     # Sort files based on different attributes
     next_step(3, "Sorting...\n")
@@ -432,8 +435,7 @@ if __name__ == "__main__":
                        "time": lambda x: mstat[x].st_mtime,
                        "size": lambda x: mstat[x].st_size}
     image_list = sorted(
-        image_list,
-        key=sorting_methods[args.sort], reverse=args.reverse)
+        image_list, key=sorting_methods[args.sort], reverse=args.reverse)
 
     if args.image_limit and args.limit_mode == "after":
         image_list = set(image_list[: args.image_limit])
@@ -447,10 +449,13 @@ if __name__ == "__main__":
                  for v in image_list]
         image_list = poolmap(args.threads, fileparse, pargs,
                              chunksize=2,
-                             just=max([len(str(x)) for x in image_list]),
                              postfix=not args.anonymous,
                              use_tqdm=True, desc="Processing")
     except KeyboardInterrupt:
         next_step(-1, "KeyboardInterrupt")
     next_step(-1, "Done")
-    sys.exit()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
