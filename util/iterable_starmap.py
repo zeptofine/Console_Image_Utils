@@ -2,6 +2,8 @@
 import multiprocessing
 import multiprocessing.pool as mpp
 
+from tqdm import tqdm
+
 # Mostly taken from: https://stackoverflow.com/a/57364423
 pool = multiprocessing.Pool()
 
@@ -32,9 +34,9 @@ class CustomPool(pool.__class__):
 pool.close()
 del pool
 
+
 def poolmap(threads, func, iterable, use_tqdm=True, chunksize=1, refresh=False, just=20, postfix=True, **tqargs) -> list:
-    from tqdm import tqdm
-    with CustomPool(threads) as pool:
+    with CustomPool(min(threads, len(iterable))) as pool:
         output = []
         maxlen = just
         if use_tqdm:
@@ -42,7 +44,7 @@ def poolmap(threads, func, iterable, use_tqdm=True, chunksize=1, refresh=False, 
             for result in pool.istarmap(  # type: ignore
                     func, iterable, chunksize=chunksize):
                 if postfix:
-                    maxlen = min(max(len(str(result)), maxlen), 100)
+                    maxlen = min(max(len(str(result)), maxlen), 200)
                     itqdm.set_postfix_str(
                         str(result).rjust(maxlen), refresh=False)
                 output.append(result)

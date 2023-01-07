@@ -10,8 +10,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
 from ConfigArgParser import ConfigParser
-from util.iterable_starmap import poolmap
 from util.pip_helpers import PipInstaller
 from util.print_funcs import p_bar_stat
 from util.process_funcs import is_subprocess
@@ -22,11 +22,6 @@ CPU_COUNT: int = os.cpu_count()  # type: ignore
 if sys.platform == "win32":
     print("This application was not made for windows. Try Using WSL2")
     time.sleep(3)
-
-try:
-    from rich_argparse import ArgumentDefaultsRichHelpFormatter
-except (ModuleNotFoundError, ImportError):
-    ArgumentDefaultsRichHelpFormatter = argparse.ArgumentDefaultsHelpFormatter
 
 packages = {'rich':            "rich",
             'opencv-python':   "cv2",
@@ -75,6 +70,8 @@ with PipInstaller() as p:
         import imagesize
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
         from tqdm import tqdm
+
+        from util.iterable_starmap import poolmap
 
 
 def main_parser() -> argparse.ArgumentParser:
@@ -207,7 +204,7 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
     hr_path.parent.mkdir(parents=True, exist_ok=True)
     lr_path.parent.mkdir(parents=True, exist_ok=True)
     # If an extension is provided, append it to the HR and LR file paths
-    if ext:
+    if ext and path.is_file():
         hr_path = hr_path.with_suffix(f".{ext}")
         lr_path = lr_path.with_suffix(f".{ext}")
     return hr_path, lr_path
@@ -224,8 +221,7 @@ def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
     mstat = inpath.stat()
     filetime = datetime.datetime.fromtimestamp(mstat.st_mtime)
     # compare the file time to given threshold
-    if before_time and (before_time < filetime) \
-            or after_time and (after_time > filetime):
+    if (before_time and (before_time < filetime)) or (after_time and (after_time > filetime)):
         return (False, mstat)
     return (True, mstat)
 
@@ -236,11 +232,10 @@ def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple]:
         minsize: The minimum allowed resolution for the image.
         maxsize: The maximum allowed resolution for the image.
         scale: The scale factor to use when checking the resolution.
-        crop_mod: A boolean value indicating whether to crop the image to the
-            nearest multiple of the scale factor.
-    Returns:
-        A tuple of (success, resolution).
+        crop_mod: A boolean value indicating whether to crop the image to the nearest multiple of the scale factor.
+    Returns A tuple of (success, resolution).
     """
+
     # Get the resolution of the image
     res: tuple = get_resolution(inpath)  # => (width, height)
     width, height = res
@@ -253,7 +248,6 @@ def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple]:
     if (minsize and (width < minsize or height < minsize)) \
             or (maxsize and (width > maxsize or height > maxsize)):
         return (False, res)
-
     return (True, (width, height))
 
 
@@ -264,21 +258,20 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
     Returns:
         The input path of the image file, to be printed.
     """
-    # Generate the HR and LR file paths
+    # Generate the HR & LR file paths
     hr_path, lr_path = hrlr_pair(inpath, hr_folder, lr_folder, recursive, ext)
 
     # Read the image file
-    image = cv2.imread(source)  # type: ignore
-    width, height, _ = image.shape
+    image = cv2.imread(source, cv2.IMREAD_UNCHANGED)  # type: ignore
+    imshape = image.shape
 
     if crop_mod:
         # crop the image
-        image = image[0:(width // scale) * scale, 0:(height // scale) * scale]
+        image = image[0:(imshape[0] // scale) * scale,
+                      0:(imshape[1] // scale) * scale]
 
-    # Save the HR version of the image
+    # Save the HR / LR version of the image
     cv2.imwrite(str(hr_path), image)  # type: ignore
-
-    # Save the LR version of the image
     cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
         image, (0, 0), fx=1 / scale, fy=1 / scale))
 
@@ -287,7 +280,7 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
     os.utime(str(lr_path), (mtime, mtime))
 
     # Return the input path of the image file
-    return inpath
+    return inpath, imshape
 
 
 def white_black_list(args, imglist):
@@ -313,7 +306,8 @@ def filter_images(args, imglist, cparser: ConfigParser):
     mstat = {imglist[i]: mstat[i][1] for i in range(len(imglist))}
     check_for_images(mstat)
 
-    if not cparser.file.get("cropped_before", False):
+    # Make a tooltip to the user if not cropped_before
+    if not (cparser.file.get("cropped_before", False) and args.crop_mod):
         next_step(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
         cparser.file.update({"cropped_before": True}).save()
 
@@ -322,7 +316,7 @@ def filter_images(args, imglist, cparser: ConfigParser):
               args.scale, args.crop_mod) for i in imglist]
     mres = poolmap(args.threads, within_res, pargs,
                    desc=f"Filtering by resolution ({args.minsize} <= x <= {args.maxsize}) % {args.scale}",
-                   postfix=False)
+                   postfix=not args.anonymous)
     mres = list(filter(lambda x: x[1][0], zip(imglist, mres)))
     check_for_images(mres)
     imglist, mres = zip(*mres)
@@ -395,15 +389,16 @@ def main():
     # Purge existing images with respect to the filter
     if args.purge or args.purge_only:
         next_step(1, "Purging...")
+        count = 0
         for path in image_list:
             hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder,
                                          args.recursive, args.extension)
-            if hr_path.exists():
-                hr_path.unlink()
-            if lr_path.exists():
-                lr_path.unlink()
-
-        next_step(1, f"Purged {len(image_list)} images.")
+            if hr_path.exists() or lr_path.exists():
+                count+=1
+                hr_path.unlink(missing_ok=True)
+                lr_path.unlink(missing_ok=True)
+        # return
+        next_step(1, f"Purged {count} images.")
     if args.purge_only:
         return 0
     if not args.overwrite:
@@ -450,7 +445,7 @@ def main():
         image_list = poolmap(args.threads, fileparse, pargs,
                              chunksize=2,
                              postfix=not args.anonymous,
-                             use_tqdm=True, desc="Processing")
+                             use_tqdm=True)
     except KeyboardInterrupt:
         next_step(-1, "KeyboardInterrupt")
     next_step(-1, "Done")
