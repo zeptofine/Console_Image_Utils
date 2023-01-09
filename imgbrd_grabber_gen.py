@@ -1,10 +1,11 @@
 
-import argparse
 import json
 import os
+from argparse import ArgumentParser
+
 from ConfigArgParser import ConfigParser
 
-parser = argparse.ArgumentParser()
+parser = ArgumentParser()
 parser.add_argument('-s', '--sort', action="store_true",
                     help="Sorts the list of entries.")
 parser.add_argument('--batch_path', default="~/Batches/",

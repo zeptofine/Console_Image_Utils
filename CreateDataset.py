@@ -2,15 +2,14 @@
 
 @author zeptofine
 """
-import argparse
-import datetime
-import glob
 import os
-import subprocess
-from functools import lru_cache
 import sys
-import time
+from argparse import ArgumentParser
+from datetime import datetime
+from functools import lru_cache
+from glob import glob
 from pathlib import Path
+from subprocess import SubprocessError
 
 from ConfigArgParser import ConfigParser
 from util.pip_helpers import PipInstaller
@@ -22,7 +21,8 @@ CPU_COUNT: int = os.cpu_count()  # type: ignore
 
 if sys.platform == "win32":
     print("This application was not made for windows. Try Using WSL2")
-    time.sleep(3)
+    from time import sleep
+    sleep(3)
 
 packages = {'rich':            "rich",
             'opencv-python':   "cv2",
@@ -57,12 +57,13 @@ with PipInstaller() as p:
             if not is_subprocess():
                 os.execv(sys.executable, ['python', *sys.argv])
             else:  # process failed even after installation, so something may be wrong with perms idk
-                raise subprocess.SubprocessError("Failed to install packages.")
-        except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
+                raise SubprocessError("Failed to install packages.")
+        except (SubprocessError, ModuleNotFoundError) as err2:
             print(f"{type(err2).__name__}: {err2}")
             sys.exit(127)  # command not found
 
     finally:
+        print("\033[2K", end="")
         from rich import print as rprint
         from rich.traceback import install
         install()
@@ -76,8 +77,8 @@ with PipInstaller() as p:
         from util.iterable_starmap import poolmap
 
 
-def main_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+def main_parser() -> ArgumentParser:
+    parser = ArgumentParser(
         formatter_class=ArgumentDefaultsRichHelpFormatter,
         description="""Hi! this script converts thousands of files to
     another format in a High-res/Low-res pairs for data science.
@@ -145,12 +146,11 @@ def main_parser() -> argparse.ArgumentParser:
 
 
 def next_step(order, *args) -> None:
-    orderd = {-1: "[yellow]INFO[/yellow]",
+    output = {-1: "[yellow]INFO[/yellow]",
               -2: "[orange]WARNING[/orange]",
               -3: "[grey]DEBUG[/grey]",
               -9: "[red]ERROR[/red]",
-              }
-    output = orderd.get(order, f"[blue]{order}[/blue]")
+              }.get(order, f"[blue]{order}[/blue]")
     output = [f" {output}: {text}" for text in args]
     rprint("\n".join(output), end="\n\033[K")
 
@@ -167,29 +167,26 @@ def get_file_list(*folders: Path) -> list[Path]:
     """
     Args    folders: One or more folder paths.
     Returns list[Path]: paths in the specified folders."""
-    globlist = [glob.glob(str(p), recursive=True)
+    globlist = [glob(str(p), recursive=True)
                 for p in folders]
     return [Path(y) for x in globlist for y in x]
 
 
-def intersect_multi(*sets) -> set[Path]:
-    outset = sets[0]
-    for set in sets[1:]:
-        outset = outset.intersection(set)
-    return outset
-
-
-def intersect_get(*folders) -> set[Path]:
+def get_existing(*folders) -> set[Path]:
     """
     Returns the files that already exist in the specified folders.
     Args    *: folders to be searched & compared.
     Returns tuple[set[Path], set[Path]]: HR and LR file paths in sets.
     """
-    sets = (
-        {f.relative_to(folder).with_suffix('') for f in get_file_list((folder / "**" / "*"))} for folder in folders
-    )
-    outset = intersect_multi(*sets)
+    sets = ({f.relative_to(folder).with_suffix('')
+            for f in get_file_list((folder / "**" / "*"))} for folder in folders)
+    outset = set.intersection(*sets)
     return outset
+    # hrlist = {f.relative_to(folders[0]).with_suffix('') for f in get_file_list(
+    #     folders[0] / "**" / "*")}
+    # lrlist = {f.relative_to(folders[1]).with_suffix('') for f in get_file_list(
+    #     folders[1] / "**" / "*")}
+    # return hrlist.intersection(lrlist)
 
 
 def to_recursive(path: Path, recursive: bool) -> Path:
@@ -208,7 +205,8 @@ def check_for_images(image_list) -> None:
 def white_black_list(args, imglist):
     for f, j in [("whitelist", True), ("blacklist", False)]:
         # get the whitelist or blacklist from args
-        if i := getattr(args, f):
+        i = getattr(args, f)
+        if i:
             # if filter is not considered whole, use every element separated by spaces
             i = i.split(" ") if not args.list_filter_whole else [i]
             imglist = [k for k in imglist if
@@ -246,7 +244,7 @@ def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
     Returns tuple[success, filestat].
     """
     mstat = inpath.stat()
-    filetime = datetime.datetime.fromtimestamp(mstat.st_mtime)
+    filetime = datetime.fromtimestamp(mstat.st_mtime)
     if before_time or after_time:
         return (not (before_time and (before_time < filetime)) or (after_time and (after_time > filetime)), mstat)
     return (True, mstat)
@@ -268,8 +266,8 @@ def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple]:
         res = (res[0] // scale) * scale, (res[1] // scale) * scale
     return (
         (res[0] % scale == 0 and res[1] % scale == 0) and not (
-            (minsize and (res[0] < minsize or res[1] < minsize) or
-             maxsize and (res[0] > maxsize or res[1] > maxsize))),
+            ((minsize and (res[0] < minsize or res[1] < minsize)) or
+             (maxsize and (res[0] > maxsize or res[1] > maxsize)))),
         res
     )
 
@@ -292,7 +290,7 @@ def filter_images(args, imglist, cparser: ConfigParser) -> tuple[tuple, dict, di
     mapped_list = {(i[0], *i[1][1:]) for i in filter(
         lambda x: x[1][0],
         zip(imglist,
-            poolmap(args.threads, within_time_and_res, pargs, postfix=False)))}
+            poolmap(args.threads, within_time_and_res, pargs, postfix=False, desc="Filtering")))}
 
     check_for_images(mapped_list)
     imglist, mstat, mres = zip(*mapped_list)
@@ -319,7 +317,6 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
 
     # Read the image file
     image = cv2.imread(source, cv2.IMREAD_UNCHANGED)  # type: ignore
-
     image = image[0:(image.shape[0] // scale) * scale,
                   0:(image.shape[1] // scale) * scale]
 
@@ -337,21 +334,27 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
 
 
 def main():
-    parser = main_parser()
-
-    cparser = ConfigParser(parser, "config.json", exit_on_change=True)
+    cparser = ConfigParser(main_parser(), "config.json", exit_on_change=True)
     args = cparser.parse_args()
 
     if not (args.input):
         sys.exit("Please specify an input directory.")
+    if args.extension:
+        if args.extension.startswith("."):
+            args.extension = args.extension[1:]
+        if args.extension.lower() in ["self", "none", "same", ""]:
+            args.extension = None
 
     next_step(0,
-              f"input: {args.input}", f"scale: {args.scale}",
-              f"threads: {args.threads}", f"extension: {args.extension}",
-              f"recursive: {args.recursive}",
-              f"anonymous: {args.anonymous}",
-              f"crop_mod: {args.crop_mod}",
-              f"sort: {args.sort}, reverse: {args.reverse}\n")
+              "Settings: ",
+              f"  input: {args.input}",
+              f"  scale: {args.scale}",
+              f"  threads: {args.threads}",
+              f"  extension: {args.extension}",
+              f"  recursive: {args.recursive}",
+              f"  anonymous: {args.anonymous}",
+              f"  crop_mod: {args.crop_mod}",
+              f"  sort: {args.sort}, reverse: {args.reverse}\n")
 
     if args.after or args.before:
         try:
@@ -382,40 +385,35 @@ def main():
     image_list = {i.resolve(): i.relative_to(args.input)
                   for i in tqdm(image_list, desc="Resolving")}.values()
     if len(image_list) != original_total:
-        next_step(
-            1, f"Discarded {original_total - len(image_list)} symbolic links")
-
-    if args.extension and args.extension.startswith("."):
-        args.extension = args.extension[1:]
+        next_step(1,
+                  f"Discarded {original_total - len(image_list)} symbolic links")
 
     # get hr and lr folders
     hr_folder = args.input.parent / f"{str(args.scale)}xHR"
     lr_folder = args.input.parent / f"{str(args.scale)}xLR"
-    if ext := args.extension:
-        hr_folder = Path(f"{str(hr_folder)}-{ext}")
-        lr_folder = Path(f"{str(lr_folder)}-{ext}")
+    if args.extension:
+        hr_folder = Path(f"{str(hr_folder)}-{args.extension}")
+        lr_folder = Path(f"{str(lr_folder)}-{args.extension}")
     hr_folder.parent.mkdir(parents=True, exist_ok=True)
     lr_folder.parent.mkdir(parents=True, exist_ok=True)
 
     # Purge existing images with respect to the filter
     if args.purge or args.purge_only:
         next_step(1, "Purging...")
-        count = 0
         for path in image_list:
             hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder,
                                          args.recursive, args.extension)
-            if hr_path.exists() or lr_path.exists():
-                count += 1
-                hr_path.unlink(missing_ok=True)
-                lr_path.unlink(missing_ok=True)
+            hr_path.unlink(missing_ok=True)
+            lr_path.unlink(missing_ok=True)
         # return
-        next_step(1, f"Purged {count} images.")
+        next_step(1, "Purged.")
     if args.purge_only:
         return 0
 
+    original_total = len(image_list)
     if not args.overwrite:
         # get files that were already converted
-        exist_list = intersect_get(hr_folder, lr_folder)
+        exist_list = get_existing(hr_folder, lr_folder)
         image_list = [i for i in tqdm(image_list, desc="Removing existing")
                       if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
 
@@ -448,7 +446,7 @@ def main():
     image_list = sorted(image_list,
                         key=sorting_methods[args.sort], reverse=args.reverse)
 
-    if args.image_limit and args.limit_mode == "after":
+    if args.image_limit and args.limit_mode == "after":  # limit image number
         image_list = set(image_list[:args.image_limit])
 
     # create hr/lr pairs from list of valid images

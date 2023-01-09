@@ -1,7 +1,7 @@
 
-import argparse
 import json
 import os
+from argparse import SUPPRESS, ArgumentParser, Namespace
 from sys import exit as sys_exit
 
 
@@ -32,8 +32,8 @@ class CfgDict(dict):
         super().clear()
         return self
 
-    def pop(self, key):
-        super().pop(key)
+    def pop(self, *args, **kwargs):
+        super().pop(*args, **kwargs)
         return self
 
     def load(self):
@@ -54,7 +54,7 @@ class ConfigParser:
     '''Creates an easy argparse config utility. 
     It saves given args to a path, and returns them when args are parsed again.'''
 
-    def __init__(self, parser: argparse.ArgumentParser,
+    def __init__(self, parser: ArgumentParser,
                  config_path, autofill: bool = False, exit_on_change: bool = False, rewrite_help: bool = True) -> None:
         '''
         parser: argparse function.
@@ -76,7 +76,7 @@ class ConfigParser:
         self._remove_help()
 
         # set up subparser
-        self.parser = argparse.ArgumentParser(
+        self.parser = ArgumentParser(
             prog=self._parent.prog,
             usage=self._parent.usage,
             description=self._parent.description,
@@ -127,7 +127,7 @@ class ConfigParser:
             if action.dest in argdict:
                 action.default = argdict[action.dest]
 
-    def parse_args(self, **kwargs) -> argparse.Namespace:
+    def parse_args(self, **kwargs) -> Namespace:
         '''args.set, reset, reset_all logic '''
         self.parsed_args, _ = self.parser.parse_known_args(**kwargs)
         # set defaults
@@ -176,6 +176,6 @@ class ConfigParser:
             self.parser.add_argument(
                 f"{self.parser.prefix_chars}h",
                 f"{self.parser.prefix_chars*2}help",
-                action='help', default=argparse.SUPPRESS,
+                action='help', default=SUPPRESS,
                 help=('show this help message and exit')
             )

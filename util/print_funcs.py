@@ -1,5 +1,6 @@
-import time
 from os import get_terminal_size
+from time import perf_counter
+
 
 def p_bar(iteration: int, total: int, length=20,
           fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
@@ -20,7 +21,7 @@ def thread_status(pid: int, item: str = "", extra: str = "", item_size = None):
 
 class Timer:
     def __init__(self, timestamp: int = None):
-        self.time = timestamp or time.perf_counter()
+        self.time = timestamp or perf_counter()
 
     def print(self, msg):
         '''print and resets time'''
@@ -28,16 +29,16 @@ class Timer:
 
     def poll(self, msg = ""):
         '''print without resetting time'''
-        print(f"{time.perf_counter() - self.time}: {msg}")
+        print(f"{perf_counter() - self.time}: {msg}")
         return self
 
     def reset(self):
         '''resets time'''
-        self.time = time.perf_counter()
+        self.time = perf_counter()
         return self.time
 
     def __repr__(self):
-        return str((time.perf_counter()) - self.time)
+        return str((perf_counter()) - self.time)
 
 if __name__ == "__main__":
     t = Timer()
