@@ -407,16 +407,15 @@ def main():
             lr_path.unlink(missing_ok=True)
         # return
         next_step(1, "Purged.")
-    if args.purge_only:
-        return 0
+        if args.purge_only:
+            return 0
 
+    # get files that were already converted
     original_total = len(image_list)
     if not args.overwrite:
-        # get files that were already converted
         exist_list = get_existing(hr_folder, lr_folder)
         image_list = [i for i in tqdm(image_list, desc="Removing existing")
                       if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
-
     next_step(
         1, f"Discarded {original_total-len(image_list)} images which already exist\n")
     check_for_images(image_list)

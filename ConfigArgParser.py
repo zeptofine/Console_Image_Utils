@@ -28,12 +28,12 @@ class CfgDict(dict):
         super().update(*args, **kwargs)
         return self
 
-    def clear(self):
-        super().clear()
-        return self
-
     def pop(self, *args, **kwargs):
         super().pop(*args, **kwargs)
+        return self
+
+    def clear(self):
+        super().clear()
         return self
 
     def load(self):
@@ -109,7 +109,7 @@ class ConfigParser:
         self.parsed_args, _ = self.parser.parse_known_args()
         # Add flags
         self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
-        self.config_path = self.kwargs['config_path']
+        self.config_path = self.kwargs.get('config_path', config_path)
 
         # exclude set, reset from config
         for i in ['set', 'reset', 'reset_all']:

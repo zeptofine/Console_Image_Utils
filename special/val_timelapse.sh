@@ -1,18 +1,18 @@
 #!/bin/bash
 # check if there are no arguments
 if [ $# -eq 0 ]; then
-  echo -e "No arguments supplied\nUsage: ./val_timelapse.sh <path to convert>"
-  exit 1
+	echo -e "No arguments supplied\nUsage: ./val_timelapse.sh <path to convert>"
+	exit 1
 fi
 # check if magick is installed
 if ! [ -x "$(command -v convert)" ]; then nullprogs=("${nullprogs[@]}" "imagemagick"); fi
 if ! [ -x "$(command -v ffmpeg)" ]; then nullprogs=("${nullprogs[@]}" "ffmpeg"); fi
 if ! [ -x "$(command -v parallel)" ]; then nullprogs=("${nullprogs[@]}" "parallel"); fi
 if [ ${#nullprogs[@]} -gt 0 ]; then
-  echo "The following programs are not executable:"
-  for i in "${nullprogs[@]}"; do echo "$i"; done
-  echo "Please install them before running this script."
-  exit 1
+	echo "The following programs are not executable:"
+	for i in "${nullprogs[@]}"; do echo "$i"; done
+	echo "Please install them before running this script."
+	exit 1
 fi
 IFS=$'\n'
 input="$*"
@@ -20,7 +20,7 @@ input="$*"
 input=$(realpath "$input")
 # strip the last slash if it exists
 if [ "${input: -1}" == "/" ]; then
-  input="${input::-1}"
+	input="${input::-1}"
 fi
 cd "$input" || exit
 mapfile -t array < <(find "$input" -type f,l)
@@ -37,25 +37,25 @@ tmpinput="/tmp/${input##*/}"
 #find files, and check if there are more than one type of file
 
 if [ "$(find "$tmpinput" -type f,l | awk -F . '{print $NF}' | sort | uniq -c | awk '{print $2,$1}' | wc -l)" -gt 1 ]; then {
-  echo "Found more than one type of file, converting to webp as a fallback"
-  function extcheck() {
-    tmpfilext="${1##*.}"
-    tmpfile="$1"
-    desiredext="webp"
-    if [ ! "$tmpfilext" == "$desiredext" ]; then
-      convert "$tmpfile" -quality 100 "${tmpfile%.*}.$desiredext"
-      rm "$1"
-    fi
-  }
-  export -f extcheck
-  find "$tmpinput" -type f,l | parallel --bar extcheck
+	echo "Found more than one type of file, converting to webp as a fallback"
+	function extcheck() {
+		tmpfilext="${1##*.}"
+		tmpfile="$1"
+		desiredext="webp"
+		if [ ! "$tmpfilext" == "$desiredext" ]; then
+			convert "$tmpfile" -quality 100 "${tmpfile%.*}.$desiredext"
+			rm "$1"
+		fi
+	}
+	export -f extcheck
+	find "$tmpinput" -type f,l | parallel --bar extcheck
 }; fi
 echo arranging files...
 if [ -f "$tmpinput/${input##*/}_mylist.txt" ]; then rm "$tmpinput/${input##*/}_mylist.txt"; fi
 function echolist() {
-  file="${*#"$dirsource"}"
-  file=${file##*/}
-  echo "$(echo "${file%.*}" | sed -e :a -e 's/^.\{1,6\}$/0&/;ta'):file $*"
+	file="${*#"$dirsource"}"
+	file=${file##*/}
+	echo "$(echo "${file%.*}" | sed -e :a -e 's/^.\{1,6\}$/0&/;ta'):file $*"
 }
 export -f echolist
 find "$tmpinput" -type f,l | parallel echolist {} | sort -n | cut -d: -f2 >>"$tmpinput/${input##*/}_mylist.txt"

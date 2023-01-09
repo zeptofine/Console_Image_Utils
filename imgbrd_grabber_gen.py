@@ -55,7 +55,7 @@ for prompt in prefixes:
     if not args.post_filter:
         tmpdict['query']['tags'] += blacklist
     else:
-        tmpdict['postFiltering'] = blacklist
+        tmpdict.update({'postFiltering': blacklist})
 
     outputJson['batchs'].append(tmpdict)
 
