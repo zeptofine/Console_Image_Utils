@@ -25,21 +25,22 @@ if not os.path.exists("prefixes.txt"):
 with open("prefixes.txt", "r") as prfile:
     prefixes = prfile.readlines()
 
+outputJson = {
+    "batchs": [],
+    "uniques": [],
+    "version": 3
+}
+
 prefixes = [i.strip().split(" ") for i in prefixes]
 blacklist = [
     "watersports",
     "urine",
     "gore",
 ]
+blacklist = [f"-{i}" for i in blacklist]
 
 assert len(prefixes) > 0, "Your prefixes.txt is empty. Fill it up with prompts"
 
-outputJson = {
-    "batchs": [],
-    "uniques": [],
-    "version": 3
-}
-blacklist = [f"-{i}" for i in blacklist]
 for prompt in prefixes:
     tmpdict = {
         'filename': args.output_fmt,

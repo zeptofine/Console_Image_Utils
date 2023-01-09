@@ -9,8 +9,8 @@ def p_bar(iteration: int, total: int, length=20,
             (fill*length)[:filledLength] + (nullp*(length - filledLength)) + \
             f"\033[92m{corner[1]}\033[0m{str(suff)}"
 
-def p_bar_stat(iteration, total, **kwargs):
-    return f"{p_bar(iteration, total, **kwargs)} {iteration}/{total}"
+def p_bar_stat(iteration, total, suff="", **kwargs):
+    return f"{p_bar(iteration, total, **kwargs)} {iteration}/{total} {suff}"
 
 def thread_status(pid: int, item: str = "", extra: str = "", item_size = None):
     item_size = item_size or get_terminal_size().columns

@@ -7,6 +7,7 @@ import datetime
 import glob
 import os
 import subprocess
+from functools import lru_cache
 import sys
 import time
 from pathlib import Path
@@ -40,7 +41,7 @@ with PipInstaller() as p:
                 raise ImportError
 
     except (ImportError, ModuleNotFoundError):
-        # Try to install packages and restart
+        # Try to install packages
         try:
             for i, package in enumerate(packages):
                 if not p.available(packages[package]):
@@ -52,9 +53,10 @@ with PipInstaller() as p:
                     if not p.available(packages[package]):
                         raise ModuleNotFoundError(
                             f"Failed to install '{package}'.")
+            # restart process once installing required packages is complete
             if not is_subprocess():
                 os.execv(sys.executable, ['python', *sys.argv])
-            else:
+            else:  # process failed even after installation, so something may be wrong with perms idk
                 raise subprocess.SubprocessError("Failed to install packages.")
         except (subprocess.SubprocessError, ModuleNotFoundError) as err2:
             print(f"{type(err2).__name__}: {err2}")
@@ -130,7 +132,7 @@ def main_parser() -> argparse.ArgumentParser:
                            help="smallest available image")
     p_filters.add_argument("--maxsize", type=int, metavar="MAX",
                            help="largest allowed image.")
-    p_filters.add_argument("--crop_mod", type=bool, default=False,
+    p_filters.add_argument("--crop_mod", action="store_true",
                            help="changes mod mode so that it crops the image to an image that actually is divisible by scale, typically by a few px")
     # ^^ used for filtering out too small or too big images.
     p_filters.add_argument("--after", type=str,
@@ -153,39 +155,46 @@ def next_step(order, *args) -> None:
     rprint("\n".join(output), end="\n\033[K")
 
 
+@lru_cache
 def get_resolution(path: Path):
-    """path: The path to the image file.
-
-    Returns the resolution of the image file as a tuple of (width, height).
     """
-    return imagesize.get(path)
+    Args    path: The path to the image file.
+    Returns tuple[width, height]."""
+    return imagesize.get(path) or cv2.imread(path).shape[:2]
 
 
 def get_file_list(*folders: Path) -> list[Path]:
-    """folders: One or more folder paths.
-    Returns a list of file paths in the specified folders.
     """
+    Args    folders: One or more folder paths.
+    Returns list[Path]: paths in the specified folders."""
     globlist = [glob.glob(str(p), recursive=True)
                 for p in folders]
     return [Path(y) for x in globlist for y in x]
 
 
-def get_existing_files(hr_folder, lr_folder) -> tuple[set[Path], set[Path]]:
-    """Returns the HR and LR files that already exist in the specified folders.
-    Args:
-        hr_folder: The folder where the HR files are stored.
-        lr_folder: The folder where the LR files are stored.
-    Returns a tuple of sets of HR and LR file paths.
+def intersect_multi(*sets) -> set[Path]:
+    outset = sets[0]
+    for set in sets[1:]:
+        outset = outset.intersection(set)
+    return outset
+
+
+def intersect_get(*folders) -> set[Path]:
     """
-    hfiles = {f.relative_to(hr_folder).with_suffix("")
-              for f in get_file_list((hr_folder / "**" / "*"))}
-    lfiles = {f.relative_to(lr_folder).with_suffix("")
-              for f in get_file_list((lr_folder / "**" / "*"))}
-    return hfiles, lfiles
+    Returns the files that already exist in the specified folders.
+    Args    *: folders to be searched & compared.
+    Returns tuple[set[Path], set[Path]]: HR and LR file paths in sets.
+    """
+    sets = (
+        {f.relative_to(folder).with_suffix('') for f in get_file_list((folder / "**" / "*"))} for folder in folders
+    )
+    outset = intersect_multi(*sets)
+    return outset
 
 
 def to_recursive(path: Path, recursive: bool) -> Path:
-    """ Convert the file path to a recursive path if recursive is False
+    """
+    Convert the file path to a recursive path if recursive is False
     Ex: i/path/to/image.png => i/path_to_image.png"""
     return path if recursive else Path(str(path).replace(os.sep, "_"))
 
@@ -194,93 +203,6 @@ def check_for_images(image_list) -> None:
     if not list(image_list):
         next_step(-1, "No images left to process")
         sys.exit(0)
-
-
-def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
-              recursive: bool = False, ext=None) -> tuple[Path, Path]:
-    hr_path = hr_folder / to_recursive(path, recursive)
-    lr_path = lr_folder / to_recursive(path, recursive)
-    # Create the HR and LR folders if they do not exist
-    hr_path.parent.mkdir(parents=True, exist_ok=True)
-    lr_path.parent.mkdir(parents=True, exist_ok=True)
-    # If an extension is provided, append it to the HR and LR file paths
-    if ext and path.is_file():
-        hr_path = hr_path.with_suffix(f".{ext}")
-        lr_path = lr_path.with_suffix(f".{ext}")
-    return hr_path, lr_path
-
-
-def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
-    """Checks if an image is within specified time limits.
-        inpath: the path to the image file.
-        before_time: the image must be before this time.
-        after_time: the image must be after this time.
-    Returns:
-        A tuple of (success, modification time).
-    """
-    mstat = inpath.stat()
-    filetime = datetime.datetime.fromtimestamp(mstat.st_mtime)
-    # compare the file time to given threshold
-    if (before_time and (before_time < filetime)) or (after_time and (after_time > filetime)):
-        return (False, mstat)
-    return (True, mstat)
-
-
-def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple]:
-    """Checks if an image is within specified resolution limits.
-        inpath: The path to the image file.
-        minsize: The minimum allowed resolution for the image.
-        maxsize: The maximum allowed resolution for the image.
-        scale: The scale factor to use when checking the resolution.
-        crop_mod: A boolean value indicating whether to crop the image to the nearest multiple of the scale factor.
-    Returns A tuple of (success, resolution).
-    """
-
-    # Get the resolution of the image
-    res: tuple = get_resolution(inpath)  # => (width, height)
-    width, height = res
-
-    if crop_mod:
-        # crop the image to the nearest multiple of the scale factor
-        width, height = (width // scale) * scale, (height // scale) * scale
-    elif (width % scale != 0 or height % scale != 0):
-        return (False, res)
-    if (minsize and (width < minsize or height < minsize)) \
-            or (maxsize and (width > maxsize or height > maxsize)):
-        return (False, res)
-    return (True, (width, height))
-
-
-def fileparse(inpath: Path, source: Path, mtime, scale: int,
-              hr_folder: Path, lr_folder: Path,
-              recursive: bool, crop_mod: bool, ext=None):
-    """Converts an image file to HR and LR versions and saves them to the specified folders.
-    Returns:
-        The input path of the image file, to be printed.
-    """
-    # Generate the HR & LR file paths
-    hr_path, lr_path = hrlr_pair(inpath, hr_folder, lr_folder, recursive, ext)
-
-    # Read the image file
-    image = cv2.imread(source, cv2.IMREAD_UNCHANGED)  # type: ignore
-    imshape = image.shape
-
-    if crop_mod:
-        # crop the image
-        image = image[0:(imshape[0] // scale) * scale,
-                      0:(imshape[1] // scale) * scale]
-
-    # Save the HR / LR version of the image
-    cv2.imwrite(str(hr_path), image)  # type: ignore
-    cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
-        image, (0, 0), fx=1 / scale, fy=1 / scale))
-
-    # Set the modification time of the HR and LR image files to the original image's modification time
-    os.utime(str(hr_path), (mtime, mtime))
-    os.utime(str(lr_path), (mtime, mtime))
-
-    # Return the input path of the image file
-    return inpath, imshape
 
 
 def white_black_list(args, imglist):
@@ -295,34 +217,123 @@ def white_black_list(args, imglist):
     return imglist
 
 
-def filter_images(args, imglist, cparser: ConfigParser):
+def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
+              recursive: bool = False, ext=None) -> tuple[Path, Path]:
+    """
+    gets the HR and LR file paths for a given file or directory path.
+    Args    recursive (bool): Whether to search for the file in subdirectories.
+            ext (str): The file extension to append to the file name.
+    Returns tuple[Path, Path]: HR and LR file paths.
+    """
+    hr_path = hr_folder / to_recursive(path, recursive)
+    lr_path = lr_folder / to_recursive(path, recursive)
+    # Create the HR and LR folders if they do not exist
+    hr_path.parent.mkdir(parents=True, exist_ok=True)
+    lr_path.parent.mkdir(parents=True, exist_ok=True)
+    # If an extension is provided, append it to the HR and LR file paths
+    if ext:
+        hr_path = hr_path.with_suffix(f".{ext}")
+        lr_path = lr_path.with_suffix(f".{ext}")
+    return hr_path, lr_path
+
+
+def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
+    """
+    Checks if an image is within specified time limits.
+    Args    inpath: the path to the image file.
+            before_time: the image must be before this time.
+            after_time: the image must be after this time.
+    Returns tuple[success, filestat].
+    """
+    mstat = inpath.stat()
+    filetime = datetime.datetime.fromtimestamp(mstat.st_mtime)
+    if before_time or after_time:
+        return (not (before_time and (before_time < filetime)) or (after_time and (after_time > filetime)), mstat)
+    return (True, mstat)
+
+
+def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple]:
+    """
+    Checks if an image is within specified resolution limits.
+    Args    inpath: The path to the image file.
+            minsize: The minimum allowed resolution for the image.
+            maxsize: The maximum allowed resolution for the image.
+            scale: The scale factor to use when checking the resolution.
+            crop_mod: A boolean value indicating whether to crop the image to the nearest multiple of the scale factor.
+    Returns tuple[success, resolution].
+    """
+    res = get_resolution(inpath)  # => (width, height)
+    if crop_mod:
+        # crop the image to the nearest multiple of the scale factor
+        res = (res[0] // scale) * scale, (res[1] // scale) * scale
+    return (
+        (res[0] % scale == 0 and res[1] % scale == 0) and not (
+            (minsize and (res[0] < minsize or res[1] < minsize) or
+             maxsize and (res[0] > maxsize or res[1] > maxsize))),
+        res
+    )
+
+
+def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple, tuple]:
     # filter images that are too young or too old
-    pargs = [(args.input / i, args.before, args.after) for i in imglist]
-    mstat = poolmap(args.threads, within_time, pargs,
-                    desc=f"Filtering by time ({args.before}<=x<={args.after})",
-                    postfix=False)
-    mstat = filter(lambda x: x[1][0], zip(imglist, mstat))
-    imglist, mstat = zip(*mstat)
-    mstat = {imglist[i]: mstat[i][1] for i in range(len(imglist))}
-    check_for_images(mstat)
+    t = within_time(img_path, before, after)
+
+    # filter images that are too small or too big, or not divisible by scale
+    r = within_res(img_path, minsize, maxsize, scale, crop_mod)
+    return (t[0] and r[0]), t[1], r[1]
+
+
+def filter_images(args, imglist, cparser: ConfigParser) -> tuple[tuple, dict, dict]:
+
+    pargs = [(args.input / i,
+              args.before, args.after,
+              args.minsize, args.maxsize,
+              args.scale, args.crop_mod) for i in imglist]
+    mapped_list = {(i[0], *i[1][1:]) for i in filter(
+        lambda x: x[1][0],
+        zip(imglist,
+            poolmap(args.threads, within_time_and_res, pargs, postfix=False)))}
+
+    check_for_images(mapped_list)
+    imglist, mstat, mres = zip(*mapped_list)
+    mstat = {imglist[i]: v for i, v in enumerate(mstat)}
+    mres = {imglist[i]: v for i, v in enumerate(mres)}
 
     # Make a tooltip to the user if not cropped_before
-    if not (cparser.file.get("cropped_before", False) and args.crop_mod):
+    if not (cparser.file.get("cropped_before", False) or args.crop_mod):
         next_step(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
         cparser.file.update({"cropped_before": True}).save()
 
-    # filter images that are too small or too big, or not divisible by scale
-    pargs = [(args.input / i, args.minsize, args.maxsize,
-              args.scale, args.crop_mod) for i in imglist]
-    mres = poolmap(args.threads, within_res, pargs,
-                   desc=f"Filtering by resolution ({args.minsize} <= x <= {args.maxsize}) % {args.scale}",
-                   postfix=not args.anonymous)
-    mres = list(filter(lambda x: x[1][0], zip(imglist, mres)))
-    check_for_images(mres)
-    imglist, mres = zip(*mres)
-    mres = {imglist[i]: mres[i][1] for i in range(len(imglist))}
-
     return imglist, mstat, mres
+
+
+def fileparse(inpath: Path, source: Path, mtime, scale: int,
+              hr_folder: Path, lr_folder: Path,
+              recursive: bool, ext=None) -> Path:
+    """
+    Converts an image file to HR and LR versions and saves them to the specified folders.
+    Returns tuple[Path, tuple[...]]: solely for printing.
+    """
+    # Generate the HR & LR file paths
+    hr_path, lr_path = hrlr_pair(inpath, hr_folder, lr_folder, recursive, ext)
+
+    # Read the image file
+    image = cv2.imread(source, cv2.IMREAD_UNCHANGED)  # type: ignore
+
+    image = image[0:(image.shape[0] // scale) * scale,
+                  0:(image.shape[1] // scale) * scale]
+
+    # Save the HR / LR version of the image
+    cv2.imwrite(str(hr_path), image)  # type: ignore
+    cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
+        image, (0, 0), fx=1 / scale, fy=1 / scale))
+
+    # Set the modification time of the HR and LR image files to the original image's modification time
+    os.utime(str(hr_path), (mtime, mtime))
+    os.utime(str(lr_path), (mtime, mtime))
+
+    # Return the input path of the image file
+    return inpath
 
 
 def main():
@@ -394,17 +405,17 @@ def main():
             hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder,
                                          args.recursive, args.extension)
             if hr_path.exists() or lr_path.exists():
-                count+=1
+                count += 1
                 hr_path.unlink(missing_ok=True)
                 lr_path.unlink(missing_ok=True)
         # return
         next_step(1, f"Purged {count} images.")
     if args.purge_only:
         return 0
+
     if not args.overwrite:
         # get files that were already converted
-        hfiles, lfiles = get_existing_files(hr_folder, lr_folder)
-        exist_list = hfiles.intersection(lfiles)
+        exist_list = intersect_get(hr_folder, lr_folder)
         image_list = [i for i in tqdm(image_list, desc="Removing existing")
                       if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
 
@@ -414,6 +425,11 @@ def main():
 
     # remove files based on resolution and time
     original_total = len(image_list)
+    if args.before or args.after:
+        next_step(2, f"Filtering by time ({args.before}<=x<={args.after})")
+    if args.minsize or args.maxsize:
+        next_step(2, f"Filtering by size ({args.minsize}<=x<={args.maxsize})")
+
     image_list, mstat, mres = filter_images(args, image_list, cparser)
     next_step(2, f"Discarded {original_total - len(image_list)} images\n")
 
@@ -429,18 +445,18 @@ def main():
                        "res": lambda x: mres[x][0] * mres[x][1],
                        "time": lambda x: mstat[x].st_mtime,
                        "size": lambda x: mstat[x].st_size}
-    image_list = sorted(
-        image_list, key=sorting_methods[args.sort], reverse=args.reverse)
+    image_list = sorted(image_list,
+                        key=sorting_methods[args.sort], reverse=args.reverse)
 
     if args.image_limit and args.limit_mode == "after":
-        image_list = set(image_list[: args.image_limit])
+        image_list = set(image_list[:args.image_limit])
 
     # create hr/lr pairs from list of valid images
     next_step(4, f"{len(image_list)} images in queue")
     try:
         pargs = [(v, str(args.input / v), mstat[v].st_mtime, args.scale,
                   hr_folder, lr_folder,
-                  args.recursive, args.crop_mod, args.extension)
+                  args.recursive, args.extension)
                  for v in image_list]
         image_list = poolmap(args.threads, fileparse, pargs,
                              chunksize=2,
