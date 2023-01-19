@@ -41,9 +41,14 @@ class Stepper:
 
     def print(self, *lines, **kwargs):
         for line in [f" {self.step}:{s}" for s in lines]:
-            self.printer(
-                f"{self.print_mode[0]}{line}", end=self.print_mode[1], **kwargs)
+            self.printer(line, **kwargs)
+            # self.printer(
+            #     f"{self.print_mode[0]}{line}", end=self.print_mode[1], **kwargs)
 
+    # override for print_modes
+    def _print(self, *args, **kwargs):
+        args = self.print_mode[0] + args[0], *args[1:]
+        self.printer(*args, end=self.print_mode[1], **kwargs)
 
 class RichStepper(Stepper):
 
@@ -53,11 +58,14 @@ class RichStepper(Stepper):
         self.printer = rprint
         self.loglevel = loglevel
 
+    def set(self, n):
+        self.step = n
+        return self
+
     def next(self, s=None, **kwargs):
         self.step += 1
         if s:
-            self.printer(f"{self.print_mode[0]}[blue]{self.step}[/blue]: {s}",
-                         end=self.print_mode[1], **kwargs)
+            self._print(f"[green]{self.step}:[/green] {s}", **kwargs)
 
     def print(self, *lines, **kwargs):
         if isinstance(lines[0], int) or lines[0].isdigit():
@@ -65,21 +73,19 @@ class RichStepper(Stepper):
             lines = lines[1:]
         else:
             level = 0
-        output = {
+        printed_output = {
             0: "[bold yellow]INFO[/bold yellow]",
             1: "[bold orange]WARNING[/bold orange]",
             -1: "[bold grey]DEBUG[/bold grey]",
             2: "[bold red]ERROR[/bold red]",
             3: "[bold white]CRITICAL[/bold white]"
         }.get(level, f"[blue]{level}[/blue]")
+        output = [f" [blue]{self.step}:[/blue]" for _ in lines]
         if self.loglevel <= level:
-            output = (
-                f" [blue]{self.step}[/blue]: {output}:{s}" for s in lines)
-        else:
-            output = (f" [blue]{self.step}[/blue]: {s}" for s in lines)
+            output = [f"{l} {printed_output}: " for i, l in enumerate(output)]
+        output = [f"{output[i]} {s}" for i,s in enumerate(lines)]
         for line in output:
-            self.printer(
-                f"{self.print_mode[0]}{line}", end=self.print_mode[1], **kwargs)
+            self._print(line, **kwargs)
 
 
 class Timer:

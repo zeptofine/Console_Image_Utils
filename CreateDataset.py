@@ -124,8 +124,6 @@ def main_parser() -> ArgumentParser:
     p_filters = parser.add_argument_group("Filters")
     p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
                            help="only allows paths with the given string.")
-    p_filters.add_argument("--list-filter-whole", action="store_true",
-                           help="treats the whole whitelist as a single string. By default it separates it by spaces and only allows files that accept every criteria.")
     p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
                            help="excludes paths with the given string.")
     # ^^ used for restricting the names allowed in the paths.
@@ -155,6 +153,22 @@ def main_parser() -> ArgumentParser:
 #     output = [f" {output}: {text}" for text in args]
 #     rprint("\n".join(output), end="\n\033[K")
 
+# class File:
+#     def __init__(self, p: Path):
+#         self.path = Path(p)
+#         self.resolution = None
+#         self.st = None
+
+#     def stat(self):
+#         self.st = self.st or self.p.stat()
+#         return self.st
+
+#     def res(self):
+#         self.resolution = self.resolution or imagesize.get(self.p)
+#         return self.resolution
+
+#     def __repr__(self):
+#         return self.path
 
 @lru_cache
 def get_resolution(path: Path):
@@ -198,17 +212,13 @@ def check_for_images(image_list) -> None:
         sys.exit(0)
 
 
-def white_black_list(args, imglist):
-    for f, j in [("whitelist", True), ("blacklist", False)]:
-        # get the whitelist or blacklist from args
-        i = getattr(args, f)
-        if i:
-            # if filter is not considered whole, use every element separated by spaces
-            i = i.split(" ") if not args.list_filter_whole else [i]
-            imglist = [k for k in imglist if
-                       (any(i in str(k) for i in i)) == j]
-            s.print(f"{f} {i}: {len(imglist)}")
-    return imglist
+def whitelist(imglist, whitelist):
+    return {j for i in whitelist for j in imglist if i in str(j)}
+
+
+def blacklist(imglist, blacklist):
+    imglist_with_blacklist = whitelist(imglist, blacklist)
+    return set(imglist).difference(imglist_with_blacklist)
 
 
 def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
@@ -333,6 +343,7 @@ def main():
     cparser = ConfigParser(main_parser(), "config.json", exit_on_change=True)
     args = cparser.parse_args()
 
+# make sure args are valid
     if not (args.input):
         sys.exit("Please specify an input directory.")
     if args.extension:
@@ -340,6 +351,18 @@ def main():
             args.extension = args.extension[1:]
         if args.extension.lower() in ["self", "none", "same", ""]:
             args.extension = None
+    if args.after or args.before:
+        try:
+            if args.after:
+                args.after = timeparser.parse(str(args.after))
+            if args.before:
+                args.before = timeparser.parse(str(args.before))
+            if args.after and args.before and args.after > args.before:
+                raise timeparser.ParserError(
+                    f"{args.before} (--before) is older than {args.after} (--after)!")
+        except timeparser.ParserError as err:
+            s.set(-9).print(str(err))
+            return 1
 
     s.next("Settings: ")
     s.print(f"  input: {args.input}",
@@ -351,18 +374,6 @@ def main():
             f"  crop_mod: {args.crop_mod}",
             f"  sort: {args.sort}, reverse: {args.reverse}")
 
-    if args.after or args.before:
-        try:
-            if args.after:
-                args.after = timeparser.parse(str(args.after))
-            if args.before:
-                args.before = timeparser.parse(str(args.before))
-            if args.after and args.before and args.after > args.before:
-                raise timeparser.ParserError(
-                    f"{args.before} (--before) is older than {args.after} (--after)!")
-        except timeparser.ParserError as err:
-            s.next(-9, err)
-
     s.next("Gathering images...")
     args.input = Path(args.input).resolve()
     image_list = get_file_list(args.input / "**" / "*.png",
@@ -372,9 +383,17 @@ def main():
         image_list = image_list[:args.image_limit]
     s.print(f"Gathered {len(image_list)} images")
 
-    # filter out blackisted/whitelisted items
-    image_list = white_black_list(args, image_list)
+# filter out blacklisted/whitelisted items
+    if args.whitelist:
+        args.whitelist = args.whitelist.split(" ")
+        image_list = whitelist(image_list, args.whitelist)
+        s.print(f"whitelist {args.whitelist}: {len(image_list)}")
+    if args.blacklist:
+        args.blacklist = args.blacklist.split(" ")
+        image_list = blacklist(image_list, args.blacklist)
+        s.print(f"blacklist {args.blacklist}: {len(image_list)}")
 
+# discard symbolic duplicates
     original_total = len(image_list)
     # vv This naturally removes the possibility of multiple files pointing to the same image
     image_list = {i.resolve(): i.relative_to(args.input)
@@ -382,7 +401,7 @@ def main():
     if len(image_list) != original_total:
         s.print(f"Discarded {original_total - len(image_list)} symbolic links")
 
-    # get hr and lr folders
+# get hr / lr folders
     hr_folder = args.input.parent / f"{str(args.scale)}xHR"
     lr_folder = args.input.parent / f"{str(args.scale)}xLR"
     if args.extension:
@@ -391,7 +410,7 @@ def main():
     hr_folder.parent.mkdir(parents=True, exist_ok=True)
     lr_folder.parent.mkdir(parents=True, exist_ok=True)
 
-    # Purge existing images with respect to the filter
+# Purge existing images
     if args.purge or args.purge_only:
         s.next("Purging...")
         for path in image_list:
@@ -399,15 +418,15 @@ def main():
                                          args.recursive, args.extension)
             hr_path.unlink(missing_ok=True)
             lr_path.unlink(missing_ok=True)
-        # return
+
         s.print("Purged.")
         if args.purge_only:
             return 0
 
-    # get files that were already converted
-    s.next("Removing existing")
+# get files that were already converted
     original_total = len(image_list)
     if not args.overwrite:
+        s.next("Removing existing")
         exist_list = get_existing(hr_folder, lr_folder)
         image_list = [i for i in tqdm(image_list, desc="Removing existing")
                       if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
@@ -416,7 +435,7 @@ def main():
 
     check_for_images(image_list)
 
-    # remove files based on resolution and time
+# remove files based on resolution and time
     s.next("Filtering images...")
     original_total = len(image_list)
     if args.before or args.after:
@@ -431,7 +450,7 @@ def main():
         s.next("Simulated")
         return 0
 
-    # Sort files based on different attributes
+# Sort files based on different attributes
     s.next("Sorting...\n")
     sorting_methods = {"name": lambda x: x,
                        "ext": lambda x: x.suffix,
@@ -445,7 +464,7 @@ def main():
     if args.image_limit and args.limit_mode == "after":  # limit image number
         image_list = set(image_list[:args.image_limit])
 
-    # create hr/lr pairs from list of valid images
+# create hr/lr pairs from list of valid images
     s.next(f"{len(image_list)} images in queue")
     try:
         pargs = [(v, str(args.input / v), mstat[v].st_mtime, args.scale,
