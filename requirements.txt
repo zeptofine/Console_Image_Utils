@@ -3,6 +3,5 @@ imagesize
 pillow
 rich
 python-dateutil
-plyer
 rich_argparse
 shtab

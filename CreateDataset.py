@@ -62,9 +62,8 @@ with PipInstaller() as p:
             print(f"{type(err2).__name__}: {err2}")
             sys.exit(127)  # command not found
 
-    finally:
+    else:
         print("\033[2K", end="")
-        from rich import print as rprint
         from rich.traceback import install
         install()
 
@@ -75,6 +74,8 @@ with PipInstaller() as p:
         from tqdm import tqdm
 
         from util.iterable_starmap import poolmap
+        from util.print_funcs import RichStepper
+        s = RichStepper(loglevel=1, step=-1)
 
 
 def main_parser() -> ArgumentParser:
@@ -145,14 +146,14 @@ def main_parser() -> ArgumentParser:
     return parser
 
 
-def next_step(order, *args) -> None:
-    output = {-1: "[yellow]INFO[/yellow]",
-              -2: "[orange]WARNING[/orange]",
-              -3: "[grey]DEBUG[/grey]",
-              -9: "[red]ERROR[/red]",
-              }.get(order, f"[blue]{order}[/blue]")
-    output = [f" {output}: {text}" for text in args]
-    rprint("\n".join(output), end="\n\033[K")
+# def next_step(order, *args) -> None:
+#     output = {-1: "[yellow]INFO[/yellow]",
+#               -2: "[orange]WARNING[/orange]",
+#               -3: "[grey]DEBUG[/grey]",
+#               -9: "[red]ERROR[/red]",
+#               }.get(order, f"[blue]{order}[/blue]")
+#     output = [f" {output}: {text}" for text in args]
+#     rprint("\n".join(output), end="\n\033[K")
 
 
 @lru_cache
@@ -182,11 +183,6 @@ def get_existing(*folders) -> set[Path]:
             for f in get_file_list((folder / "**" / "*"))} for folder in folders)
     outset = set.intersection(*sets)
     return outset
-    # hrlist = {f.relative_to(folders[0]).with_suffix('') for f in get_file_list(
-    #     folders[0] / "**" / "*")}
-    # lrlist = {f.relative_to(folders[1]).with_suffix('') for f in get_file_list(
-    #     folders[1] / "**" / "*")}
-    # return hrlist.intersection(lrlist)
 
 
 def to_recursive(path: Path, recursive: bool) -> Path:
@@ -198,7 +194,7 @@ def to_recursive(path: Path, recursive: bool) -> Path:
 
 def check_for_images(image_list) -> None:
     if not list(image_list):
-        next_step(-1, "No images left to process")
+        s.print(-1, "No images left to process")
         sys.exit(0)
 
 
@@ -211,7 +207,7 @@ def white_black_list(args, imglist):
             i = i.split(" ") if not args.list_filter_whole else [i]
             imglist = [k for k in imglist if
                        (any(i in str(k) for i in i)) == j]
-            next_step(1, f"{f} {i}: {len(imglist)}")
+            s.print(f"{f} {i}: {len(imglist)}")
     return imglist
 
 
@@ -299,7 +295,7 @@ def filter_images(args, imglist, cparser: ConfigParser) -> tuple[tuple, dict, di
 
     # Make a tooltip to the user if not cropped_before
     if not (cparser.file.get("cropped_before", False) or args.crop_mod):
-        next_step(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
+        s.print(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
         cparser.file.update({"cropped_before": True}).save()
 
     return imglist, mstat, mres
@@ -345,16 +341,15 @@ def main():
         if args.extension.lower() in ["self", "none", "same", ""]:
             args.extension = None
 
-    next_step(0,
-              "Settings: ",
-              f"  input: {args.input}",
-              f"  scale: {args.scale}",
-              f"  threads: {args.threads}",
-              f"  extension: {args.extension}",
-              f"  recursive: {args.recursive}",
-              f"  anonymous: {args.anonymous}",
-              f"  crop_mod: {args.crop_mod}",
-              f"  sort: {args.sort}, reverse: {args.reverse}\n")
+    s.next("Settings: ")
+    s.print(f"  input: {args.input}",
+            f"  scale: {args.scale}",
+            f"  threads: {args.threads}",
+            f"  extension: {args.extension}",
+            f"  recursive: {args.recursive}",
+            f"  anonymous: {args.anonymous}",
+            f"  crop_mod: {args.crop_mod}",
+            f"  sort: {args.sort}, reverse: {args.reverse}")
 
     if args.after or args.before:
         try:
@@ -366,16 +361,16 @@ def main():
                 raise timeparser.ParserError(
                     f"{args.before} (--before) is older than {args.after} (--after)!")
         except timeparser.ParserError as err:
-            next_step(-9, err)
+            s.next(-9, err)
 
-    next_step(1, "Gathering images...")
+    s.next("Gathering images...")
     args.input = Path(args.input).resolve()
     image_list = get_file_list(args.input / "**" / "*.png",
                                args.input / "**" / "*.jpg",
                                args.input / "**" / "*.webp")
     if args.image_limit and args.limit_mode == "before":  # limit image number
         image_list = image_list[:args.image_limit]
-    next_step(1, f"Gathered {len(image_list)} images")
+    s.print(f"Gathered {len(image_list)} images")
 
     # filter out blackisted/whitelisted items
     image_list = white_black_list(args, image_list)
@@ -385,8 +380,7 @@ def main():
     image_list = {i.resolve(): i.relative_to(args.input)
                   for i in tqdm(image_list, desc="Resolving")}.values()
     if len(image_list) != original_total:
-        next_step(1,
-                  f"Discarded {original_total - len(image_list)} symbolic links")
+        s.print(f"Discarded {original_total - len(image_list)} symbolic links")
 
     # get hr and lr folders
     hr_folder = args.input.parent / f"{str(args.scale)}xHR"
@@ -399,43 +393,46 @@ def main():
 
     # Purge existing images with respect to the filter
     if args.purge or args.purge_only:
-        next_step(1, "Purging...")
+        s.next("Purging...")
         for path in image_list:
             hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder,
                                          args.recursive, args.extension)
             hr_path.unlink(missing_ok=True)
             lr_path.unlink(missing_ok=True)
         # return
-        next_step(1, "Purged.")
+        s.print("Purged.")
         if args.purge_only:
             return 0
 
     # get files that were already converted
+    s.next("Removing existing")
     original_total = len(image_list)
     if not args.overwrite:
         exist_list = get_existing(hr_folder, lr_folder)
         image_list = [i for i in tqdm(image_list, desc="Removing existing")
                       if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
-    next_step(
-        1, f"Discarded {original_total-len(image_list)} images which already exist\n")
+    s.print(
+        f"Discarded {original_total-len(image_list)} images which already exist\n")
+
     check_for_images(image_list)
 
     # remove files based on resolution and time
+    s.next("Filtering images...")
     original_total = len(image_list)
     if args.before or args.after:
-        next_step(2, f"Filtering by time ({args.before}<=x<={args.after})")
+        s.print(f"Filtering by time ({args.before}<=x<={args.after})")
     if args.minsize or args.maxsize:
-        next_step(2, f"Filtering by size ({args.minsize}<=x<={args.maxsize})")
+        s.print(f"Filtering by size ({args.minsize}<=x<={args.maxsize})")
 
     image_list, mstat, mres = filter_images(args, image_list, cparser)
-    next_step(2, f"Discarded {original_total - len(image_list)} images\n")
+    s.print(f"Discarded {original_total - len(image_list)} images\n")
 
     if args.simulate:
-        next_step(3, "Simulated")
+        s.next("Simulated")
         return 0
 
     # Sort files based on different attributes
-    next_step(3, "Sorting...\n")
+    s.next("Sorting...\n")
     sorting_methods = {"name": lambda x: x,
                        "ext": lambda x: x.suffix,
                        "len": lambda x: len(str(x)),
@@ -449,7 +446,7 @@ def main():
         image_list = set(image_list[:args.image_limit])
 
     # create hr/lr pairs from list of valid images
-    next_step(4, f"{len(image_list)} images in queue")
+    s.next(f"{len(image_list)} images in queue")
     try:
         pargs = [(v, str(args.input / v), mstat[v].st_mtime, args.scale,
                   hr_folder, lr_folder,
@@ -460,8 +457,8 @@ def main():
                              postfix=not args.anonymous,
                              use_tqdm=True)
     except KeyboardInterrupt:
-        next_step(-1, "KeyboardInterrupt")
-    next_step(-1, "Done")
+        s.print(-1, "KeyboardInterrupt")
+    s.next("Done")
     return 0
 
 
