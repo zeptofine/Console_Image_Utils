@@ -1,9 +1,9 @@
 from os import get_terminal_size
-from time import perf_counter
+from time import perf_counter, time
 
 
-def p_bar(iteration: int, total: int, length=20,
-          fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
+def pbar(iteration: int, total: int, length=20,
+         fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
     filledLength = (length * iteration) // total
     #    [#############################]
     return f"{str(pref)}\033[92m{corner[0]}\033[93m" + \
@@ -11,8 +11,19 @@ def p_bar(iteration: int, total: int, length=20,
         f"\033[92m{corner[1]}\033[0m{str(suff)}"
 
 
-def p_bar_stat(iteration, total, suff="", **kwargs):
-    return f"{p_bar(iteration, total, **kwargs)} {iteration}/{total} {suff}"
+def isbar(iteration, total, suff="", **kwargs):
+    return f"{pbar(iteration, total, **kwargs)} {iteration}/{total} {suff}"
+
+
+def ipbar(iterable, total=None, refresh_interval=0.25, end="\r", very_end="\n", **kwargs):
+    total = total or len(iterable)
+    _time = time()
+    for i, obj in enumerate(iterable):
+        yield obj
+        if time() - _time > refresh_interval:  # refresh interval
+            print(f"\033[2K{isbar(i+1, total, **kwargs)}", end=end)
+            _time = time()
+    print(isbar(total, total, **kwargs), end=very_end)
 
 
 def thread_status(pid: int, item: str = "", extra: str = "", item_size=None):
@@ -36,27 +47,29 @@ class Stepper:
     def next(self, s=None, **kwargs):
         self.step += 1
         if s:
-            self.printer(f"{self.print_mode[0]}{self.step}: {s}",
-                         end=self.print_mode[1], **kwargs)
+            self._print(s, **kwargs)
+        return self
 
     def print(self, *lines, **kwargs):
         for line in [f" {self.step}:{s}" for s in lines]:
-            self.printer(line, **kwargs)
-            # self.printer(
-            #     f"{self.print_mode[0]}{line}", end=self.print_mode[1], **kwargs)
+            self._print(line, **kwargs)
+        return self
 
     # override for print_modes
     def _print(self, *args, **kwargs):
         args = self.print_mode[0] + args[0], *args[1:]
         self.printer(*args, end=self.print_mode[1], **kwargs)
 
+
 class RichStepper(Stepper):
 
-    def __init__(self, loglevel=0, *args, **kwargs):
+    def __init__(self, loglevel=0, stepcolor="cyan", pstepcolor="blue", *args, **kwargs):
         from rich import print as rprint
         super().__init__(*args, **kwargs)
         self.printer = rprint
         self.loglevel = loglevel
+        self.stepcolor = stepcolor
+        self.pstepcolor = pstepcolor
 
     def set(self, n):
         self.step = n
@@ -65,10 +78,12 @@ class RichStepper(Stepper):
     def next(self, s=None, **kwargs):
         self.step += 1
         if s:
-            self._print(f"[green]{self.step}:[/green] {s}", **kwargs)
+            self._print(
+                f"[{self.stepcolor}]{self.step}:[/{self.stepcolor}] {s}", **kwargs)
+        return self
 
     def print(self, *lines, **kwargs):
-        if isinstance(lines[0], int) or lines[0].isdigit():
+        if isinstance(lines[0], int) or str(lines[0]).isdigit():
             level = int(lines[0])
             lines = lines[1:]
         else:
@@ -79,13 +94,15 @@ class RichStepper(Stepper):
             -1: "[bold grey]DEBUG[/bold grey]",
             2: "[bold red]ERROR[/bold red]",
             3: "[bold white]CRITICAL[/bold white]"
-        }.get(level, f"[blue]{level}[/blue]")
-        output = [f" [blue]{self.step}:[/blue]" for _ in lines]
+        }.get(level, f"[{self.pstepcolor}]{level}:[/{self.pstepcolor}]")
+        output = [
+            f" [{self.pstepcolor}]{self.step}:[/{self.pstepcolor}]" for _ in lines]
         if self.loglevel <= level:
             output = [f"{l} {printed_output}: " for i, l in enumerate(output)]
-        output = [f"{output[i]} {s}" for i,s in enumerate(lines)]
+        output = [f"{output[i]} {s}" for i, s in enumerate(lines)]
         for line in output:
             self._print(line, **kwargs)
+        return self
 
 
 class Timer:

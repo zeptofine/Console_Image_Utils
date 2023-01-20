@@ -13,7 +13,7 @@ from subprocess import SubprocessError
 
 from ConfigArgParser import ConfigParser
 from util.pip_helpers import PipInstaller
-from util.print_funcs import p_bar_stat
+from util.print_funcs import ipbar
 from util.process_funcs import is_subprocess
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
@@ -35,21 +35,21 @@ packages = {'rich':            "rich",
 with PipInstaller() as p:
     try:
         # loop import packages
-        for i, package in enumerate(packages):
-            print(f"{p_bar_stat(i, len(packages))}", end="\r")
+        for i, package in enumerate(ipbar(packages, very_end="\r")):
+            # print(f"{p_bar_stat(i, len(packages))}", end="\r")
             if not p.available(packages[package]):
                 raise ImportError
 
     except (ImportError, ModuleNotFoundError):
         # Try to install packages
         try:
-            for i, package in enumerate(packages):
+            for i, package in enumerate(ipbar(packages)):
                 if not p.available(packages[package]):
-                    print(f"{p_bar_stat(i, len(packages))}")
                     columns = os.get_terminal_size().columns
                     print(
-                        f"{'-'*columns}\n" + str(f"{package} not detected. Attempting to install...").center(columns))
+                        f"{package} not detected. Attempting to install...".ljust(columns, '-'))
                     p.install(package)
+                    print()
                     if not p.available(packages[package]):
                         raise ModuleNotFoundError(
                             f"Failed to install '{package}'.")
@@ -64,6 +64,7 @@ with PipInstaller() as p:
 
     else:
         print("\033[2K", end="")
+        from rich import print as rprint  # trunk-ignore(flake8/F401)
         from rich.traceback import install
         install()
 
@@ -75,7 +76,6 @@ with PipInstaller() as p:
 
         from util.iterable_starmap import poolmap
         from util.print_funcs import RichStepper
-        s = RichStepper(loglevel=1, step=-1)
 
 
 def main_parser() -> ArgumentParser:
@@ -100,7 +100,7 @@ def main_parser() -> ArgumentParser:
     p_mods.add_argument("-r", "--recursive", action="store_true", default=False,
                         help="preserves the tree hierarchy.")
     p_mods.add_argument("-t", "--threads", type=int, default=int((CPU_COUNT / 4) * 3),
-                        help="number of total threads.")  # used for multiprocessing
+                        help="number of total threads used for multiprocessing.")
     p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
                         help="only gathers a given number of images. None disables it entirely.")  # max numbers to be given to the filters
     p_mods.add_argument("--limit_mode", choices=["before", "after"], default="before",
@@ -143,16 +143,6 @@ def main_parser() -> ArgumentParser:
     # ^^ Used for filtering out too old or too new images.
     return parser
 
-
-# def next_step(order, *args) -> None:
-#     output = {-1: "[yellow]INFO[/yellow]",
-#               -2: "[orange]WARNING[/orange]",
-#               -3: "[grey]DEBUG[/grey]",
-#               -9: "[red]ERROR[/red]",
-#               }.get(order, f"[blue]{order}[/blue]")
-#     output = [f" {output}: {text}" for text in args]
-#     rprint("\n".join(output), end="\n\033[K")
-
 # class File:
 #     def __init__(self, p: Path):
 #         self.path = Path(p)
@@ -170,6 +160,7 @@ def main_parser() -> ArgumentParser:
 #     def __repr__(self):
 #         return self.path
 
+
 @lru_cache
 def get_resolution(path: Path):
     """
@@ -182,8 +173,9 @@ def get_file_list(*folders: Path) -> list[Path]:
     """
     Args    folders: One or more folder paths.
     Returns list[Path]: paths in the specified folders."""
+    i = ipbar(folders) if len(folders) > 1 else folders
     globlist = [glob(str(p), recursive=True)
-                for p in folders]
+                for p in i]
     return [Path(y) for x in globlist for y in x]
 
 
@@ -204,12 +196,6 @@ def to_recursive(path: Path, recursive: bool) -> Path:
     Convert the file path to a recursive path if recursive is False
     Ex: i/path/to/image.png => i/path_to_image.png"""
     return path if recursive else Path(str(path).replace(os.sep, "_"))
-
-
-def check_for_images(image_list) -> None:
-    if not list(image_list):
-        s.print(-1, "No images left to process")
-        sys.exit(0)
 
 
 def whitelist(imglist, whitelist):
@@ -287,30 +273,6 @@ def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_m
     return (t[0] and r[0]), t[1], r[1]
 
 
-def filter_images(args, imglist, cparser: ConfigParser) -> tuple[tuple, dict, dict]:
-
-    pargs = [(args.input / i,
-              args.before, args.after,
-              args.minsize, args.maxsize,
-              args.scale, args.crop_mod) for i in imglist]
-    mapped_list = {(i[0], *i[1][1:]) for i in filter(
-        lambda x: x[1][0],
-        zip(imglist,
-            poolmap(args.threads, within_time_and_res, pargs, postfix=False, desc="Filtering")))}
-
-    check_for_images(mapped_list)
-    imglist, mstat, mres = zip(*mapped_list)
-    mstat = {imglist[i]: v for i, v in enumerate(mstat)}
-    mres = {imglist[i]: v for i, v in enumerate(mres)}
-
-    # Make a tooltip to the user if not cropped_before
-    if not (cparser.file.get("cropped_before", False) or args.crop_mod):
-        s.print(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.")
-        cparser.file.update({"cropped_before": True}).save()
-
-    return imglist, mstat, mres
-
-
 def fileparse(inpath: Path, source: Path, mtime, scale: int,
               hr_folder: Path, lr_folder: Path,
               recursive: bool, ext=None) -> Path:
@@ -343,7 +305,14 @@ def main():
     cparser = ConfigParser(main_parser(), "config.json", exit_on_change=True)
     args = cparser.parse_args()
 
-# make sure args are valid
+    s = RichStepper(loglevel=1, step=-1)
+
+    def check_for_images(image_list) -> None:
+        if not list(image_list):
+            s.print(-1, "No images left to process")
+            sys.exit(0)
+
+# Make sure given args are valid
     if not (args.input):
         sys.exit("Please specify an input directory.")
     if args.extension:
@@ -365,15 +334,16 @@ def main():
             return 1
 
     s.next("Settings: ")
-    s.print(f"  input: {args.input}",
-            f"  scale: {args.scale}",
-            f"  threads: {args.threads}",
-            f"  extension: {args.extension}",
-            f"  recursive: {args.recursive}",
-            f"  anonymous: {args.anonymous}",
-            f"  crop_mod: {args.crop_mod}",
-            f"  sort: {args.sort}, reverse: {args.reverse}")
+    s.print(f"input: {args.input}",
+            f"scale: {args.scale}",
+            f"threads: {args.threads}",
+            f"extension: {args.extension}",
+            f"recursive: {args.recursive}",
+            f"anonymous: {args.anonymous}",
+            f"crop_mod: {args.crop_mod}",
+            f"sort: {args.sort}, reverse: {args.reverse}")
 
+# Gather images
     s.next("Gathering images...")
     args.input = Path(args.input).resolve()
     image_list = get_file_list(args.input / "**" / "*.png",
@@ -383,7 +353,7 @@ def main():
         image_list = image_list[:args.image_limit]
     s.print(f"Gathered {len(image_list)} images")
 
-# filter out blacklisted/whitelisted items
+# Filter blacklisted/whitelisted items
     if args.whitelist:
         args.whitelist = args.whitelist.split(" ")
         image_list = whitelist(image_list, args.whitelist)
@@ -393,15 +363,15 @@ def main():
         image_list = blacklist(image_list, args.blacklist)
         s.print(f"blacklist {args.blacklist}: {len(image_list)}")
 
-# discard symbolic duplicates
+# Discard symbolic duplicates
     original_total = len(image_list)
     # vv This naturally removes the possibility of multiple files pointing to the same image
     image_list = {i.resolve(): i.relative_to(args.input)
-                  for i in tqdm(image_list, desc="Resolving")}.values()
+                  for i in ipbar(image_list, refresh_interval=1/8)}.values()
     if len(image_list) != original_total:
         s.print(f"Discarded {original_total - len(image_list)} symbolic links")
 
-# get hr / lr folders
+# Get hr / lr folders
     hr_folder = args.input.parent / f"{str(args.scale)}xHR"
     lr_folder = args.input.parent / f"{str(args.scale)}xLR"
     if args.extension:
@@ -423,19 +393,19 @@ def main():
         if args.purge_only:
             return 0
 
-# get files that were already converted
+# Get files that were already converted
     original_total = len(image_list)
     if not args.overwrite:
         s.next("Removing existing")
         exist_list = get_existing(hr_folder, lr_folder)
-        image_list = [i for i in tqdm(image_list, desc="Removing existing")
+        image_list = [i for i in tqdm(image_list, desc=" Removing existing")
                       if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
-    s.print(
-        f"Discarded {original_total-len(image_list)} images which already exist\n")
+    if len(image_list) != original_total:
+        s.print(f"Discarded {original_total-len(image_list)} existing images")
 
     check_for_images(image_list)
 
-# remove files based on resolution and time
+# Remove files based on resolution and time
     s.next("Filtering images...")
     original_total = len(image_list)
     if args.before or args.after:
@@ -443,21 +413,43 @@ def main():
     if args.minsize or args.maxsize:
         s.print(f"Filtering by size ({args.minsize}<=x<={args.maxsize})")
 
-    image_list, mstat, mres = filter_images(args, image_list, cparser)
+    pargs = [(args.input / i,
+              args.before, args.after,
+              args.minsize, args.maxsize,
+              args.scale, args.crop_mod) for i in image_list]
+    image_list = zip(image_list,
+                     poolmap(args.threads,
+                             within_time_and_res,
+                             pargs, postfix=False,
+                             desc="Filtering"))
+# Filter images based on collected data
+    # separate the paths and the data, and only accept based on boolean
+    image_list, image_data = zip(*filter(lambda x: x[1][0], image_list))
+    # remove the boolean from the tuple
+    image_data = (x[1:] for x in image_data)
+    # turn the data into a dict
+    image_data = {image_list[i]: v for i, v in enumerate(image_data)}
+
+    # image_list, mstat, mres = filter_images(args, image_list, cparser)
     s.print(f"Discarded {original_total - len(image_list)} images\n")
+
+    # Notify about the crop_mod feature
+    if not (cparser.file.get("cropped_before", False) or args.crop_mod):
+        s.print(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.(--crop_mod)")
+        cparser.file.update({"cropped_before": True}).save()
 
     if args.simulate:
         s.next("Simulated")
         return 0
 
-# Sort files based on different attributes
+# Sort files based on attributes
     s.next("Sorting...\n")
     sorting_methods = {"name": lambda x: x,
                        "ext": lambda x: x.suffix,
                        "len": lambda x: len(str(x)),
-                       "res": lambda x: mres[x][0] * mres[x][1],
-                       "time": lambda x: mstat[x].st_mtime,
-                       "size": lambda x: mstat[x].st_size}
+                       "res": lambda x: image_data[x][1][0] * image_data[x][1][1],
+                       "time": lambda x: image_data[x][0].st_mtime,
+                       "size": lambda x: image_data[x][0].st_size}
     image_list = sorted(image_list,
                         key=sorting_methods[args.sort], reverse=args.reverse)
 
@@ -467,7 +459,7 @@ def main():
 # create hr/lr pairs from list of valid images
     s.next(f"{len(image_list)} images in queue")
     try:
-        pargs = [(v, str(args.input / v), mstat[v].st_mtime, args.scale,
+        pargs = [(v, str(args.input / v), image_data[v][0].st_mtime, args.scale,
                   hr_folder, lr_folder,
                   args.recursive, args.extension)
                  for v in image_list]

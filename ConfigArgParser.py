@@ -55,7 +55,7 @@ class ConfigParser:
     It saves given args to a path, and returns them when args are parsed again.'''
 
     def __init__(self, parser: ArgumentParser,
-                 config_path, autofill: bool = False, exit_on_change: bool = False, rewrite_help: bool = True) -> None:
+                 config_path, cfgObject: CfgDict=None, autofill: bool = False, exit_on_change: bool = False, rewrite_help: bool = True) -> None:
         '''
         parser: argparse function.
         config_path: a path to the supposed json file
@@ -72,7 +72,7 @@ class ConfigParser:
         self.exit_on_change = exit_on_change
         self.rewrite_help = rewrite_help
         self.autofill = autofill
-        self.file = CfgDict(config_path)
+        self.file = cfgObject or CfgDict(config_path)
         self._remove_help()
 
         # set up subparser

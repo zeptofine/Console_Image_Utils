@@ -1,8 +1,8 @@
 import importlib
 import io
 from sys import executable
-from subprocess import PIPE, Popen
-
+from subprocess import PIPE, Popen, SubprocessError
+from os import get_terminal_size
 
 class PipInstaller:
     def __init__(self, debug=False):
@@ -31,9 +31,16 @@ class PipInstaller:
                             package] if package else [executable, '-m', *post]
         with Popen(subprocess_input,
                    stdout=PIPE, stderr=PIPE) as import_proc:
-            for line in io.TextIOWrapper(import_proc.stdout):  # type: ignore
-                print(f'<{package.ljust(10)}> {line}')
-            return import_proc.returncode
+            output = []
+            try:
+                for line in io.TextIOWrapper(import_proc.stdout):  # type: ignore
+                    print(f'\033[2K<{package.ljust(10)}> {line.strip()}'[:get_terminal_size().columns-1], end="\r")
+                    output.append(line.strip())
+                return import_proc.returncode
+            except (KeyboardInterrupt, SubprocessError):
+                import_proc.kill()
+                import_proc.terminate()
+                print("\n".join(output[-10:]))
 
     def ensure(self) -> None:
         self.install("", post=["ensurepip", "--upgrade"])
