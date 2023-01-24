@@ -55,7 +55,7 @@ class ConfigParser:
     It saves given args to a path, and returns them when args are parsed again.'''
 
     def __init__(self, parser: ArgumentParser,
-                 config_path, cfgObject: CfgDict=None, autofill: bool = False, exit_on_change: bool = False, rewrite_help: bool = True) -> None:
+                 config_path, cfgObject: CfgDict = None, autofill: bool = False, exit_on_change: bool = False, rewrite_help: bool = True) -> None:
         '''
         parser: argparse function.
         config_path: a path to the supposed json file

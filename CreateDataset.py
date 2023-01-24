@@ -13,31 +13,31 @@ from subprocess import SubprocessError
 
 from ConfigArgParser import ConfigParser
 from util.pip_helpers import PipInstaller
-from util.print_funcs import ipbar
+from util.print_funcs import ipbar, Timer  # trunk-ignore(flake8/F401)
 from util.process_funcs import is_subprocess
 
-CPU_COUNT: int = os.cpu_count()  # type: ignore
-
+CPU_COUNT: int = os.cpu_count()
 
 if sys.platform == "win32":
     print("This application was not made for windows. Try Using WSL2")
     from time import sleep
     sleep(3)
 
-packages = {'rich':            "rich",
-            'opencv-python':   "cv2",
-            'python-dateutil': "dateutil",
-            'imagesize':       "imagesize",
-            'rich-argparse':   "rich_argparse",
-            'tqdm':            "tqdm",
-            'shtab':           "shtab"}
-
 with PipInstaller() as p:
+    packages = {'rich':            "rich",
+                'opencv-python':   "cv2",
+                'python-dateutil': "dateutil",
+                'imagesize':       "imagesize",
+                'rich-argparse':   "rich_argparse",
+                'tqdm':            "tqdm",
+                'shtab':           "shtab"}
+
     try:
         # loop import packages
-        for i, package in enumerate(ipbar(packages, very_end="\r")):
+        for i, package in enumerate(ipbar(packages, clear=True)):
             # print(f"{p_bar_stat(i, len(packages))}", end="\r")
             if not p.available(packages[package]):
+                print(f"\033[2K !!! {packages[package]} failed to import !!!")
                 raise ImportError
 
     except (ImportError, ModuleNotFoundError):
@@ -64,22 +64,22 @@ with PipInstaller() as p:
 
     else:
         print("\033[2K", end="")
-        from rich import print as rprint  # trunk-ignore(flake8/F401)
-        from rich.traceback import install
-        install()
-
         import cv2
         import dateutil.parser as timeparser
         import imagesize
+        from rich import print as rprint  # trunk-ignore(flake8/F401)
+        from rich.traceback import install
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
-        from tqdm import tqdm
+        from tqdm import tqdm  # trunk-ignore(flake8/F401)
 
         from util.iterable_starmap import poolmap
         from util.print_funcs import RichStepper
+        install()
 
 
 def main_parser() -> ArgumentParser:
     parser = ArgumentParser(
+        prog="CreateDataset.py",
         formatter_class=ArgumentDefaultsRichHelpFormatter,
         description="""Hi! this script converts thousands of files to
     another format in a High-res/Low-res pairs for data science.
@@ -112,8 +112,6 @@ def main_parser() -> ArgumentParser:
                         help="skips the conversion step. Used for debugging.")
     p_mods.add_argument("--purge", action="store_true",
                         help="Clears the output folder before running.")
-    p_mods.add_argument("--purge_only", action="store_true",
-                        help="--purge, but finishes afterwards.")
     p_mods.add_argument("--sort", choices=["name", "ext", "len", "res", "time", "size"], default="res",
                         help="sorting method.")
     p_mods.add_argument("--reverse", action="store_true",
@@ -143,23 +141,6 @@ def main_parser() -> ArgumentParser:
     # ^^ Used for filtering out too old or too new images.
     return parser
 
-# class File:
-#     def __init__(self, p: Path):
-#         self.path = Path(p)
-#         self.resolution = None
-#         self.st = None
-
-#     def stat(self):
-#         self.st = self.st or self.p.stat()
-#         return self.st
-
-#     def res(self):
-#         self.resolution = self.resolution or imagesize.get(self.p)
-#         return self.resolution
-
-#     def __repr__(self):
-#         return self.path
-
 
 @lru_cache
 def get_resolution(path: Path):
@@ -173,27 +154,30 @@ def get_file_list(*folders: Path) -> list[Path]:
     """
     Args    folders: One or more folder paths.
     Returns list[Path]: paths in the specified folders."""
-    i = ipbar(folders) if len(folders) > 1 else folders
-    globlist = [glob(str(p), recursive=True)
-                for p in i]
+    i = ipbar(folders, clear=True) if len(folders) > 1 else folders
+    globlist = (glob(str(p), recursive=True) for p in i)
     return [Path(y) for x in globlist for y in x]
 
 
-def get_existing(*folders) -> set[Path]:
+def get_existing(*folders: list[Path]) -> set[Path]:
     """
     Returns the files that already exist in the specified folders.
     Args    *: folders to be searched & compared.
     Returns tuple[set[Path], set[Path]]: HR and LR file paths in sets.
     """
-    sets = ({f.relative_to(folder).with_suffix('')
-            for f in get_file_list((folder / "**" / "*"))} for folder in folders)
+    sets = ({file.relative_to(folder).with_suffix('')
+            for file in get_file_list((folder / "**" / "*"))}
+            for folder in folders)
     outset = set.intersection(*sets)
     return outset
 
 
+def has_links(paths):
+    return any(i for i in paths if i is not i.resolve())
+
+
 def to_recursive(path: Path, recursive: bool) -> Path:
-    """
-    Convert the file path to a recursive path if recursive is False
+    """Convert the file path to a recursive path if recursive is False
     Ex: i/path/to/image.png => i/path_to_image.png"""
     return path if recursive else Path(str(path).replace(os.sep, "_"))
 
@@ -227,50 +211,23 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
     return hr_path, lr_path
 
 
-def within_time(inpath, before_time, after_time) -> tuple[bool, float]:
-    """
-    Checks if an image is within specified time limits.
-    Args    inpath: the path to the image file.
-            before_time: the image must be before this time.
-            after_time: the image must be after this time.
-    Returns tuple[success, filestat].
-    """
-    mstat = inpath.stat()
-    filetime = datetime.fromtimestamp(mstat.st_mtime)
-    if before_time or after_time:
-        return (not (before_time and (before_time < filetime)) or (after_time and (after_time > filetime)), mstat)
-    return (True, mstat)
-
-
-def within_res(inpath, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple]:
-    """
-    Checks if an image is within specified resolution limits.
-    Args    inpath: The path to the image file.
-            minsize: The minimum allowed resolution for the image.
-            maxsize: The maximum allowed resolution for the image.
-            scale: The scale factor to use when checking the resolution.
-            crop_mod: A boolean value indicating whether to crop the image to the nearest multiple of the scale factor.
-    Returns tuple[success, resolution].
-    """
-    res = get_resolution(inpath)  # => (width, height)
-    if crop_mod:
-        # crop the image to the nearest multiple of the scale factor
-        res = (res[0] // scale) * scale, (res[1] // scale) * scale
-    return (
-        (res[0] % scale == 0 and res[1] % scale == 0) and not (
-            ((minsize and (res[0] < minsize or res[1] < minsize)) or
-             (maxsize and (res[0] > maxsize or res[1] > maxsize)))),
-        res
-    )
-
-
 def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple, tuple]:
     # filter images that are too young or too old
-    t = within_time(img_path, before, after)
+    mstat = img_path.stat()
+    filetime = datetime.fromtimestamp(mstat.st_mtime)
+    if before or after and (before and (before < filetime)) or (after and (after > filetime)):
+        return False, 0, 0
 
     # filter images that are too small or too big, or not divisible by scale
-    r = within_res(img_path, minsize, maxsize, scale, crop_mod)
-    return (t[0] and r[0]), t[1], r[1]
+    res = get_resolution(img_path)
+    if crop_mod:
+        res = (res[0] // scale) * scale, (res[1] // scale) * scale
+    if not (res[0] % scale == 0 and res[1] % scale == 0) or (
+            minsize and (res[0] < minsize or res[1] < minsize)) or (
+            maxsize and (res[0] > maxsize or res[1] > maxsize)):
+        return False, 0, 0
+
+    return True, mstat, res
 
 
 def fileparse(inpath: Path, source: Path, mtime, scale: int,
@@ -284,13 +241,13 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
     hr_path, lr_path = hrlr_pair(inpath, hr_folder, lr_folder, recursive, ext)
 
     # Read the image file
-    image = cv2.imread(source, cv2.IMREAD_UNCHANGED)  # type: ignore
+    image = cv2.imread(source, cv2.IMREAD_UNCHANGED)
     image = image[0:(image.shape[0] // scale) * scale,
                   0:(image.shape[1] // scale) * scale]
 
     # Save the HR / LR version of the image
-    cv2.imwrite(str(hr_path), image)  # type: ignore
-    cv2.imwrite(str(lr_path), cv2.resize(  # type: ignore
+    cv2.imwrite(str(hr_path), image)
+    cv2.imwrite(str(lr_path), cv2.resize(
         image, (0, 0), fx=1 / scale, fy=1 / scale))
 
     # Set the modification time of the HR and LR image files to the original image's modification time
@@ -313,8 +270,9 @@ def main():
             sys.exit(0)
 
 # Make sure given args are valid
-    if not (args.input):
-        sys.exit("Please specify an input directory.")
+    if not args.input:
+        s.print("Please specify an input directory.")
+        return 1
     if args.extension:
         if args.extension.startswith("."):
             args.extension = args.extension[1:]
@@ -341,11 +299,11 @@ def main():
             f"recursive: {args.recursive}",
             f"anonymous: {args.anonymous}",
             f"crop_mod: {args.crop_mod}",
-            f"sort: {args.sort}, reverse: {args.reverse}")
+            f"sort: {args.sort}")
 
 # Gather images
     s.next("Gathering images...")
-    args.input = Path(args.input).resolve()
+    args.input = Path(args.input)
     image_list = get_file_list(args.input / "**" / "*.png",
                                args.input / "**" / "*.jpg",
                                args.input / "**" / "*.webp")
@@ -365,11 +323,13 @@ def main():
 
 # Discard symbolic duplicates
     original_total = len(image_list)
-    # vv This naturally removes the possibility of multiple files pointing to the same image
-    image_list = {i.resolve(): i.relative_to(args.input)
-                  for i in ipbar(image_list, refresh_interval=1/8)}.values()
-    if len(image_list) != original_total:
-        s.print(f"Discarded {original_total - len(image_list)} symbolic links")
+    if has_links(image_list):
+        # vv This naturally removes the possibility of multiple files pointing to the same image
+        image_list = {i.resolve(): i.relative_to(args.input)
+                      for i in ipbar(image_list, clear=True)}.values()
+        if len(image_list) != original_total:
+            s.print(
+                f"Discarded {original_total - len(image_list)} symbolic links")
 
 # Get hr / lr folders
     hr_folder = args.input.parent / f"{str(args.scale)}xHR"
@@ -381,24 +341,22 @@ def main():
     lr_folder.parent.mkdir(parents=True, exist_ok=True)
 
 # Purge existing images
-    if args.purge or args.purge_only:
+    if args.purge:
         s.next("Purging...")
-        for path in image_list:
+        for path in ipbar(image_list):
             hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder,
                                          args.recursive, args.extension)
             hr_path.unlink(missing_ok=True)
             lr_path.unlink(missing_ok=True)
 
         s.print("Purged.")
-        if args.purge_only:
-            return 0
 
 # Get files that were already converted
     original_total = len(image_list)
     if not args.overwrite:
         s.next("Removing existing")
         exist_list = get_existing(hr_folder, lr_folder)
-        image_list = [i for i in tqdm(image_list, desc=" Removing existing")
+        image_list = [i for i in ipbar(image_list, clear=True)
                       if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
     if len(image_list) != original_total:
         s.print(f"Discarded {original_total-len(image_list)} existing images")
@@ -422,11 +380,11 @@ def main():
                              within_time_and_res,
                              pargs, postfix=False,
                              desc="Filtering"))
-# Filter images based on collected data
+# Filter images based on data
     # separate the paths and the data, and only accept based on boolean
     image_list, image_data = zip(*filter(lambda x: x[1][0], image_list))
     # remove the boolean from the tuple
-    image_data = (x[1:] for x in image_data)
+    image_data = map(lambda x: x[1:], image_data)
     # turn the data into a dict
     image_data = {image_list[i]: v for i, v in enumerate(image_data)}
 
@@ -443,7 +401,7 @@ def main():
         return 0
 
 # Sort files based on attributes
-    s.next("Sorting...\n")
+    s.print("Sorting...\n")
     sorting_methods = {"name": lambda x: x,
                        "ext": lambda x: x.suffix,
                        "len": lambda x: len(str(x)),

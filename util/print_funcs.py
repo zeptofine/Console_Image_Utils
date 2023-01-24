@@ -1,5 +1,5 @@
 from os import get_terminal_size
-from time import perf_counter, time
+import time
 
 
 def pbar(iteration: int, total: int, length=20,
@@ -12,18 +12,21 @@ def pbar(iteration: int, total: int, length=20,
 
 
 def isbar(iteration, total, suff="", **kwargs):
-    return f"{pbar(iteration, total, **kwargs)} {iteration}/{total} {suff}"
+    return f"{pbar(iteration, total, **kwargs)} {str(iteration).rjust(len(str(total)))}/{total} {suff}"
 
 
-def ipbar(iterable, total=None, refresh_interval=0.25, end="\r", very_end="\n", **kwargs):
+def ipbar(iterable, total=None, refresh_interval=0.25,
+          end="\r", very_end="\n", clear=False, **kwargs):
     total = total or len(iterable)
-    _time = time()
+    _time = time.time()
     for i, obj in enumerate(iterable):
         yield obj
-        if time() - _time > refresh_interval:  # refresh interval
-            print(f"\033[2K{isbar(i+1, total, **kwargs)}", end=end)
-            _time = time()
-    print(isbar(total, total, **kwargs), end=very_end)
+        newtime = time.time()
+        if newtime - _time > refresh_interval:  # refresh interval
+            print(f"\033[K{isbar(i+1, total, **kwargs)}", end=end)
+            _time = newtime
+    print(isbar(total, total, **kwargs),
+          end="\033[2K\r" if clear else very_end)
 
 
 def thread_status(pid: int, item: str = "", extra: str = "", item_size=None):
@@ -37,7 +40,7 @@ class Stepper:
     def __init__(self, step=0, print_mode="newline", print_class=print):
         self.print_modes = {
             "newline": ("", "\n"),
-            "sameline": ("\033[A", ""),
+            "sameline": ("\033[2K", ""),
             "append": ("", "")
         }
         self.step = step
@@ -107,7 +110,7 @@ class RichStepper(Stepper):
 
 class Timer:
     def __init__(self, timestamp: int = None):
-        self.time = timestamp or perf_counter()
+        self.time = timestamp or time.perf_counter()
 
     def print(self, msg):
         '''print and resets time'''
@@ -115,19 +118,27 @@ class Timer:
 
     def poll(self, msg=""):
         '''print without resetting time'''
-        print(f"{perf_counter() - self.time}: {msg}")
+        print(f"{time.perf_counter() - self.time}: {msg}")
         return self
 
     def reset(self):
         '''resets time'''
-        self.time = perf_counter()
+        self.time = time.perf_counter()
         return self.time
 
     def __repr__(self):
-        return str((perf_counter()) - self.time)
+        return str((time.perf_counter()) - self.time)
 
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
+    t = Timer()
+    interval = 5_000_000
+    for i in range(interval):
+        time.time()
+    t.print("time()")
+    for i in range(interval):
+        time.perf_counter()
+    t.print("perf_counter()")
 #     t = Timer()
 #     for i in range(100):
 #         for j in range(8):
