@@ -5,6 +5,7 @@
 import os
 import sys
 from argparse import ArgumentParser
+from random import random
 from datetime import datetime
 from glob import glob
 from pathlib import Path
@@ -116,7 +117,7 @@ def main_parser() -> ArgumentParser:
                         help="skips the conversion step. Used for debugging.")
     p_mods.add_argument("--purge", action="store_true",
                         help="Clears the output folder before running.")
-    p_mods.add_argument("--sort", choices=["name", "ext", "len", "res", "time", "size"], default="res",
+    p_mods.add_argument("--sort", choices=["name", "ext", "len",  "res", "time", "size", "random"], default="res",
                         help="sorting method.")
     p_mods.add_argument("--reverse", action="store_true",
                         help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
@@ -406,6 +407,7 @@ def main():
                    f"'{args.input / image}'")
         print()
     s.print(f"Discarded {original_total - len(image_list)} images")
+    check_for_images(image_list)
 
     # Notify about the crop_mod feature
     if not (cparser.file.get("cropped_before", False) or args.crop_mod):
@@ -421,6 +423,7 @@ def main():
     sorting_methods = {"name": lambda x: x,
                        "ext": lambda x: x.suffix,
                        "len": lambda x: len(str(x)),
+                       "random": random(),
                        "res": lambda x: image_data[x][1][0] * image_data[x][1][1],
                        "time": lambda x: image_data[x][0].st_mtime,
                        "size": lambda x: image_data[x][0].st_size}
@@ -429,6 +432,7 @@ def main():
 
     if args.image_limit and args.limit_mode == "after":  # limit image number
         image_list = set(image_list[:args.image_limit])
+
 
 # create hr/lr pairs from list of valid images
     s.next(f"{len(image_list)} images in queue")
