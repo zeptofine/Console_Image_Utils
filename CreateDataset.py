@@ -141,6 +141,8 @@ def main_parser() -> ArgumentParser:
     p_filters.add_argument("--before", type=str,
                            help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
     # ^^ Used for filtering out too old or too new images.
+    p_filters.add_argument("--print-filtered", action="store_true",
+                           help="prints all images that were removed because of filters.")
     return parser
 
 
@@ -209,19 +211,18 @@ def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_m
     # filter images that are too young or too old
     mstat = img_path.stat()
     filetime = datetime.fromtimestamp(mstat.st_mtime)
-    if before or after and (before and (before < filetime)) or (after and (after > filetime)):
-        return False, 0, 0
+    sbool = not (before or after and (before and (before < filetime))
+                 or (after and (after > filetime)))
 
     # filter images that are too small or too big, or not divisible by scale
     res = imagesize.get(img_path)
     if crop_mod:
         res = (res[0] // scale) * scale, (res[1] // scale) * scale
-    if not (res[0] % scale == 0 and res[1] % scale == 0) or (
-            minsize and (res[0] < minsize or res[1] < minsize)) or (
-            maxsize and (res[0] > maxsize or res[1] > maxsize)):
-        return False, 0, 0
+    rbool = (res[0] % scale == 0 and res[1] % scale == 0) and (
+        minsize and not (res[0] < minsize or res[1] < minsize)) and (
+        maxsize and not (res[0] > maxsize or res[1] > maxsize))
 
-    return True, mstat, res
+    return (sbool and rbool), mstat, res
 
 
 def fileparse(inpath: Path, source: Path, mtime, scale: int,
@@ -363,7 +364,7 @@ def main():
 
 # Remove files based on resolution and time
     s.next("Filtering images...")
-    original_total = len(image_list)
+    original_total, original_list = len(image_list), set(image_list)
     if args.before or args.after:
         s.print(f"Filtering by time ({args.before}<=x<={args.after})")
     if args.minsize or args.maxsize:
@@ -380,13 +381,21 @@ def main():
                              desc="Filtering"))
 # Filter images based on data
     # separate the paths and the data, and only accept based on boolean
-    image_list, image_data = zip(*filter(lambda x: x[1][0], image_list))
-    # remove the boolean from the tuple
-    image_data = map(lambda x: x[1:], image_data)
+    image_list, image_data = zip(*image_list)
     # turn the data into a dict
     image_data = {image_list[i]: v for i, v in enumerate(image_data)}
+    image_list = list(filter(lambda x: image_data[x][0], image_list))
+    # remove the boolean from the tuple
+    image_data = {k: v[1:] for k, v in image_data.items()}
 
-    # image_list, mstat, mres = filter_images(args, image_list, cparser)
+    if args.print_filtered:
+        s.print("Discarded images: \n")
+        for image in sorted(original_list.difference(set(image_list)), key=lambda x: image_data[x][1], reverse=True):
+            rprint(f"{image_data[image][1]} : '{args.input / image}'")
+        print()
+        # # for image in original_list.difference(set(image_list)):
+        # print(image)
+    # return
     s.print(f"Discarded {original_total - len(image_list)} images\n")
 
     # Notify about the crop_mod feature
