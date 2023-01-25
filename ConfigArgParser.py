@@ -132,7 +132,7 @@ class ConfigParser:
         self.parsed_args, _ = self.parser.parse_known_args(**kwargs)
         # set defaults
         argdict = {k: v for k, v in self.parsed_args._get_kwargs()}
-        if self.autofill and len(self.file) != len(argdict):
+        if self.autofill and not all(key in self.file for key in argdict):
             self.file.update(
                 {k: v for k, v in self.parsed_args._get_kwargs()}).save()
 
