@@ -131,6 +131,12 @@ class ConfigParser:
         '''args.set, reset, reset_all logic '''
         self.parsed_args, _ = self.parser.parse_known_args(**kwargs)
         # set defaults
+        argdict = {k: v for k, v in self.parsed_args._get_kwargs()}
+        if self.autofill and len(self.file) != len(argdict):
+            self.file.update(
+                {k: v for k, v in self.parsed_args._get_kwargs()}).save()
+
+        # exit()
         if self.parsed_args.set or self.parsed_args.reset or self.parsed_args.reset_all:
             if self.parsed_args.set:
                 potential_args = self.parsed_args.set
