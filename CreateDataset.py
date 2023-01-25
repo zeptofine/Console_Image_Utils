@@ -258,7 +258,8 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
 
 
 def main():
-    cparser = ConfigParser(main_parser(), "config.json", exit_on_change=True)
+    cparser = ConfigParser(main_parser(), "config.json",
+                           exit_on_change=True, autofill=True)
     args = cparser.parse_args()
 
     s = RichStepper(loglevel=1, step=-1)
@@ -316,7 +317,7 @@ def main():
 # Gather images
     s.next("Gathering images...")
     args.exts = args.exts.split(" ")
-    s.print(f"Searched exts: {args.exts}")
+    s.print(f"Searched extensions: {args.exts}")
     image_list = get_file_list(*[args.input / "**" / f"*.{ext}"
                                  for ext in args.exts])
     # image_list = get_file_list(args.input / "**" / "*.png",
