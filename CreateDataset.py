@@ -212,7 +212,7 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
     return hr_path, lr_path
 
 
-def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_mod) -> tuple[bool, tuple, tuple]:
+def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_mod) -> tuple[bool, os.stat_result, tuple]:
     # filter images that are too young or too old
     mstat = img_path.stat()
     filetime = datetime.fromtimestamp(mstat.st_mtime)
@@ -223,9 +223,8 @@ def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_m
     res = imagesize.get(img_path)
     if crop_mod:
         res = (res[0] // scale) * scale, (res[1] // scale) * scale
-    rbool = (res[0] % scale == 0 and res[1] % scale == 0) and (
-        minsize and not (res[0] < minsize or res[1] < minsize)) and (
-        maxsize and not (res[0] > maxsize or res[1] > maxsize))
+    minsize, maxsize = minsize or min(res), maxsize or max(res)
+    rbool = all(dim % scale == 0 and minsize <= dim <= maxsize for dim in res)
 
     return (sbool and rbool), mstat, res
 
@@ -243,7 +242,7 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
     # Read the image file
     image = cv2.imread(source, cv2.IMREAD_UNCHANGED)
     image = image[0:(image.shape[0] // scale) * scale,
-                  0:(image.shape[1] // scale) * scale]
+                  0: (image.shape[1] // scale) * scale]
 
     # Save the HR / LR version of the image
     cv2.imwrite(str(hr_path), image)
@@ -321,9 +320,6 @@ def main():
     s.print(f"Searched extensions: {args.exts}")
     image_list = get_file_list(*[args.input / "**" / f"*.{ext}"
                                  for ext in args.exts])
-    # image_list = get_file_list(args.input / "**" / "*.png",
-    #                            args.input / "**" / "*.jpg",
-    #                            args.input / "**" / "*.webp")
     if args.image_limit and args.limit_mode == "before":  # limit image number
         image_list = image_list[:args.image_limit]
     s.print(f"Gathered {len(image_list)} images")
@@ -369,6 +365,7 @@ def main():
         exist_list = get_existing(hr_folder, lr_folder)
         image_list = [i for i in ipbar(image_list, clear=True)
                       if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
+
     if len(image_list) != original_total:
         s.print(f"Discarded {original_total-len(image_list)} existing images")
 
@@ -423,7 +420,8 @@ def main():
     sorting_methods = {"name": lambda x: x,
                        "ext": lambda x: x.suffix,
                        "len": lambda x: len(str(x)),
-                       "random": random(),
+                       # vvv I think this works idk tho :p
+                       "random": lambda x: (random(), x),
                        "res": lambda x: image_data[x][1][0] * image_data[x][1][1],
                        "time": lambda x: image_data[x][0].st_mtime,
                        "size": lambda x: image_data[x][0].st_size}
