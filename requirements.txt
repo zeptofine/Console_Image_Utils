@@ -1,7 +1,8 @@
-opencv-python
 imagesize
+opencv-python
 pillow
-rich
 python-dateutil
+rich
 rich_argparse
 shtab
+tqdm

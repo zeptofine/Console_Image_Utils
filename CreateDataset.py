@@ -6,18 +6,16 @@ import os
 import sys
 from argparse import ArgumentParser
 from datetime import datetime
-from functools import lru_cache
 from glob import glob
 from pathlib import Path
 from subprocess import SubprocessError
 
 from ConfigArgParser import ConfigParser
 from util.pip_helpers import PipInstaller
-from util.print_funcs import ipbar, Timer  # trunk-ignore(flake8/F401)
+from util.print_funcs import Timer, ipbar  # trunk-ignore(flake8/F401)
 from util.process_funcs import is_subprocess
 
 CPU_COUNT: int = os.cpu_count()
-
 if sys.platform == "win32":
     print("This application was not made for windows. Try Using WSL2")
     from time import sleep
@@ -35,12 +33,16 @@ with PipInstaller() as p:
     try:
         # loop import packages
         for i, package in enumerate(ipbar(packages, clear=True)):
-            # print(f"{p_bar_stat(i, len(packages))}", end="\r")
             if not p.available(packages[package]):
                 print(f"\033[2K !!! {packages[package]} failed to import !!!")
                 raise ImportError
 
     except (ImportError, ModuleNotFoundError):
+        response = input(
+            "A package failed to import. Would you like to try and install required packages? y/N: ")
+        if response.lower() not in ["y", "yes"] or not response:
+            print("Please inspect the requirements.txt file.")
+            sys.exit()
         # Try to install packages
         try:
             for i, package in enumerate(ipbar(packages)):
@@ -142,14 +144,6 @@ def main_parser() -> ArgumentParser:
     return parser
 
 
-@lru_cache
-def get_resolution(path: Path):
-    """
-    Args    path: The path to the image file.
-    Returns tuple[width, height]."""
-    return imagesize.get(path) or cv2.imread(path).shape[:2]
-
-
 def get_file_list(*folders: Path) -> list[Path]:
     """
     Args    folders: One or more folder paths.
@@ -219,7 +213,7 @@ def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_m
         return False, 0, 0
 
     # filter images that are too small or too big, or not divisible by scale
-    res = get_resolution(img_path)
+    res = imagesize.get(img_path)
     if crop_mod:
         res = (res[0] // scale) * scale, (res[1] // scale) * scale
     if not (res[0] % scale == 0 and res[1] % scale == 0) or (
@@ -291,8 +285,21 @@ def main():
             s.set(-9).print(str(err))
             return 1
 
+    args.input = Path(args.input)
+
+# Get hr / lr folders
+    hr_folder = args.input.parent / f"{str(args.scale)}xHR"
+    lr_folder = args.input.parent / f"{str(args.scale)}xLR"
+    if args.extension:
+        hr_folder = Path(f"{str(hr_folder)}-{args.extension}")
+        lr_folder = Path(f"{str(lr_folder)}-{args.extension}")
+    hr_folder.parent.mkdir(parents=True, exist_ok=True)
+    lr_folder.parent.mkdir(parents=True, exist_ok=True)
+
     s.next("Settings: ")
     s.print(f"input: {args.input}",
+            f"hr: {hr_folder}",
+            f"lr: {lr_folder}",
             f"scale: {args.scale}",
             f"threads: {args.threads}",
             f"extension: {args.extension}",
@@ -303,7 +310,6 @@ def main():
 
 # Gather images
     s.next("Gathering images...")
-    args.input = Path(args.input)
     image_list = get_file_list(args.input / "**" / "*.png",
                                args.input / "**" / "*.jpg",
                                args.input / "**" / "*.webp")
@@ -331,14 +337,6 @@ def main():
             s.print(
                 f"Discarded {original_total - len(image_list)} symbolic links")
 
-# Get hr / lr folders
-    hr_folder = args.input.parent / f"{str(args.scale)}xHR"
-    lr_folder = args.input.parent / f"{str(args.scale)}xLR"
-    if args.extension:
-        hr_folder = Path(f"{str(hr_folder)}-{args.extension}")
-        lr_folder = Path(f"{str(lr_folder)}-{args.extension}")
-    hr_folder.parent.mkdir(parents=True, exist_ok=True)
-    lr_folder.parent.mkdir(parents=True, exist_ok=True)
 
 # Purge existing images
     if args.purge:

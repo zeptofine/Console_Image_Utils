@@ -17,11 +17,11 @@ class CfgDict(dict):
         self.load()
         return self
 
-    def save(self, outdict=None, indent=4):
-        if not isinstance(outdict, dict):
-            outdict = self
+    def save(self, out_dict=None, indent=4):
+        if not isinstance(out_dict, dict):
+            out_dict = self
         with open(self.cfg_path, 'w+') as f:
-            f.write(json.dumps(outdict, indent=indent))
+            f.write(json.dumps(out_dict, indent=indent))
         return self
 
     def update(self, *args, **kwargs):
@@ -121,11 +121,11 @@ class ConfigParser:
         self.set_defaults(self.file)
 
     # modified from argparse.py ( self.set_defaults(**kwargs) )
-    def set_defaults(self, argdict: dict):
-        self.parser._defaults.update(argdict)
+    def set_defaults(self, arg_dict: dict):
+        self.parser._defaults.update(arg_dict)
         for action in self.parser._actions:
-            if action.dest in argdict:
-                action.default = argdict[action.dest]
+            if action.dest in arg_dict:
+                action.default = arg_dict[action.dest]
 
     def parse_args(self, **kwargs) -> Namespace:
         '''args.set, reset, reset_all logic '''

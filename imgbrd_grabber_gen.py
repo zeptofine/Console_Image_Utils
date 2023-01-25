@@ -41,7 +41,7 @@ blacklist = [
 ]
 blacklist = [f"-{i}" for i in blacklist]
 
-assert len(prefixes) > 0, "Your prefixes.txt is empty. Fill it up with prompts"
+assert prefixes, "Your prefixes.txt is empty. Fill it up with prompts"
 
 for prompt in prefixes:
     tmpdict = {
