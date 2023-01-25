@@ -69,7 +69,7 @@ with PipInstaller() as p:
         import cv2
         import dateutil.parser as timeparser
         import imagesize
-        from rich import print as rprint  # trunk-ignore(flake8/F401)
+        from rich import print as rprint
         from rich.traceback import install
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
         from tqdm import tqdm  # trunk-ignore(flake8/F401)
@@ -363,7 +363,7 @@ def main():
     check_for_images(image_list)
 
 # Remove files based on resolution and time
-    s.next("Filtering images...")
+    s.next("Gathering data and filtering images...")
     original_total, original_list = len(image_list), set(image_list)
     if args.before or args.after:
         s.print(f"Filtering by time ({args.before}<=x<={args.after})")
@@ -391,7 +391,8 @@ def main():
     if args.print_filtered:
         s.print("Discarded images: \n")
         for image in sorted(original_list.difference(set(image_list)), key=lambda x: image_data[x][1], reverse=True):
-            rprint(f"{image_data[image][1]} : '{args.input / image}'")
+            rprint(f"{datetime.fromtimestamp(image_data[image][0].st_mtime)} {image_data[image][1]} :",
+                   f"'{args.input / image}'")
         print()
         # # for image in original_list.difference(set(image_list)):
         # print(image)
