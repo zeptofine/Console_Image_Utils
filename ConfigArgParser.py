@@ -115,8 +115,20 @@ class ConfigParser:
         for i in ['set', 'reset', 'reset_all']:
             self.kwargs.pop(i, None)
 
-        # get args from config_path
         self.file.load()
+        # get args from config_path
+        # self.parser.parse_known_args()
+        # print(self.parser.parse_args([])._get_kwargs())
+        if self.autofill:
+            key_gone = False
+            for key, val in self.parser.parse_args([])._get_kwargs():
+                print(key, val)
+                if key not in self.file:
+                    key_gone = True
+                    self.file.update({key: val})
+                if key_gone:
+                    self.file.save()
+        # exit()
 
         self.set_defaults(self.file)
 
@@ -130,11 +142,10 @@ class ConfigParser:
     def parse_args(self, **kwargs) -> Namespace:
         '''args.set, reset, reset_all logic '''
         self.parsed_args, _ = self.parser.parse_known_args(**kwargs)
+        # self.parser._defaults
         # set defaults
-        argdict = {k: v for k, v in self.parsed_args._get_kwargs()}
-        if self.autofill and not all(key in self.file for key in argdict):
-            self.file.update(
-                {k: v for k, v in self.parsed_args._get_kwargs()}).save()
+        # argdict = {k: v for k, v in self.parser._get_kwargs()}
+        # exit()
 
         # exit()
         if self.parsed_args.set or self.parsed_args.reset or self.parsed_args.reset_all:
