@@ -126,6 +126,8 @@ def main_parser() -> ArgumentParser:
                            help="only allows paths with the given string.")
     p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
                            help="excludes paths with the given string.")
+    p_filters.add_argument("--list-separator", default=" ",
+                           help="separator for the white/blacklist.")
     # ^^ used for restricting the names allowed in the paths.
 
     p_filters.add_argument("--minsize", type=int, metavar="MIN", default=128,
@@ -320,13 +322,15 @@ def main():
 
 # Filter blacklisted/whitelisted items
     if args.whitelist:
-        args.whitelist = args.whitelist.split(" ")
+        args.whitelist = args.whitelist.split(args.list_separator)
         image_list = whitelist(image_list, args.whitelist)
         s.print(f"whitelist {args.whitelist}: {len(image_list)}")
     if args.blacklist:
-        args.blacklist = args.blacklist.split(" ")
+        args.blacklist = args.blacklist.split(args.list_separator)
         image_list = blacklist(image_list, args.blacklist)
         s.print(f"blacklist {args.blacklist}: {len(image_list)}")
+
+    check_for_images(image_list)
 
 # Discard symbolic duplicates
     original_total = len(image_list)
