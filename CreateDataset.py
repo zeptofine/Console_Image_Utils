@@ -98,6 +98,8 @@ def main_parser() -> ArgumentParser:
                         help="scale to downscale LR images")
     p_reqs.add_argument("-e", "--extension", metavar="EXT", default=None,
                         help="export extension.")
+    p_reqs.add_argument("--exts", default="png webp jpg",
+                        help="extensions to search for. Only images work currently.")
     p_mods = parser.add_argument_group("Modifiers")
     p_mods.add_argument("-r", "--recursive", action="store_true", default=False,
                         help="preserves the tree hierarchy.")
@@ -313,9 +315,13 @@ def main():
 
 # Gather images
     s.next("Gathering images...")
-    image_list = get_file_list(args.input / "**" / "*.png",
-                               args.input / "**" / "*.jpg",
-                               args.input / "**" / "*.webp")
+    args.exts = args.exts.split(" ")
+    s.print(f"Searched exts: {args.exts}")
+    image_list = get_file_list(*[args.input / "**" / f"*.{ext}"
+                                 for ext in args.exts])
+    # image_list = get_file_list(args.input / "**" / "*.png",
+    #                            args.input / "**" / "*.jpg",
+    #                            args.input / "**" / "*.webp")
     if args.image_limit and args.limit_mode == "before":  # limit image number
         image_list = image_list[:args.image_limit]
     s.print(f"Gathered {len(image_list)} images")
@@ -398,10 +404,7 @@ def main():
             rprint(f"{datetime.fromtimestamp(image_data[image][0].st_mtime)} {image_data[image][1]} :",
                    f"'{args.input / image}'")
         print()
-        # # for image in original_list.difference(set(image_list)):
-        # print(image)
-    # return
-    s.print(f"Discarded {original_total - len(image_list)} images\n")
+    s.print(f"Discarded {original_total - len(image_list)} images")
 
     # Notify about the crop_mod feature
     if not (cparser.file.get("cropped_before", False) or args.crop_mod):
