@@ -16,14 +16,17 @@ def isbar(iteration, total, suff="", **kwargs):
 
 
 def ipbar(iterable, total=None, refresh_interval=0.25,
-          end="\r", very_end="\n", clear=False, **kwargs):
+          end="\r", very_end="\n", clear=False, print_item=False, **kwargs):
     total = total or len(iterable)
     _time = time.time()
     for i, obj in enumerate(iterable):
         yield obj
         newtime = time.time()
         if newtime - _time > refresh_interval:  # refresh interval
-            print(f"\033[K{isbar(i+1, total, **kwargs)}", end=end)
+            output = isbar(i+1, total, **kwargs)
+            if print_item:
+                output += f" {str(obj)}"
+            print(f"\033[K{output}", end=end)
             _time = newtime
     print(isbar(total, total, **kwargs),
           end="\033[2K\r" if clear else very_end)

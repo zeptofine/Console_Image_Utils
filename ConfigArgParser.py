@@ -96,10 +96,6 @@ class ConfigParser:
         self.config_option_group = self.parser.add_argument_group(
             'Config options')
         self.config_options = self.config_option_group.add_mutually_exclusive_group()
-        setattr(self.config_option_group, "config_path", self.config_path)
-        self.config_option_group.add_argument(self.default_prefix*2+"config_path", type=str,
-                                              default=self.config_path, metavar="PATH",
-                                              help="select a config to read from.")
         self.config_options.add_argument(self.default_prefix*2+"set", nargs=2, metavar=('KEY', 'VAL'),
                                          help="change a default argument's options")
         self.config_options.add_argument(self.default_prefix*2+"reset", metavar='VALUE', nargs="*",
@@ -109,8 +105,6 @@ class ConfigParser:
         self.parsed_args, _ = self.parser.parse_known_args()
         # Add flags
         self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
-        self.config_path = self.kwargs.get('config_path', config_path)
-
         # exclude set, reset from config
         for i in ['set', 'reset', 'reset_all']:
             self.kwargs.pop(i, None)

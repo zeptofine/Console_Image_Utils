@@ -6,9 +6,8 @@ from os import get_terminal_size
 
 
 class PipInstaller:
-    def __init__(self, debug=False):
+    def __init__(self):
         self.pip_functions = False
-        self.debug_mode = debug
 
     def __enter__(self):
         return self
@@ -17,8 +16,6 @@ class PipInstaller:
         del self
 
     def available(self, package_name) -> bool:
-        if self.debug_mode:
-            return False
         try:
             importlib.import_module(package_name)
         except ImportError:

@@ -5,10 +5,10 @@
 import os
 import sys
 from argparse import ArgumentParser
-from random import random
 from datetime import datetime
 from glob import glob
 from pathlib import Path
+from random import random
 from subprocess import SubprocessError
 
 from ConfigArgParser import ConfigParser
@@ -16,7 +16,8 @@ from util.pip_helpers import PipInstaller
 from util.print_funcs import Timer, ipbar  # trunk-ignore(flake8/F401)
 from util.process_funcs import is_subprocess
 
-CPU_COUNT: int = os.cpu_count()
+CPU_COUNT: int = os.cpu_count()  # type: ignore
+
 if sys.platform == "win32":
     print("This application was not made for windows. Try Using WSL2")
     from time import sleep
@@ -33,7 +34,7 @@ with PipInstaller() as p:
 
     try:
         # loop import packages
-        for i, package in enumerate(ipbar(packages, clear=True)):
+        for i, package in enumerate(ipbar(packages, clear=True, print_item=True)):
             if not p.available(packages[package]):
                 print(f"\033[2K !!! {packages[package]} failed to import !!!")
                 raise ImportError
@@ -106,7 +107,7 @@ def main_parser() -> ArgumentParser:
                         help="preserves the tree hierarchy.")
     p_mods.add_argument("-t", "--threads", type=int, default=int((CPU_COUNT / 4) * 3),
                         help="number of total threads used for multiprocessing.")
-    p_mods.add_argument("--image_limit", type=int, default=None, metavar="MAX",
+    p_mods.add_argument("-l", "--image_limit", type=int, default=None, metavar="MAX",
                         help="only gathers a given number of images. None disables it entirely.")  # max numbers to be given to the filters
     p_mods.add_argument("--limit_mode", choices=["before", "after"], default="before",
                         help="Changes the order of the limiter. By default, it happens before filtering out bad images.")
@@ -123,11 +124,12 @@ def main_parser() -> ArgumentParser:
                         help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
     p_mods.add_argument("--overwrite", action="store_true",
                         help="Skips checking for existing files, and by proxy, overwrites existing files.")
+
     # certain criteria that images must meet in order to be included in the processing.
     p_filters = parser.add_argument_group("Filters")
-    p_filters.add_argument("--whitelist", type=str, metavar="INCLUDE",
+    p_filters.add_argument("-w", "--whitelist", type=str, metavar="INCLUDE",
                            help="only allows paths with the given string.")
-    p_filters.add_argument("--blacklist", type=str, metavar="EXCLUDE",
+    p_filters.add_argument("-b", "--blacklist", type=str, metavar="EXCLUDE",
                            help="excludes paths with the given string.")
     p_filters.add_argument("--list-separator", default=" ",
                            help="separator for the white/blacklist.")
@@ -160,14 +162,14 @@ def get_file_list(*folders: Path) -> list[Path]:
     return [Path(y) for x in globlist for y in x]
 
 
-def get_existing(*folders: list[Path]) -> set[Path]:
+def get_existing(*folders: Path) -> set[Path]:
     """
     Returns the files that already exist in the specified folders.
     Args    *: folders to be searched & compared.
     Returns tuple[set[Path], set[Path]]: HR and LR file paths in sets.
     """
     sets = ({file.relative_to(folder).with_suffix('')
-            for file in get_file_list((folder / "**" / "*"))}
+             for file in get_file_list((folder / "**" / "*"))}
             for folder in folders)
     outset = set.intersection(*sets)
     return outset
@@ -216,7 +218,7 @@ def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_m
     # filter images that are too young or too old
     mstat = img_path.stat()
     filetime = datetime.fromtimestamp(mstat.st_mtime)
-    sbool = not (before or after and (before and (before < filetime))
+    sbool = not ((before and (before < filetime))
                  or (after and (after > filetime)))
 
     # filter images that are too small or too big, or not divisible by scale
@@ -240,14 +242,13 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
     hr_path, lr_path = hrlr_pair(inpath, hr_folder, lr_folder, recursive, ext)
 
     # Read the image file
-    image = cv2.imread(source, cv2.IMREAD_UNCHANGED)
+    image = cv2.imread(str(source), cv2.IMREAD_UNCHANGED)
     image = image[0:(image.shape[0] // scale) * scale,
-                  0: (image.shape[1] // scale) * scale]
-
+                  0:(image.shape[1] // scale) * scale]
     # Save the HR / LR version of the image
     cv2.imwrite(str(hr_path), image)
-    cv2.imwrite(str(lr_path), cv2.resize(
-        image, (0, 0), fx=1 / scale, fy=1 / scale))
+    cv2.imwrite(str(lr_path), cv2.resize(image, (0, 0),
+                                         fx=1 / scale, fy=1 / scale))  # type: ignore
 
     # Set the modification time of the HR and LR image files to the original image's modification time
     os.utime(str(hr_path), (mtime, mtime))
@@ -259,7 +260,7 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
 
 def main():
     cparser = ConfigParser(main_parser(), "config.json",
-                           exit_on_change=True, autofill=True)
+                           exit_on_change=True)
     args = cparser.parse_args()
 
     s = RichStepper(loglevel=1, step=-1)
@@ -269,7 +270,7 @@ def main():
             s.print(-1, "No images left to process")
             sys.exit(0)
 
-# Make sure given args are valid
+# * Make sure given args are valid
     if not args.input:
         s.print("Please specify an input directory.")
         return 1
@@ -290,10 +291,12 @@ def main():
         except timeparser.ParserError as err:
             s.set(-9).print(str(err))
             return 1
+    args.minsize = args.minsize if args.minsize != -1 else None
+    args.maxsize = args.maxsize if args.maxsize != -1 else None
 
     args.input = Path(args.input)
 
-# Get hr / lr folders
+# * Get hr / lr folders
     hr_folder = args.input.parent / f"{str(args.scale)}xHR"
     lr_folder = args.input.parent / f"{str(args.scale)}xLR"
     if args.extension:
@@ -314,7 +317,7 @@ def main():
             f"crop_mod: {args.crop_mod}",
             f"sort: {args.sort}")
 
-# Gather images
+# * Gather images
     s.next("Gathering images...")
     args.exts = args.exts.split(" ")
     s.print(f"Searched extensions: {args.exts}")
@@ -324,7 +327,7 @@ def main():
         image_list = image_list[:args.image_limit]
     s.print(f"Gathered {len(image_list)} images")
 
-# Filter blacklisted/whitelisted items
+# * Filter blacklisted/whitelisted items
     if args.whitelist:
         args.whitelist = args.whitelist.split(args.list_separator)
         image_list = whitelist(image_list, args.whitelist)
@@ -336,7 +339,7 @@ def main():
 
     check_for_images(image_list)
 
-# Discard symbolic duplicates
+# * Discard symbolic duplicates
     original_total = len(image_list)
     if has_links(image_list):
         # vv This naturally removes the possibility of multiple files pointing to the same image
@@ -347,7 +350,7 @@ def main():
                 f"Discarded {original_total - len(image_list)} symbolic links")
 
 
-# Purge existing images
+# * Purge existing images
     if args.purge:
         s.next("Purging...")
         for path in ipbar(image_list):
@@ -358,7 +361,7 @@ def main():
 
         s.print("Purged.")
 
-# Get files that were already converted
+# * Get files that were already converted
     original_total = len(image_list)
     if not args.overwrite:
         s.next("Removing existing")
@@ -371,7 +374,7 @@ def main():
 
     check_for_images(image_list)
 
-# Remove files based on resolution and time
+# * Remove files based on resolution and time
     s.next("Gathering data and filtering images...")
     original_total, original_list = len(image_list), set(image_list)
     if args.before or args.after:
@@ -388,7 +391,7 @@ def main():
                              within_time_and_res,
                              pargs, postfix=False,
                              desc="Filtering"))
-# Filter images based on data
+# * Filter images based on data
     # separate the paths and the data, and only accept based on boolean
     image_list, image_data = zip(*image_list)
     # turn the data into a dict
@@ -415,7 +418,7 @@ def main():
         s.next("Simulated")
         return 0
 
-# Sort files based on attributes
+# * Sort files based on attributes
     s.print("Sorting...\n")
     sorting_methods = {"name": lambda x: x,
                        "ext": lambda x: x.suffix,
@@ -432,7 +435,7 @@ def main():
         image_list = set(image_list[:args.image_limit])
 
 
-# create hr/lr pairs from list of valid images
+# * create hr/lr pairs from list of valid images
     s.next(f"{len(image_list)} images in queue")
     try:
         pargs = [(v, str(args.input / v), image_data[v][0].st_mtime, args.scale,
