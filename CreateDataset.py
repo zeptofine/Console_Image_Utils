@@ -159,6 +159,8 @@ def main_parser() -> ArgumentParser:
     p_filters.add_argument("--hash-type", type=str, choices=["average", "crop_resistant", "color", "dhash", "dhash_vertical",
                                                              "phash", "phash_simple", "whash"], default="average",
                            help="type of image hasher to use for the slow method. read https://github.com/JohannesBuchner/imagehash for more info")
+    p_filters.add_argument("--hash-choice", type=str, choices=["name", "ext", "len",  "res", "time", "size", "random"],
+                           default='res', help="At the chance of a hash conflict, this will decide which to keep.")
     # ^^ Used for filtering out too old or too new images.
     p_filters.add_argument("--print-filtered", action="store_true",
                            help="prints all images that were removed because of filters.")
@@ -441,6 +443,15 @@ def main():
         s.print(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.(--crop_mod)")
         cparser.file.update({"cropped_before": True}).save()
 
+    sorting_methods = {"name": lambda x: x,
+                       "ext": lambda x: x.suffix,
+                       "len": lambda x: len(str(x)),
+                       # vvv I think this works idk tho :p
+                       "random": lambda: random(),
+                       "res": lambda x: image_data[x][1][0] * image_data[x][1][1],
+                       "time": lambda x: image_data[x][0].st_mtime,
+                       "size": lambda x: image_data[x][0].st_size}
+
 # * filter by image hashes
     if args.hash:
         s.next("Comparing hashes...")
@@ -458,7 +469,7 @@ def main():
         for hash in unique_hashes:
             path_list = [path for path, cash in image_hashes if cash == hash]
             # use the largest image
-            hash_dict.update({hash: sorted(path_list, key=lambda x: image_data[x][1][0] * image_data[x][1][1])[-1]})
+            hash_dict.update({hash: sorted(path_list, key=sorting_methods[args.hash_choice])[-1]})
             if args.print_filtered and len(path_list) > 1:
                 rprint(f'"{hash}": ')
                 for path in path_list:
@@ -476,14 +487,6 @@ def main():
 
 # * Sort files based on attributes
     s.print("Sorting...\n")
-    sorting_methods = {"name": lambda x: x,
-                       "ext": lambda x: x.suffix,
-                       "len": lambda x: len(str(x)),
-                       # vvv I think this works idk tho :p
-                       "random": lambda: random(),
-                       "res": lambda x: image_data[x][1][0] * image_data[x][1][1],
-                       "time": lambda x: image_data[x][0].st_mtime,
-                       "size": lambda x: image_data[x][0].st_size}
     image_list = sorted(image_list,
                         key=sorting_methods[args.sort], reverse=args.reverse)
 
