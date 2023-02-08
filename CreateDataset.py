@@ -24,13 +24,17 @@ if sys.platform == "win32":
     sleep(3)
 
 with PipInstaller() as p:
-    packages = {'rich':            "rich",
-                'opencv-python':   "cv2",
-                'python-dateutil': "dateutil",
-                'imagesize':       "imagesize",
-                'rich-argparse':   "rich_argparse",
-                'tqdm':            "tqdm",
-                'shtab':           "shtab"}
+    packages = {
+        'opencv-python':   "cv2",
+        'python-dateutil': "dateutil",
+        'imagehash':       "imagehash",
+        'imagesize':       "imagesize",
+        'pillow':          "PIL",
+        'rich':            "rich",
+        'rich-argparse':   "rich_argparse",
+        'shtab':           "shtab",
+        'tqdm':            "tqdm",
+    }
 
     try:
         # loop import packages
@@ -71,10 +75,13 @@ with PipInstaller() as p:
         import cv2
         import dateutil.parser as timeparser
         import imagesize
+        import imagehash
+        from PIL import Image
+
         from rich import print as rprint
         from rich.traceback import install
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
-        from tqdm import tqdm  # trunk-ignore(flake8/F401)
+        from tqdm import tqdm
 
         from util.iterable_starmap import poolmap
         from util.print_funcs import RichStepper
@@ -147,6 +154,11 @@ def main_parser() -> ArgumentParser:
                            "ex. '2020', or '2009 Sept 16th'")
     p_filters.add_argument("--before", type=str,
                            help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
+    p_filters.add_argument("--hash", action="store_true",
+                           help="Removes similar images based off of imagehash.average_hash. is better for perceptually similar images.")
+    p_filters.add_argument("--hash-type", type=str, choices=["average", "crop_resistant", "color", "dhash", "dhash_vertical",
+                                                             "phash", "phash_simple", "whash"], default="average",
+                           help="type of image hasher to use for the slow method. read https://github.com/JohannesBuchner/imagehash for more info")
     # ^^ Used for filtering out too old or too new images.
     p_filters.add_argument("--print-filtered", action="store_true",
                            help="prints all images that were removed because of filters.")
@@ -194,6 +206,22 @@ def blacklist(imglist, blacklist):
     return set(imglist).difference(imglist_with_blacklist)
 
 
+IMHASH_TYPES = {
+    'average': imagehash.average_hash,
+    'crop_resistant': imagehash.crop_resistant_hash,
+    'color': imagehash.colorhash,
+    'dhash': imagehash.dhash,
+    'dhash_vertical': imagehash.dhash_vertical,
+    'phash': imagehash.phash,
+    'phash_simple': imagehash.phash_simple,
+    'whash': imagehash.whash
+}
+
+
+def get_imghash(path, hash_type):
+    return IMHASH_TYPES.get(hash_type, None)(Image.open(path))
+
+
 def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
               recursive: bool = False, ext=None) -> tuple[Path, Path]:
     """
@@ -214,7 +242,10 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
     return hr_path, lr_path
 
 
-def within_time_and_res(img_path, before, after, minsize, maxsize, scale, crop_mod) -> tuple[bool, os.stat_result, tuple]:
+def within_time_and_res(img_path,
+                        before, after,
+                        minsize, maxsize,
+                        scale, crop_mod) -> tuple[bool, os.stat_result, tuple]:
     # filter images that are too young or too old
     mstat = img_path.stat()
     filetime = datetime.fromtimestamp(mstat.st_mtime)
@@ -248,7 +279,7 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
     # Save the HR / LR version of the image
     cv2.imwrite(str(hr_path), image)
     cv2.imwrite(str(lr_path), cv2.resize(image, (0, 0),
-                                         fx=1 / scale, fy=1 / scale))  # type: ignore
+                fx=1 / scale, fy=1 / scale))  # type: ignore
 
     # Set the modification time of the HR and LR image files to the original image's modification time
     os.utime(str(hr_path), (mtime, mtime))
@@ -259,8 +290,7 @@ def fileparse(inpath: Path, source: Path, mtime, scale: int,
 
 
 def main():
-    cparser = ConfigParser(main_parser(), "config.json",
-                           exit_on_change=True)
+    cparser = ConfigParser(main_parser(), "config.json", exit_on_change=True)
     args = cparser.parse_args()
 
     s = RichStepper(loglevel=1, step=-1)
@@ -321,8 +351,7 @@ def main():
     s.next("Gathering images...")
     args.exts = args.exts.split(" ")
     s.print(f"Searched extensions: {args.exts}")
-    image_list = get_file_list(*[args.input / "**" / f"*.{ext}"
-                                 for ext in args.exts])
+    image_list = get_file_list(*[args.input / "**" / f"*.{ext}" for ext in args.exts])
     if args.image_limit and args.limit_mode == "before":  # limit image number
         image_list = image_list[:args.image_limit]
     s.print(f"Gathered {len(image_list)} images")
@@ -346,16 +375,14 @@ def main():
         image_list = {i.resolve(): i.relative_to(args.input)
                       for i in ipbar(image_list, clear=True)}.values()
         if len(image_list) != original_total:
-            s.print(
-                f"Discarded {original_total - len(image_list)} symbolic links")
+            s.print(f"Discarded {original_total - len(image_list)} symbolic links")
 
 
 # * Purge existing images
     if args.purge:
         s.next("Purging...")
         for path in ipbar(image_list):
-            hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder,
-                                         args.recursive, args.extension)
+            hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder, args.recursive, args.extension)
             hr_path.unlink(missing_ok=True)
             lr_path.unlink(missing_ok=True)
 
@@ -403,7 +430,7 @@ def main():
     if args.print_filtered:
         s.print("Discarded images: \n")
         for image in sorted(original_list.difference(set(image_list)), key=lambda x: image_data[x][1], reverse=True):
-            rprint(f"{datetime.fromtimestamp(image_data[image][0].st_mtime)} {image_data[image][1]} :",
+            rprint(f" {datetime.fromtimestamp(image_data[image][0].st_mtime)} {image_data[image][1]} :",
                    f"'{args.input / image}'")
         print()
     s.print(f"Discarded {original_total - len(image_list)} images")
@@ -413,6 +440,30 @@ def main():
     if not (cparser.file.get("cropped_before", False) or args.crop_mod):
         s.print(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.(--crop_mod)")
         cparser.file.update({"cropped_before": True}).save()
+
+# * filter by image hashes
+    if args.hash:
+        s.next("Comparing hashes...")
+        s.print(f"Hash type: {args.hash_type}")
+        original_total = len(image_list)
+
+        pargs = [(args.input / i, args.hash_type) for i in image_list]
+        # match each hash to the respective image
+        image_hashes = {(path, str(hash)) for hash, path in zip(tqdm(poolmap(args.threads, get_imghash, pargs, postfix=False),
+                                                                total=len(image_list)), image_list)}
+        hash_dict = {hash: path for path, hash in image_hashes}
+        image_list = hash_dict.values()
+
+        if args.print_filtered:
+            s.print("Getting similar images...")
+            unique_hashes = hash_dict.keys()
+            for hash in ipbar(unique_hashes):
+                path_list = [path for path, cash in image_hashes if cash == hash]
+                if len(path_list) > 1:
+                    for path in path_list:
+                        rprint(f'"{hash}": "{args.input / path}"')
+
+        s.print(f"Discarded {original_total - len(image_list)} images via imagehash.{args.hash_type}")
 
     if args.simulate:
         s.next("Simulated")
@@ -424,7 +475,7 @@ def main():
                        "ext": lambda x: x.suffix,
                        "len": lambda x: len(str(x)),
                        # vvv I think this works idk tho :p
-                       "random": lambda x: (random(), x),
+                       "random": lambda: random(),
                        "res": lambda x: image_data[x][1][0] * image_data[x][1][1],
                        "time": lambda x: image_data[x][0].st_mtime,
                        "size": lambda x: image_data[x][0].st_size}
