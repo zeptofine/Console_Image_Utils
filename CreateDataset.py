@@ -452,17 +452,22 @@ def main():
         image_hashes = {(path, str(hash)) for hash, path in zip(tqdm(poolmap(args.threads, get_imghash, pargs, postfix=False),
                                                                 total=len(image_list)), image_list)}
         hash_dict = {hash: path for path, hash in image_hashes}
-        image_list = hash_dict.values()
+        unique_hashes = hash_dict.keys()
 
-        if args.print_filtered:
-            s.print("Getting similar images...")
-            unique_hashes = hash_dict.keys()
-            for hash in ipbar(unique_hashes):
-                path_list = [path for path, cash in image_hashes if cash == hash]
-                if len(path_list) > 1:
-                    for path in path_list:
-                        rprint(f'"{hash}": "{args.input / path}"')
+        s.print("Getting similar images (larger images will be favored)...")
+        for hash in unique_hashes:
+            path_list = [path for path, cash in image_hashes if cash == hash]
+            # use the largest image
+            hash_dict.update({hash: sorted(path_list, key=lambda x: image_data[x][1][0] * image_data[x][1][1])[-1]})
+            if args.print_filtered and len(path_list) > 1:
+                rprint(f'"{hash}": ')
+                for path in path_list:
+                    if hash_dict[hash] == path:  # show which one is used
+                        rprint(f'  \u2713 [yellow]"{args.input / path}"[/yellow] : {image_data[path][1]}')
+                    else:
+                        rprint(f'  - [red]"{args.input / path}"[/red] : {image_data[path][1]}')
 
+        image_list = list(hash_dict.values())
         s.print(f"Discarded {original_total - len(image_list)} images via imagehash.{args.hash_type}")
 
     if args.simulate:
