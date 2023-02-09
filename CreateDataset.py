@@ -353,7 +353,8 @@ def main():
     s.next("Gathering images...")
     args.exts = args.exts.split(" ")
     s.print(f"Searched extensions: {args.exts}")
-    image_list = get_file_list(*[args.input / "**" / f"*.{ext}" for ext in args.exts])
+    file_list = get_file_list(*[args.input / "**" / f"*.{ext}" for ext in args.exts])
+    image_list = sorted(file_list)
     if args.image_limit and args.limit_mode == "before":  # limit image number
         image_list = image_list[:args.image_limit]
     s.print(f"Gathered {len(image_list)} images")
@@ -454,20 +455,20 @@ def main():
 
 # * filter by image hashes
     if args.hash:
-        s.next("Comparing hashes...")
+        s.next("Getting hashes...")
         s.print(f"Hash type: {args.hash_type}")
         original_total = len(image_list)
 
-        pargs = [(args.input / i, args.hash_type) for i in image_list]
+        pargs = [(args.input / i, args.hash_type) for i in file_list]
         # match each hash to the respective image
         image_hashes = {(path, str(hash)) for hash, path in zip(tqdm(poolmap(args.threads, get_imghash, pargs, postfix=False),
-                                                                total=len(image_list)), image_list)}
+                                                                total=len(file_list)), file_list)}
         hash_dict = {hash: path for path, hash in image_hashes}
         unique_hashes = hash_dict.keys()
 
-        s.print("Getting similar images (larger images will be favored)...")
+        s.print(f"Comparing images (Conflict resolution: {args.hash_choice})...")
         for hash in unique_hashes:
-            path_list = [path for path, cash in image_hashes if cash == hash]
+            path_list = [path for path, cash in image_hashes if cash == hash and path in image_data]
             # use the largest image
             hash_dict.update({hash: sorted(path_list, key=sorting_methods[args.hash_choice])[-1]})
             if args.print_filtered and len(path_list) > 1:
@@ -478,7 +479,7 @@ def main():
                     else:
                         rprint(f'  - [red]"{args.input / path}"[/red] : {image_data[path][1]}')
 
-        image_list = list(hash_dict.values())
+        image_list = set(image_list).intersection(set(hash_dict.values()))
         s.print(f"Discarded {original_total - len(image_list)} images via imagehash.{args.hash_type}")
 
     if args.simulate:
