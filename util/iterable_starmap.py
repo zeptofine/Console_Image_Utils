@@ -37,7 +37,6 @@ del pool
 
 def poolmap(threads, func, iterable, use_tqdm=True, chunksize=1, refresh=False, postfix=True, **tqargs) -> list:
     with CustomPool(min(threads, len(iterable))) as pool:
-        output = []
         if use_tqdm:
             itqdm = tqdm(total=len(iterable), dynamic_ncols=True,
                          position=0, **tqargs)
@@ -46,12 +45,11 @@ def poolmap(threads, func, iterable, use_tqdm=True, chunksize=1, refresh=False, 
                 if postfix:
                     itqdm.set_postfix_str(
                         str(result), refresh=False)
-                output.append(result)
+                yield result
                 itqdm.update()
                 if refresh:
                     itqdm.refresh()
         else:
             for result in pool.istarmap(func,  # type: ignore
                                         iterable):
-                output.append(result)
-    return [i for i in output if i is not None]
+                yield result

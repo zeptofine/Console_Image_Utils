@@ -81,6 +81,7 @@ with PipInstaller() as p:
         from rich import print as rprint
         from rich.traceback import install
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
+        # trunk-ignore(flake8/F401)
         from tqdm import tqdm
 
         from util.iterable_starmap import poolmap
@@ -155,7 +156,7 @@ def main_parser() -> ArgumentParser:
     p_filters.add_argument("--before", type=str,
                            help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
     p_filters.add_argument("--hash", action="store_true",
-                           help="Removes similar images based off of imagehash.average_hash. is better for perceptually similar images.")
+                           help="Removes similar images. is better for perceptually similar images.")
     p_filters.add_argument("--hash-type", type=str, choices=["average", "crop_resistant", "color", "dhash", "dhash_vertical",
                                                              "phash", "phash_simple", "whash"], default="average",
                            help="type of image hasher to use for the slow method. read https://github.com/JohannesBuchner/imagehash for more info")
@@ -444,14 +445,16 @@ def main():
         s.print(-1, "Try the cropping mode! It crops the image instead of outright ignoring it.(--crop_mod)")
         cparser.file.update({"cropped_before": True}).save()
 
-    sorting_methods = {"name": lambda x: x,
-                       "ext": lambda x: x.suffix,
-                       "len": lambda x: len(str(x)),
-                       # vvv I think this works idk tho :p
-                       "random": lambda: random(),
-                       "res": lambda x: image_data[x][1][0] * image_data[x][1][1],
-                       "time": lambda x: image_data[x][0].st_mtime,
-                       "size": lambda x: image_data[x][0].st_size}
+    sorting_methods = {
+        "name": lambda x: x,
+        "ext": lambda x: x.suffix,
+        "len": lambda x: len(str(x)),
+        # vvv I think this works idk tho :p
+        "random": lambda _: random(),
+        "res": lambda x: image_data[x][1][0] * image_data[x][1][1],
+        "time": lambda x: image_data[x][0].st_mtime,
+        "size": lambda x: image_data[x][0].st_size
+    }
 
 # * filter by image hashes
     if args.hash:
@@ -461,37 +464,64 @@ def main():
 
         pargs = [(args.input / i, args.hash_type) for i in file_list]
         # match each hash to the respective image
-        image_hashes = {(path, str(hash)) for hash, path in zip(tqdm(poolmap(args.threads, get_imghash, pargs, postfix=False),
-                                                                total=len(file_list)), file_list)}
-        hash_dict = {hash: path for path, hash in image_hashes}
-        unique_hashes = hash_dict.keys()
+        image_hashes: dict = {}
+        for index, file_hash in enumerate(poolmap(args.threads, get_imghash, pargs, postfix=False)):
+            file = file_list[index].relative_to(args.input)
+            file_hash = str(file_hash)
+            if file_hash in image_hashes:
+                image_hashes[file_hash].append(file)
+            else:
+                image_hashes[file_hash] = [file]
 
         s.print(f"Comparing images (Conflict resolution: {args.hash_choice})...")
-        for hash in unique_hashes:
-            path_list = [path for path, cash in image_hashes if cash == hash and path in image_data]
-            # use the largest image
-            hash_dict.update({hash: sorted(path_list, key=sorting_methods[args.hash_choice])[-1]})
-            if args.print_filtered and len(path_list) > 1:
-                rprint(f'"{hash}": ')
-                for path in path_list:
-                    if hash_dict[hash] == path:  # show which one is used
-                        rprint(f'  \u2713 [yellow]"{args.input / path}"[/yellow] : {image_data[path][1]}')
-                    else:
-                        rprint(f'  - [red]"{args.input / path}"[/red] : {image_data[path][1]}')
 
-        image_list = set(image_list).intersection(set(hash_dict.values()))
-        s.print(f"Discarded {original_total - len(image_list)} images via imagehash.{args.hash_type}")
+        # hashes that belong to multiple images
+        conflicting_hashes: dict[str, list[Path]] = {}
+        # hashes that belong to a single image
+        final_hashes: dict[str, Path] = {}
+        for filehash, filelist in image_hashes.items():
+            if len(filelist) > 1:
+                conflicting_hashes.update({filehash: filelist})
+
+            if len(filelist) == 1:
+                final_hashes.update({filehash: filelist[0]})
+
+        # remove files that are invalid
+        for filehash, filelist in conflicting_hashes.items():
+            conflicting_hashes[filehash] = [file for file in filelist if file in image_data]
+            if len(filelist) == 1:
+                final_hashes.update({filehash: filelist[0]})
+
+        conflicting_hashes = {key: val for key, val in conflicting_hashes.items() if len(val) > 1}
+        # conflicting hashes now are all still valid but now a single image must be chosen to keep
+        for filehash, filelist in conflicting_hashes.items():
+            # choose based on sorting method (args.hash_choice)
+            chosen_file = sorted(filelist, key=sorting_methods[args.hash_choice])[-1]
+            final_hashes.update({filehash: chosen_file})
+            if args.print_filtered:
+                rprint(f'[yellow]"{filehash}"[/yellow]: ')
+                for file in filelist:
+                    rprint(
+                        (f'[bold   green]  \u2713 "{args.input / file}"[/bold   green]'
+                         if file == chosen_file else
+                         f'[bright_black]  \u2717 "{args.input / file}"[/bright_black]')
+                        + f' : {image_data[file][1]}'
+                    )
+                if any(file.with_suffix("") == i.with_suffix("") and file is not i for i in filelist for file in filelist):
+                    rprint(" [red]Warning: some of these images have very similar paths.")
+
+        image_list = set(image_list).intersection(final_hashes.values())
+        s.print(f"Discarded {original_total - len(image_list)} images via imagehash.{args.hash_choice}")
 
     if args.simulate:
-        s.next("Simulated")
+        s.next(f"Simulated. {len(image_list)} images remain.")
         return 0
 
 # * Sort files based on attributes
     s.print("Sorting...\n")
-    image_list = sorted(image_list,
-                        key=sorting_methods[args.sort], reverse=args.reverse)
+    image_list = sorted(image_list, key=sorting_methods[args.sort], reverse=args.reverse)
 
-    if args.image_limit and args.limit_mode == "after":  # limit image number
+    if args.image_limit and args.limit_mode == "after":
         image_list = set(image_list[:args.image_limit])
 
 
@@ -502,10 +532,10 @@ def main():
                   hr_folder, lr_folder,
                   args.recursive, args.extension)
                  for v in image_list]
-        image_list = poolmap(args.threads, fileparse, pargs,
-                             chunksize=2,
-                             postfix=not args.anonymous,
-                             use_tqdm=True)
+        image_list = list(poolmap(args.threads, fileparse, pargs,
+                                  chunksize=2,
+                                  postfix=not args.anonymous,
+                                  use_tqdm=True))
     except KeyboardInterrupt:
         s.print(-1, "KeyboardInterrupt")
     s.next("Done")
