@@ -512,7 +512,7 @@ def main():
 
         image_list = set(image_list).intersection(final_hashes.values())
         s.print(f"Discarded {original_total - len(image_list)} images via imagehash.{args.hash_choice}")
-
+        check_for_images(image_list)
     if args.simulate:
         s.next(f"Simulated. {len(image_list)} images remain.")
         return 0
