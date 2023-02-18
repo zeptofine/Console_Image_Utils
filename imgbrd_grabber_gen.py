@@ -8,12 +8,12 @@ from ConfigArgParser import ConfigParser
 parser = ArgumentParser()
 parser.add_argument('-s', '--sort', action="store_true",
                     help="Sorts the list of entries.")
-parser.add_argument('--batch_path', default="~/Batches/",
-                    help="input for the folder name. will use settings.txt if not omitted.")
+parser.add_argument('--batch_path', default="Batches/",
+                    help="input for the folder name.")
 parser.add_argument('-w', '--web', default="e621.net",
-                    help="input the website. will use settings.txt if not omitted.")
+                    help="input the website.")
 parser.add_argument('--max', type=int, default=1000,
-                    help="max images to give per item. will use settings.txt if not omitted.")
+                    help="max images to give per item.")
 parser.add_argument(
     "--output-fmt", default="%search_1%/%date:format=yyyy-MM-dd-hh-mm-ss%_%md5%_%rating%.%ext%")
 parser.add_argument('--post-filter', action="store_true",
