@@ -25,15 +25,13 @@ class PipInstaller:
         return True
 
     def install(self, package="", post=['pip', 'install']) -> int:
-        subprocess_input = [executable, '-m', *post,
-                            package] if package else [executable, '-m', *post]
+        subprocess_input = [executable, '-m', *post, package] if package else [executable, '-m', *post]
         with Popen(subprocess_input,
                    stdout=PIPE, stderr=PIPE) as import_proc:
             output = []
             try:
                 for line in io.TextIOWrapper(import_proc.stdout):  # type: ignore
-                    print(f'\033[2K<{package.ljust(10)}> {line.strip()}'[
-                          :get_terminal_size().columns-1], end="\r")
+                    print(f'\033[2K<{package.ljust(10)}> {line.strip()}'[:get_terminal_size().columns-1], end="\r")
                     output.append(line.strip())
                 return import_proc.returncode
             except (KeyboardInterrupt, SubprocessError):

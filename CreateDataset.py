@@ -10,7 +10,6 @@ from glob import glob
 from pathlib import Path
 from random import random
 from subprocess import SubprocessError
-
 from ConfigArgParser import ConfigParser
 from util.pip_helpers import PipInstaller
 from util.print_funcs import Timer, ipbar  # trunk-ignore(flake8/F401)
@@ -54,13 +53,11 @@ with PipInstaller() as p:
             for i, package in enumerate(ipbar(packages)):
                 if not p.available(packages[package]):
                     columns = os.get_terminal_size().columns
-                    print(
-                        f"{package} not detected. Attempting to install...".ljust(columns, '-'))
+                    print(f"{package} not detected. Attempting to install...".ljust(columns, '-'))
                     p.install(package)
                     print()
                     if not p.available(packages[package]):
-                        raise ModuleNotFoundError(
-                            f"Failed to install '{package}'.")
+                        raise ModuleNotFoundError(f"Failed to install '{package}'.")
             # restart process once installing required packages is complete
             if not is_subprocess():
                 os.execv(sys.executable, ['python', *sys.argv])
@@ -76,8 +73,8 @@ with PipInstaller() as p:
         import dateutil.parser as timeparser
         import imagesize
         import imagehash
-        from PIL import Image
 
+        from PIL import Image
         from rich import print as rprint
         from rich.traceback import install
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
@@ -173,40 +170,36 @@ def get_file_list(*folders: Path) -> list[Path]:
     Args    folders: One or more folder paths.
     Returns list[Path]: paths in the specified folders."""
     i = ipbar(folders, clear=True) if len(folders) > 1 else folders
-    globlist = (glob(str(p), recursive=True) for p in i)
-    return [Path(y) for x in globlist for y in x]
+    return [Path(y) for x in (glob(str(p), recursive=True) for p in i) for y in x]
 
 
-def get_existing(*folders: Path) -> set[Path]:
+def get_existing(*folders: Path) -> set:
     """
     Returns the files that already exist in the specified folders.
     Args    *: folders to be searched & compared.
     Returns tuple[set[Path], set[Path]]: HR and LR file paths in sets.
     """
-    sets = ({file.relative_to(folder).with_suffix('')
-             for file in get_file_list((folder / "**" / "*"))}
-            for folder in folders)
-    outset = set.intersection(*sets)
-    return outset
+    return set.intersection(*({file.relative_to(folder).with_suffix('')
+                               for file in get_file_list((folder / "**" / "*"))}
+                              for folder in folders))
 
 
-def has_links(paths):
+def has_links(paths) -> bool:
     return any(i for i in paths if i is not i.resolve())
 
 
-def to_recursive(path: Path, recursive: bool) -> Path:
+def to_recursive(path, recursive) -> Path:
     """Convert the file path to a recursive path if recursive is False
     Ex: i/path/to/image.png => i/path_to_image.png"""
-    return path if recursive else Path(str(path).replace(os.sep, "_"))
+    return Path(path) if recursive else Path(str(path).replace(os.sep, "_"))
 
 
-def whitelist(imglist, whitelist):
+def whitelist(imglist, whitelist) -> set:
     return {j for i in whitelist for j in imglist if i in str(j)}
 
 
-def blacklist(imglist, blacklist):
-    imglist_with_blacklist = whitelist(imglist, blacklist)
-    return set(imglist).difference(imglist_with_blacklist)
+def blacklist(imglist, blacklist) -> set:
+    return set(imglist).difference(whitelist(imglist, blacklist))
 
 
 IMHASH_TYPES = {
@@ -221,8 +214,7 @@ IMHASH_TYPES = {
 }
 
 
-def get_imghash(path, hash_type):
-    return IMHASH_TYPES.get(hash_type, None)(Image.open(path))
+def get_imghash(path, hasher): return IMHASH_TYPES[hasher](Image.open(path))
 
 
 def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
@@ -409,22 +401,19 @@ def main():
     s.next("Gathering data and filtering images...")
     original_total, original_list = len(image_list), set(image_list)
     if args.before or args.after:
-        s.print(f"Filtering by time ({args.before}<=x<={args.after})")
+        s.print(f"Filtering by time ({args.before} <= x <= {args.after})")
     if args.minsize or args.maxsize:
-        s.print(f"Filtering by size ({args.minsize}<=x<={args.maxsize})")
+        s.print(f"Filtering by size ({args.minsize} <= x <= {args.maxsize})")
 
     pargs = [(args.input / i,
               args.before, args.after,
               args.minsize, args.maxsize,
               args.scale, args.crop_mod) for i in image_list]
-    image_list = zip(image_list,
-                     poolmap(args.threads,
-                             within_time_and_res,
-                             pargs, postfix=False,
-                             desc="Filtering"))
-# * Filter images based on data
-    # separate the paths and the data, and only accept based on boolean
-    image_list, image_data = zip(*image_list)
+    image_data = poolmap(args.threads,
+                         within_time_and_res,
+                         pargs, postfix=False,
+                         desc="Filtering")
+# * Filter images based on datax``
     # turn the data into a dict
     image_data = {image_list[i]: v for i, v in enumerate(image_data)}
     image_list = list(filter(lambda x: image_data[x][0], image_list))
@@ -486,7 +475,6 @@ def main():
             if len(filelist) == 1:
                 final_hashes.update({filehash: filelist[0]})
 
-        # remove files that are invalid
         for filehash, filelist in conflicting_hashes.items():
             conflicting_hashes[filehash] = [file for file in filelist if file in image_data]
             if len(filelist) == 1:
@@ -502,20 +490,20 @@ def main():
                 rprint(f'[yellow]"{filehash}"[/yellow]: ')
                 for file in filelist:
                     rprint(
-                        (f'[bold   green]  \u2713 "{args.input / file}"[/bold   green]'
+                        (f'[bold   green]  \u2713 "{args.input / file}"[/bold   green]'  # ✓
                          if file == chosen_file else
-                         f'[bright_black]  \u2717 "{args.input / file}"[/bright_black]')
+                         f'[bright_black]  \u2717 "{args.input / file}"[/bright_black]')  # ✗
                         + f' : {image_data[file][1]}'
                     )
-                if any(file.with_suffix("") == i.with_suffix("") and file is not i for i in filelist for file in filelist):
+
+                if any(file.with_suffix("") == i.with_suffix("") and file is not i
+                       for i in filelist
+                       for file in filelist):
                     rprint(" [red]Warning: some of these images have very similar paths.")
 
         image_list = set(image_list).intersection(final_hashes.values())
         s.print(f"Discarded {original_total - len(image_list)} images via imagehash.{args.hash_choice}")
         check_for_images(image_list)
-    if args.simulate:
-        s.next(f"Simulated. {len(image_list)} images remain.")
-        return 0
 
 # * Sort files based on attributes
     s.print("Sorting...\n")
@@ -524,6 +512,9 @@ def main():
     if args.image_limit and args.limit_mode == "after":
         image_list = set(image_list[:args.image_limit])
 
+    if args.simulate:
+        s.next(f"Simulated. {len(image_list)} images remain.")
+        return 0
 
 # * create hr/lr pairs from list of valid images
     s.next(f"{len(image_list)} images in queue")
