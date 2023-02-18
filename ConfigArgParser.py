@@ -112,12 +112,13 @@ class ConfigParser:
         self.file.load()
         # get args from config_path
         if self.autofill:
-            key_gone = False
-            for key, val in self.parser.parse_args([])._get_kwargs():
-                if key not in self.file:
-                    key_gone = True
-                    self.file.update({key: val})
-            if key_gone:
+            keys = dict(self.parser.parse_args([])._get_kwargs())
+            for i in ['set', 'reset', 'reset_all']:
+                keys.pop(i)
+            if any(key not in self.file for key in keys):
+                for key, val in keys.items():
+                    if key not in self.file:
+                        self.file.update({key: val})
                 self.file.save()
 
         self.set_defaults(self.file)
