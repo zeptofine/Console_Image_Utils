@@ -20,17 +20,15 @@ def pix_to_luma(pix):
     return (0.299*R + 0.587*G + 0.114*B)
 
 
-# def preview_image(name, img):
-#     cv2.imshow(name, cv2.resize(img, (0, 0), fx=1/2, fy=1/2))
-
-
-def pixelsort(img: np.ndarray, diff, preview=False, tqdm=False, preview_scale=512):
+def pixelsort(img: np.ndarray, diff: int, preview=False, use_tqdm=False, preview_scale=512):
     edges = cv2.GaussianBlur(img, (3, 3), 0)
     edges = cv2.Canny(edges, diff, diff)
+    edges = edges != 0
+
     if preview:
         # resize to a 512 x 512 image for preview
         scale = preview_scale * (1/max(edges.shape))
-        cv2.imshow('edges', cv2.resize(edges, (0, 0), fx=scale, fy=scale))
+        cv2.imshow('edges', cv2.resize(np.array(edges, dtype=np.uint8) * 255, (0, 0), fx=scale, fy=scale))
 
     cv2.waitKey(1)
 
@@ -38,7 +36,7 @@ def pixelsort(img: np.ndarray, diff, preview=False, tqdm=False, preview_scale=51
     # img_h = np.clip((img - 50), a_min=1, a_max=255)
     row_sets = []
     iter_obj = range(img.shape[0])
-    if tqdm:
+    if use_tqdm:
         iter_obj = tqdm(iter_obj)
     for row in iter_obj:
 
@@ -55,6 +53,7 @@ def pixelsort(img: np.ndarray, diff, preview=False, tqdm=False, preview_scale=51
             # print(edges[row:row + 1, col:col+1])
             # if newdiff > diff:
 
+            # a pixel will end a set and start the new set
             if edges[row:row + 1, col:col + 1][0, 0]:
                 pix_sets.append(np.sort(given_col[:, pivot:col], axis=1))
                 pivot = col
@@ -92,7 +91,7 @@ def sort_and_write(img, out, diff, preview, horiz, vertical, axes):
 if __name__ == "__main__":
 
     # User choice for files
-    path = Path("/mnt/Toshiba/GitHub/Console_Image_Utils/wildering/*")
+    path = Path("/mnt/Toshiba/GitHub/Console_Image_Utils/sequence/*")
     images = sorted(get_file_list(path))
 
     # whitelist = ['safe']
@@ -106,12 +105,15 @@ if __name__ == "__main__":
     swap_vertical = True
     swap_axes = True
     # sensitivity of Canny edge detection
-    diff = 72
+    diff = 32
+    preview = True
 
-    argtuples = [(img, str(out/img.name), diff, True, swap_horizontal, swap_vertical, swap_axes)
+    argtuples = [(img, str(out/img.name), diff, preview, swap_horizontal, swap_vertical, swap_axes)
                  for img in images]
 
-    # threads = int(os.cpu_count() / 4 * 3)
-    threads = 4
+    threads = int(os.cpu_count() / 4 * 3)
+    # threads = 4
     with CustomPool(threads) as p:
         out = list(tqdm(p.istarmap(sort_and_write, argtuples), total=len(images)))
+
+    cv2.destroyAllWindows()
