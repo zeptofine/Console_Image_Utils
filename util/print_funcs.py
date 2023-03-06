@@ -85,7 +85,10 @@ class RichStepper(Stepper):
         self.step += 1
         if s:
             self._print(
-                f"[{self.stepcolor}]{self.step}:[/{self.stepcolor}] {s}", **kwargs)
+                f"\n[{self.stepcolor}]{self.step}:[/{self.stepcolor}] {s}", **kwargs)
+        else:
+            self._print(
+                f"\n[{self.stepcolor}]{self.step}:[/{self.stepcolor}]", **kwargs)
         return self
 
     def print(self, *lines, **kwargs):
