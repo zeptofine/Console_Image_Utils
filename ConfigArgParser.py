@@ -1,7 +1,7 @@
 
 import json
 import os
-from argparse import SUPPRESS, ArgumentParser, Namespace
+from argparse import ArgumentParser, Namespace
 from sys import exit as sys_exit
 
 
@@ -22,6 +22,7 @@ class CfgDict(dict):
             out_dict = self
         with open(self.cfg_path, 'w+') as f:
             f.write(json.dumps(out_dict, indent=indent))
+        print("saved")
         return self
 
     def update(self, *args, **kwargs):
@@ -73,7 +74,7 @@ class ConfigParser:
         self.rewrite_help = rewrite_help
         self.autofill = autofill
         self.file = cfgObject or CfgDict(config_path)
-        self._remove_help()
+        # self._remove_help()
 
         # set up subparser
         self.parser = ArgumentParser(
@@ -102,36 +103,35 @@ class ConfigParser:
                                          help="removes a changed option.")
         self.config_options.add_argument(self.default_prefix*2+"reset_all", action="store_true",
                                          help="resets every option.")
-        self.parsed_args, _ = self.parser.parse_known_args()
-        # Add flags
-        self.kwargs = {i[0]: i[1] for i in self.parsed_args._get_kwargs()}
-        # exclude set, reset from config
-        for i in ['set', 'reset', 'reset_all']:
+
+        # get defaults from the actions
+        self.kwargs = {action.dest: action.default for action in self._parent._actions}
+
+        for i in ['set', 'reset', 'reset_all', 'help']:
             self.kwargs.pop(i, None)
 
         self.file.load()
-        # get args from config_path
+
         if self.autofill:
-            keys = dict(self.parser.parse_args([])._get_kwargs())
-            for i in ['set', 'reset', 'reset_all']:
-                keys.pop(i)
-            if any(key not in self.file for key in keys):
-                for key, val in keys.items():
-                    if key not in self.file:
-                        self.file.update({key: val})
+            if any(arg not in self.file for arg in self.kwargs):  # To avoid saving every time the parser is run
+                for arg in self.kwargs:
+                    if arg not in self.file:
+                        self.file.update({arg: self.kwargs[arg]})
                 self.file.save()
 
-        self.set_defaults(self.file)
-
-    # modified from argparse.py ( self.set_defaults(**kwargs) )
-    def set_defaults(self, arg_dict: dict):
-        self.parser._defaults.update(arg_dict)
-        for action in self.parser._actions:
-            if action.dest in arg_dict:
-                action.default = arg_dict[action.dest]
+        self.parser.set_defaults(**self.file)
 
     def parse_args(self, **kwargs) -> Namespace:
         '''args.set, reset, reset_all logic '''
+
+        # Disable every required item so if it was set in the config, it isn't required to add again
+        required = {}
+
+        for action in self._parent._actions:
+            if action.required:
+                required[action.dest] = True
+                action.required = False
+
         self.parsed_args, _ = self.parser.parse_known_args(**kwargs)
 
         # set defaults
@@ -151,11 +151,17 @@ class ConfigParser:
                 self.file.clear()
             self.file.save()
 
-            self.set_defaults(self.file)
+            self.parser.set_defaults(**self.file)
+
             if self.exit_on_change:
                 sys_exit()
 
-        self._add_help()
+        # self._add_help()
+
+        # reenable every required item that wasn't in the file
+        for action in self._parent._actions:
+            if action.dest not in self.file and action.dest in required:
+                action.required = True
 
         return self.parser.parse_args()
 
@@ -167,19 +173,3 @@ class ConfigParser:
         if str(potential_args[1]).isdigit():
             potential_args[1] = int(potential_args[1])
         return potential_args
-
-    def _remove_help(self):
-        if self._parent.add_help and self.rewrite_help:
-            self._parent._actions.pop(0)
-            self._parent._option_string_actions.pop(f'{self.default_prefix}h')
-            self._parent._option_string_actions.pop(
-                f'{self.default_prefix*2}help')
-
-    def _add_help(self):
-        if self._parent.add_help and self.rewrite_help:
-            self.parser.add_argument(
-                f"{self.parser.prefix_chars}h",
-                f"{self.parser.prefix_chars*2}help",
-                action='help', default=SUPPRESS,
-                help=('show this help message and exit')
-            )
