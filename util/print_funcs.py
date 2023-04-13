@@ -2,13 +2,13 @@ from os import get_terminal_size
 import time
 
 
-def pbar(iteration: int, total: int, length=20,
+def pbar(
+    iteration: int, total: int, length=20,
          fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
-    filledLength = (length * iteration) // total
+    filled = (length * iteration) // total
     #    [#############################]
-    return f"{str(pref)}\033[92m{corner[0]}\033[93m" + \
-        (fill*length)[:filledLength] + (nullp*(length - filledLength)) + \
-        f"\033[92m{corner[1]}\033[0m{str(suff)}"
+    c1, c2 = "\033[92m", "\033[93m"
+    return f"{pref}{c1}{corner[0]}{c2}{(fill*length)[:filled]:{nullp}<{length}}{c1}{corner[1]}\033[0m{suff}"
 
 
 def isbar(iteration, total, suff="", **kwargs):
@@ -138,7 +138,7 @@ class Timer:
 
 if __name__ == "__main__":
     t = Timer()
-    interval = 5_000_000
+    interval = 5_000
     for i in range(interval):
         time.time()
     t.print("time()")
@@ -146,6 +146,7 @@ if __name__ == "__main__":
         time.perf_counter()
     t.print("perf_counter()")
 #     t = Timer()
-#     for i in range(100):
-#         for j in range(8):
-#             thread_status(j, t, extra=p_bar(i, 100))
+    for i in range(100):
+        for j in range(8):
+            thread_status(j, t, extra=pbar(i, 100))
+        time.sleep(0.01)

@@ -6,3 +6,5 @@ rich
 rich_argparse
 shtab
 tqdm
+cfg-argparser
+imagehash
