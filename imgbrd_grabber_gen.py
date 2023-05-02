@@ -3,7 +3,7 @@ import json
 import os
 from argparse import ArgumentParser
 
-from ConfigArgParser import ConfigParser
+from cfg_argparser import ConfigArgParser
 
 parser = ArgumentParser()
 parser.add_argument('-s', '--sort', action="store_true",
@@ -18,7 +18,7 @@ parser.add_argument(
     "--output-fmt", default="%search_1%/%date:format=yyyy-MM-dd-hh-mm-ss%_%md5%_%rating%.%ext%")
 parser.add_argument('--post-filter', action="store_true",
                     help="puts blacklisted terms in the postFiltering section. will pass onto tags otherwise.")
-cparser = ConfigParser(parser, "config.json", autofill=True)
+cparser = ConfigArgParser(parser, "config.json")
 args = cparser.parse_args()
 
 if not os.path.exists("prefixes.txt"):

@@ -1,24 +1,22 @@
-"""Conversion script from folder to hr/lr pair.
+from __future__ import annotations
+from collections.abc import Iterable, Callable, Generator
 
-@author zeptofine
-"""
+'''
+    Conversion script from folder to hr/lr pair.
+    Author: Zeptofine
+'''
+import multiprocessing.pool as mpp
 import os
 import sys
 from argparse import ArgumentParser
 from datetime import datetime
 from glob import glob
+from multiprocessing import Pool  # , Process, Queue, current_process
 from pathlib import Path
-# from random import random
 from subprocess import SubprocessError
-# trunk-ignore(flake8/F401)
-from multiprocessing import Process, current_process, Pool, Queue
-import multiprocessing.pool as mpp
-from typing import Type
-# trunk-ignore(flake8/F401)
-import time
 
 from util.pip_helpers import PipInstaller
-from util.print_funcs import Timer, ipbar  # trunk-ignore(flake8/F401)
+from util.print_funcs import ipbar  # , Timer
 from util.process_funcs import is_subprocess
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
@@ -50,8 +48,7 @@ with PipInstaller() as p:
                 raise ImportError
 
     except (ImportError, ModuleNotFoundError):
-        response = input(
-            "A package failed to import. Would you like to try and install required packages? y/N: ")
+        response = input("A package failed to import. Would you like to try and install required packages? y/N: ")
         if response.lower() not in ["y", "yes"] or not response:
             print("Please inspect the requirements.txt file.")
             sys.exit()
@@ -80,12 +77,12 @@ with PipInstaller() as p:
         import dateutil.parser as timeparser
         import imagehash
         import imagesize
+        from cfg_argparser import ConfigArgParser
         from PIL import Image
         # from rich import print as rprint
         from rich.traceback import install
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
         from tqdm import tqdm
-        from cfg_argparser import ConfigArgParser
 
         from util.print_funcs import RichStepper
         install()
@@ -132,7 +129,8 @@ def main_parser() -> ArgumentParser:
                         help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
     p_mods.add_argument("--overwrite", action="store_true",
                         help="Skips checking for existing files, and by proxy, overwrites existing files.")
-
+    p_mods.add_argument("--perfdump", action="store_true",
+                        help="Dumps performance information for reading with snakeviz or others.")
     # certain criteria that images must meet in order to be included in the processing.
     p_filters = parser.add_argument_group("Filters")
     p_filters.add_argument("-w", "--whitelist", type=str, metavar="INCLUDE",
@@ -262,35 +260,17 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
     return hr_path, lr_path
 
 
-def within_time_and_res(img_path,
-                        before, after,
-                        minsize, maxsize,
-                        scale, crop_mod) -> tuple[bool, os.stat_result, tuple]:
-    # filter images that are too young or too old
-    mstat = img_path.stat()
-    filetime = datetime.fromtimestamp(mstat.st_mtime)
-    sbool = not ((before and (before < filetime))
-                 or (after and (after > filetime)))
-
-    # filter images that are too small or too big, or not divisible by scale
-    res = imagesize.get(img_path)
-    if crop_mod:
-        res = (res[0] // scale) * scale, (res[1] // scale) * scale
-    minsize, maxsize = minsize or min(res), maxsize or max(res)
-    rbool = all(dim % scale == 0 and minsize <= dim <= maxsize for dim in res)
-
-    return (sbool and rbool), mstat, res
-
-
 class DatasetBuilder:
     def __init__(self, rich_stepper_object, processes=1):
         super().__init__()
-        self.filters: list[Type[DataFilter]] = [
+        self.filters: list[DataFilter] = [
         ]
         self.power = processes
         self.stepper = rich_stepper_object
 
-    def add_filters(self, *filters):
+    def add_filters(self, *filters: DataFilter) -> None:
+        '''Adds filters to the filter list.
+        '''
         for filter in filters:
             filter.set_parent(self)
             self.filters.append(filter)
@@ -298,12 +278,31 @@ class DatasetBuilder:
     def run_filters(self, x):
         return all(filter.compare(x) for filter in self.filters)
 
-    def filter(self, filelist):
-        with Pool(self.power) as p:
-            for result, file in zip(tqdm(p.imap(self.run_filters, filelist), total=len(filelist)), filelist):
+    def map(self, lst: Iterable, use_pool: bool = False) -> Iterable[bool]:
+        '''Maps all input to all the filters.
 
-                if result:
-                    yield file
+        Parameters
+        ----------
+        lst : Iterable
+            the iterable to run through.
+        use_pool : bool
+            whether or not to use a pool. defaults to False
+        Yields
+        ------
+        Generator[bool]
+            every result for every list
+        '''
+        with Pool(self.power) as p:
+            for result in p.imap(self.run_filters, lst):
+                yield result
+
+    def filter(self, lst: Iterable, cond: Callable = lambda x: x, use_pool=False) -> Generator:
+        '''A version of map that only yields successful results
+        '''
+        for result, file in zip(self.map(lst, use_pool=use_pool), lst):
+            yield file
+            if cond(result):
+                yield file
 
     def _apply(self, filter_filelist):
         filter, filelist = filter_filelist
@@ -321,11 +320,8 @@ class DatasetBuilder:
             outset = set.intersection(*outcomes)
         return outset
 
-    def get_data(self):
-        return {filter: filter.data for filter in self.filters}
-
-    def __enter__(self):
-        self.__init__()
+    def __enter__(self, *args, **kwargs):
+        self.__init__(*args, **kwargs)
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
@@ -335,26 +331,18 @@ class DatasetBuilder:
 
 
 class DataFilter:
+    '''An abstract DataFilter format, for use in DatasetBuilder.
+    '''
+
     def __init__(self):
-        # Attributes will be added by the filters
-        self.data = dict()
-        # Boolean if it should be applied to the whole list at once
-        self.all = False
         self.parent = None
         pass
 
     def set_parent(self, parent: DatasetBuilder):
         self.parent = parent
 
-    def compare(self, file: Path) -> tuple[bool, dict | None]:
-        return True
-
-    def update(self, other: dict):
-        self.data.update(other)
-
-    def reason(self, x):
-        if x in self.data:
-            return f"{self.data[x]}"
+    def compare(self, file: Path) -> bool:
+        raise NotImplementedError
 
     def __repr__(self):
         attrlist = []
@@ -376,7 +364,7 @@ class DataFilterStat(DataFilter):
         self.before = beforetime
         self.after = aftertime
 
-    def compare(self, file: Path) -> tuple[bool, int]:
+    def compare(self, file: Path) -> bool:
         st_mtime = datetime.fromtimestamp(file.stat().st_mtime)
 
         return not ((self.after and self.after < st_mtime) or (self.before and self.before > st_mtime))
@@ -390,7 +378,7 @@ class DataFilterRes(DataFilter):
         self.crop: bool = crop_mod
         self.scale: int = scale
 
-    def compare(self, file: Path) -> tuple[bool, tuple[int, int]]:
+    def compare(self, file: Path) -> bool:
         # setattr(file, "res", imagesize.get(file.path))
         res = imagesize.get(file)
         if self.crop:
@@ -398,30 +386,6 @@ class DataFilterRes(DataFilter):
         minsize, maxsize = self.min or min(res), self.max or max(res)
 
         return all(dim % self.scale == 0 and minsize <= dim <= maxsize for dim in res)
-
-
-# class DataFilterHash(DataFilter):
-#     IMHASH_TYPES = {
-#         'average': imagehash.average_hash,
-#         'crop_resistant': imagehash.crop_resistant_hash,
-#         'color': imagehash.colorhash,
-#         'dhash': imagehash.dhash,
-#         'dhash_vertical': imagehash.dhash_vertical,
-#         'phash': imagehash.phash,
-#         'phash_simple': imagehash.phash_simple,
-#         'whash': imagehash.whash
-#     }
-
-#     def __init__(self, hasher: str, hash_choice: str):
-#         super().__init__()
-#         if hasher not in IMHASH_TYPES:
-#             raise KeyError(f"{hasher} is not in IMHASH_TYPES")
-#         self.hasher = IMHASH_TYPES[hasher]
-#         self.conflict_resolution = hash_choice
-
-#     def compare(self, file: Path) -> tuple[bool, dict]:
-#         hash = str(self.hasher(Image.open(file)))
-#         return (True, hash)
 
 
 def fileparse(inpath: Path, source: Path, scale: int,
@@ -452,19 +416,24 @@ def fileparse(inpath: Path, source: Path, scale: int,
     return inpath
 
 
-def main():
-    cparser = ConfigArgParser(main_parser(), "config.json", exit_on_change=True)
-    args = cparser.parse_args()
+def starmap(func, args):
+    # I'm surprised this isn't built in
+    for arg in args:
+        yield func(*arg)
+
+
+def main(args):
 
     s = RichStepper(loglevel=1, step=-1)
     s.next("Settings: ")
 
     df = DatasetBuilder(s, args.threads)
 
-    def check_for_images(image_list) -> None:
+    def check_for_images(image_list) -> bool:
         if not image_list:
             s.print(-1, "No images left to process")
-            sys.exit(0)
+            return False
+        return True
 
 # * Make sure given args are valid
     if not args.input:
@@ -548,16 +517,6 @@ def main():
 #     if args.hash:
 #         df.add_filters(DataFilterHash(args.hash_type, args.hash_choice))
 
-# * Run filters
-    s.print(
-        "Filtering using: ",
-        *[f" - {str(filter)}" for filter in df.filters]
-    )
-
-    image_list = set(df.filter(image_list))
-    # rprint(image_list)
-    check_for_images(image_list)
-
 # * Discard symbolic duplicates
     original_total = len(image_list)
     if has_links(image_list):
@@ -577,19 +536,33 @@ def main():
 
         s.print("Purged.")
 
+# * Run filters
+    s.print(
+        "Filtering using: ",
+        *[f" - {str(filter)}" for filter in df.filters]
+    )
+    results = df.map({*map(lambda x: args.input / x, image_list), })
+    image_list = [i[0] for i in tqdm(zip(image_list, results), total=len(image_list)) if i[1]]
+
+    if not check_for_images(image_list):
+        return 0
+
+
 # * Get files that were already converted
     original_total = len(image_list)
     if not args.overwrite:
-        s.next("Removing existing")
+        s.next("Removing existing images")
         exist_list = get_existing(hr_folder, lr_folder)
-        image_list = {i for i in ipbar(image_list, clear=True)
-                      if to_recursive(i, args.recursive).with_suffix("") not in exist_list}
+        image_list = [i for i in ipbar(image_list, clear=True)
+                      if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
 
     if len(image_list) != original_total:
         s.print(f"Discarded {original_total-len(image_list)} existing images")
     else:
         s.print("None found")
-    check_for_images(image_list)
+
+    if not check_for_images(image_list):
+        return 0
 
     if args.image_limit and args.limit_mode == "after":
         image_list = set(image_list[:args.image_limit])
@@ -604,10 +577,33 @@ def main():
         with Pool(args.threads) as p:
             for _ in tqdm(istarmap(p, fileparse, pargs), total=len(image_list)):
                 pass
+
     except KeyboardInterrupt:
         s.print(-1, "KeyboardInterrupt")
 
-    exit()
+# >>> Hashing nonsense >>> (This will be reimplemented later)
+# class DataFilterHash(DataFilter):
+#     IMHASH_TYPES = {
+#         'average': imagehash.average_hash,
+#         'crop_resistant': imagehash.crop_resistant_hash,
+#         'color': imagehash.colorhash,
+#         'dhash': imagehash.dhash,
+#         'dhash_vertical': imagehash.dhash_vertical,
+#         'phash': imagehash.phash,
+#         'phash_simple': imagehash.phash_simple,
+#         'whash': imagehash.whash
+#     }
+
+#     def __init__(self, hasher: str, hash_choice: str):
+#         super().__init__()
+#         if hasher not in IMHASH_TYPES:
+#             raise KeyError(f"{hasher} is not in IMHASH_TYPES")
+#         self.hasher = IMHASH_TYPES[hasher]
+#         self.conflict_resolution = hash_choice
+
+#     def compare(self, file: Path) -> tuple[bool, dict]:
+#         hash = str(self.hasher(Image.open(file)))
+#         return (True, hash)
 
 # * filter by image hashes
     # if args.hash:
@@ -667,8 +663,27 @@ def main():
 
     #     image_list = set(image_list).intersection(final_hashes.values())
     #     s.print(f"Discarded {original_total - len(image_list)} images via imagehash.{args.hash_choice}")
-    #     check_for_images(image_list)
+# <<< Hashing nonsense <<<
+
+
+def wrap_profiler(func, filename):
+    import cProfile
+    import pstats
+
+    def _wrapped(*args, **kwargs):
+        with cProfile.Profile() as pr:
+            func(*args, **kwargs)
+        stats = pstats.Stats(pr)
+        stats.sort_stats(pstats.SortKey.TIME)
+        stats.dump_stats(filename=filename)
+        print("Performance dumped.")
+    return _wrapped
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    cparser = ConfigArgParser(main_parser(), "config.json", exit_on_change=True)
+    args = cparser.parse_args()
+    if args.perfdump:
+        main = wrap_profiler(main, filename='CreateDataset.prof')
+
+    main(args)

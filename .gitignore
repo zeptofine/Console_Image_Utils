@@ -7,3 +7,4 @@ prefixes.txt
 imgbrd_grabbergen.igl
 .venv
 tmp.py
+*.prof

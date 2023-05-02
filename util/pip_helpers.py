@@ -31,13 +31,13 @@ class PipInstaller:
             output = []
             try:
                 for line in io.TextIOWrapper(import_proc.stdout):  # type: ignore
-                    print(f'\033[2K<{packages.ljust(10)}> {line.strip()}'[:get_terminal_size().columns-1], end="\r")
+                    print(f'\033[2K<{set(packages)}> {line.strip()}'[:get_terminal_size().columns - 1], end="\r")
                     output.append(line.strip())
-                return import_proc.returncode
             except (KeyboardInterrupt, SubprocessError):
                 import_proc.kill()
                 import_proc.terminate()
                 print("\n".join(output[-10:]))
+        return import_proc.returncode
 
     def ensure(self) -> None:
         self.install("", post=["ensurepip", "--upgrade"])

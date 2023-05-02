@@ -2,8 +2,7 @@ from os import get_terminal_size
 import time
 
 
-def pbar(
-    iteration: int, total: int, length=20,
+def pbar(iteration: int, total: int, length=20,
          fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
     filled = (length * iteration) // total
     #    [#############################]
@@ -39,15 +38,15 @@ def thread_status(pid: int, item: str = "", extra: str = "", item_size=None):
     print(('\n' * pid) + message + ('\033[A' * pid), end="\r")
 
 
+PRINT_MODES: dict[str, tuple[str, str]] = {
+    "newline": ("", "\n"),
+    "sameline": ("\033[2K", ""),
+    "append": ("", "")
+}
 class Stepper:
-    def __init__(self, step=0, print_mode="newline", print_class=print):
-        self.print_modes = {
-            "newline": ("", "\n"),
-            "sameline": ("\033[2K", ""),
-            "append": ("", "")
-        }
+    def __init__(self, step=0, print_mode = "newline", print_class=print):
         self.step = step
-        self.print_mode = self.print_modes.get(print_mode)
+        self.print_mode: tuple[str, str] = PRINT_MODES[print_mode]
         self.printer = print_class
 
     def next(self, s=None, **kwargs):
@@ -115,7 +114,7 @@ class RichStepper(Stepper):
 
 
 class Timer:
-    def __init__(self, timestamp: int = None):
+    def __init__(self, timestamp: int | None = None):
         self.time = timestamp or time.perf_counter()
 
     def print(self, msg):
@@ -131,6 +130,8 @@ class Timer:
         '''resets time'''
         self.time = time.perf_counter()
         return self.time
+
+    def __str__(self): return self.__repr__()
 
     def __repr__(self):
         return str((time.perf_counter()) - self.time)
@@ -148,5 +149,5 @@ if __name__ == "__main__":
 #     t = Timer()
     for i in range(100):
         for j in range(8):
-            thread_status(j, t, extra=pbar(i, 100))
+            thread_status(j, str(t), extra=pbar(i, 100))
         time.sleep(0.01)
