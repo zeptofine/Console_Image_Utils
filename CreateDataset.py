@@ -1,5 +1,9 @@
 from __future__ import annotations
-from collections.abc import Iterable, Callable, Generator
+import time
+
+from collections.abc import Callable, Generator, Iterable
+from dataclasses import dataclass
+from enum import Enum
 
 '''
     Conversion script from folder to hr/lr pair.
@@ -7,6 +11,7 @@ from collections.abc import Iterable, Callable, Generator
 '''
 import multiprocessing.pool as mpp
 import os
+import random
 import sys
 from argparse import ArgumentParser
 from datetime import datetime
@@ -37,7 +42,9 @@ with PipInstaller() as p:
         'rich-argparse':   "rich_argparse",
         'shtab':           "shtab",
         'tqdm':            "tqdm",
-        'cfg-argparser':   "cfg_argparser"
+        'cfg-argparser':   "cfg_argparser",
+        'pandas':          'pandas',
+        'tables':          'tables'
     }
 
     try:
@@ -77,9 +84,11 @@ with PipInstaller() as p:
         import dateutil.parser as timeparser
         import imagehash
         import imagesize
-        from cfg_argparser import ConfigArgParser
+        import pandas as pd
+        # trunk-ignore(flake8/F401)
+        from cfg_argparser import CfgDict, ConfigArgParser
         from PIL import Image
-        # from rich import print as rprint
+        from rich import print as rprint
         from rich.traceback import install
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
         from tqdm import tqdm
@@ -153,13 +162,18 @@ def main_parser() -> ArgumentParser:
                            "ex. '2020', or '2009 Sept 16th'")
     p_filters.add_argument("--before", type=str,
                            help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
-    # p_filters.add_argument("--hash", action="store_true",
-    #                        help="Removes similar images. is better for perceptually similar images.")
-    # p_filters.add_argument("--hash-type", type=str, choices=["average", "crop_resistant", "color", "dhash", "dhash_vertical",
-    #                                                          "phash", "phash_simple", "whash"], default="average",
-    #                        help="type of image hasher to use for the slow method. read https://github.com/JohannesBuchner/imagehash for more info")
-    # p_filters.add_argument("--hash-choice", type=str, choices=["name", "ext", "len",  "res", "time", "size", "random"],
-    #                        default='res', help="At the chance of a hash conflict, this will decide which to keep.")
+    p_filters.add_argument("--hash", action="store_true",
+                           help="Removes similar images. is better for perceptually similar images.")
+    p_filters.add_argument("--hash-type", type=str, choices=["average", "crop_resistant", "color", "dhash", "dhash_vertical",
+                                                             "phash", "phash_simple", "whash"], default="average",
+                           help="type of image hasher to use for the slow method. read https://github.com/JohannesBuchner/imagehash for more info")
+    # {
+    #         'ignore_all': self._ignore_all,
+    #         'newest': self._accept_newest,
+    #         'oldest': self._accept_oldest
+    #     }
+    p_filters.add_argument("--hash-choice", type=str, choices=["ignore_all", "newest", "oldest", "size"],
+                           default='size', help="At the chance of a hash conflict, this will decide which to keep.")
     # # ^^ Used for filtering out too old or too new images.
     # p_filters.add_argument("--print-filtered", action="store_true",
     #                        help="prints all images that were removed because of filters.")
@@ -217,14 +231,6 @@ def to_recursive(path, recursive) -> Path:
     return Path(path) if recursive else Path(str(path).replace(os.sep, "_"))
 
 
-def whitelist(imglist, whitelist) -> set:
-    return {j for i in whitelist for j in imglist if i in str(j)}
-
-
-def blacklist(imglist, blacklist) -> set:
-    return set(imglist).difference(whitelist(imglist, blacklist))
-
-
 IMHASH_TYPES = {
     'average': imagehash.average_hash,
     'crop_resistant': imagehash.crop_resistant_hash,
@@ -235,9 +241,6 @@ IMHASH_TYPES = {
     'phash_simple': imagehash.phash_simple,
     'whash': imagehash.whash
 }
-
-
-def get_imghash(path, hasher): return IMHASH_TYPES[hasher](Image.open(path))
 
 
 def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
@@ -260,10 +263,39 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
     return hr_path, lr_path
 
 
+@dataclass
+class DatasetFile:
+    path: Path
+    hr_path: Path
+    lr_path: Path
+
+
+# def fileparse(inpath: Path, source: Path, scale: int,
+#               hr_folder: Path, lr_folder: Path) -> Path:
+def fileparse(dfile: DatasetFile, scale):
+    """Converts an image file to HR and LR versions and saves them to the specified folders.
+    """
+    # Read the image file
+    image = cv2.imread(str(dfile.path), cv2.IMREAD_UNCHANGED)
+    image = image[0:(image.shape[0] // scale) * scale,
+                  0:(image.shape[1] // scale) * scale]
+    # Save the HR / LR version of the image
+    cv2.imwrite(str(dfile.hr_path), image)
+    cv2.imwrite(str(dfile.lr_path), cv2.resize(image, (0, 0),
+                                               fx=1 / scale, fy=1 / scale))  # type: ignore
+
+    # Set the modification time of the HR and LR image files to the original image's modification time
+    mtime = dfile.path.stat().st_mtime
+    os.utime(str(dfile.hr_path), (mtime, mtime))
+    os.utime(str(dfile.lr_path), (mtime, mtime))
+
+
 class DatasetBuilder:
     def __init__(self, rich_stepper_object, processes=1):
         super().__init__()
         self.filters: list[DataFilter] = [
+        ]
+        self.full_filters: list[DataFilter] = [
         ]
         self.power = processes
         self.stepper = rich_stepper_object
@@ -273,7 +305,10 @@ class DatasetBuilder:
         '''
         for filter in filters:
             filter.set_parent(self)
-            self.filters.append(filter)
+            if filter.type == FilterTypes.PER_ITEM:
+                self.filters.append(filter)
+            else:
+                self.full_filters.append(filter)
 
     def run_filters(self, x):
         return all(filter.compare(x) for filter in self.filters)
@@ -292,9 +327,24 @@ class DatasetBuilder:
         Generator[bool]
             every result for every list
         '''
-        with Pool(self.power) as p:
-            for result in p.imap(self.run_filters, lst):
+        if use_pool:
+            with Pool(self.power) as p:
+                for result in p.imap(self.run_filters, lst):
+                    yield result
+        else:
+            for result in map(self.run_filters, lst):
                 yield result
+
+    def full_map(self, lst: Iterable, use_pool: bool = True):
+
+        if use_pool:
+            with Pool(self.power) as p:
+                for filter in self.full_filters:
+                    lst = filter.full_compare(lst, p)
+        else:
+            for filter in self.full_filters:
+                lst = filter.full_compare(lst)
+        return lst
 
     def filter(self, lst: Iterable, cond: Callable = lambda x: x, use_pool=False) -> Generator:
         '''A version of map that only yields successful results
@@ -330,18 +380,27 @@ class DatasetBuilder:
         pass
 
 
+class FilterTypes(Enum):
+    PER_ITEM = 1
+    FULL = 2
+
+
 class DataFilter:
     '''An abstract DataFilter format, for use in DatasetBuilder.
     '''
 
     def __init__(self):
         self.parent = None
+        self.type = FilterTypes.PER_ITEM
         pass
 
     def set_parent(self, parent: DatasetBuilder):
         self.parent = parent
 
     def compare(self, file: Path) -> bool:
+        raise NotImplementedError
+
+    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> bool:
         raise NotImplementedError
 
     def __repr__(self):
@@ -388,32 +447,148 @@ class DataFilterRes(DataFilter):
         return all(dim % self.scale == 0 and minsize <= dim <= maxsize for dim in res)
 
 
-def fileparse(inpath: Path, source: Path, scale: int,
-              hr_folder: Path, lr_folder: Path,
-              recursive: bool, ext=None) -> Path:
-    """
-    Converts an image file to HR and LR versions and saves them to the specified folders.
-    Returns tuple[Path, tuple[...]]: solely for printing.
-    """
-    # Generate the HR & LR file paths
-    hr_path, lr_path = hrlr_pair(inpath, hr_folder, lr_folder, recursive, ext)
+def hash_img(img, hasher):
+    return hasher(Image.open(img))
 
-    # Read the image file
-    image = cv2.imread(str(source), cv2.IMREAD_UNCHANGED)
-    image = image[0:(image.shape[0] // scale) * scale,
-                  0:(image.shape[1] // scale) * scale]
-    # Save the HR / LR version of the image
-    cv2.imwrite(str(hr_path), image)
-    cv2.imwrite(str(lr_path), cv2.resize(image, (0, 0),
-                fx=1 / scale, fy=1 / scale))  # type: ignore
 
-    # Set the modification time of the HR and LR image files to the original image's modification time
-    mtime = source.stat().st_mtime
-    os.utime(str(hr_path), (mtime, mtime))
-    os.utime(str(lr_path), (mtime, mtime))
+class DataFilterHash(DataFilter):
+    IMHASH_TYPES = {
+        'average': imagehash.average_hash,
+        'crop_resistant': imagehash.crop_resistant_hash,
+        'color': imagehash.colorhash,
+        'dhash': imagehash.dhash,
+        'dhash_vertical': imagehash.dhash_vertical,
+        'phash': imagehash.phash,
+        'phash_simple': imagehash.phash_simple,
+        'whash': imagehash.whash
+    }
 
-    # Return the input path of the image file
-    return inpath
+    def __init__(self, hash_choice, resolver='newest'):
+        self.type = FilterTypes.FULL
+
+        IMHASH_RESOLVERS = {
+            'ignore_all': self._ignore_all,
+            'newest': self._accept_newest,
+            'oldest': self._accept_oldest,
+            'size': self._accept_biggest
+        }
+        if hash_choice not in IMHASH_TYPES:
+            raise KeyError(f"{hash_choice} is not in IMHASH_TYPES")
+        if resolver not in IMHASH_RESOLVERS:
+            raise KeyError(f"{resolver} is not in IMHASH_RESOLVERS")
+        self.hasher = IMHASH_TYPES[hash_choice]
+        self.resolver = IMHASH_RESOLVERS[resolver]
+        self.filepath = "hashes.h5"
+        if os.path.exists(self.filepath):
+            print("Reading hash database...")
+            self.dataframe = pd.read_hdf(self.filepath, 'table')
+            print("Finished.")
+        else:
+            self.dataframe = pd.DataFrame(columns=['path', 'hash', 'modifiedtime', 'checkedtime'])
+
+    def full_compare(self, lst: list[Path], p: Pool = None) -> Iterable:
+        lst = set(sorted(lst, key=lambda _: random.random()))
+        to_original = {pth.resolve(): pth for pth in lst}
+        resolved_lst = to_original.keys()
+
+        # drop hashes that are too old or the modification time changed
+        original_size = len(self.dataframe)
+        maxduration_s = 60 * 60 * 24 * 7  # 7 days
+
+        current_time = time.time()
+        list_to_hash = []
+        for idx, row in tqdm(self.dataframe.iterrows(), "Trimming db...", total=len(self.dataframe)):
+            if (not os.path.exists(row['path'])
+                or Path(row['path']).stat().st_mtime != row['modifiedtime']
+                    or row['checkedtime'] < current_time - maxduration_s):
+                list_to_hash.append((idx, row['path']))
+
+        self.dataframe.drop(map(lambda x: x[0], list_to_hash), inplace=True)
+        if len(self.dataframe) != original_size:
+            rprint(f"stripped old/invalid hashes from list. new hashlist length: {len(self.dataframe)}")
+
+        conv_lst = []
+        hashed_lst = set(map(Path, self.dataframe['path']))
+        conv_lst = [path for path in resolved_lst if path not in hashed_lst]
+        if conv_lst:
+            print(f"Getting hashes for {len(conv_lst)} images")
+            if p:
+                iterable = zip(
+                    conv_lst,
+                    istarmap(p, hash_img, zip(conv_lst, [self.hasher]*len(conv_lst))),
+                )
+            else:
+                iterable = zip(
+                    conv_lst,
+                    map(lambda p: hash_img(p, self.hasher), conv_lst),
+                )
+
+            for pth, h in tqdm(iterable, "Gathering...", total=len(conv_lst)):
+                stat = pth.stat()
+                # if str(h) in set(self.dataframe['hash']):
+                #     rprint(f"'{p}' has the same hash as: ")
+                #     rprint(list(self.dataframe.loc[self.dataframe['hash'] == str(h)]['path']))
+                self.dataframe.loc[len(self.dataframe.index)] = [str(pth.resolve()), str(h), stat.st_mtime, time.time()]
+
+            self.dataframe.to_hdf(self.filepath, 'table')
+
+        resolved_paths = []
+        for h, group in tqdm(self.dataframe.groupby('hash').groups.items(), "Grouping..."):
+            if len(group) > 1:
+                rows = list(self.dataframe.iloc[group]['path'])
+                resolved = self.resolver(rows)
+                print(resolved)
+                if resolved is not None:
+                    resolved_paths.append(Path(resolved))
+                    rprint(f"{rows} -> '{resolved}'")
+            elif len(group) == 1:
+                resolved_paths.append(Path(list(self.dataframe.iloc[group]['path'])[0]))
+            else:
+                raise RuntimeError("What")
+        # exit()
+        return [to_original[i] for i in tqdm(resolved_paths) if i in lst]
+
+    def _ignore_all(self, _) -> Path:
+        return None
+
+    def _get_ages(self, lst) -> dict:
+        return {pth: Path(pth).stat().st_mtime for pth in lst}
+
+    def _get_sizes(self, lst) -> dict:
+        return {pth: Path(pth).stat().st_size for pth in lst}
+
+    def _accept_newest(self, lst) -> Path:
+        return sorted(self._get_ages(lst).items(), key=lambda p_a: p_a[::-1])[-1][0]
+
+    def _accept_oldest(self, lst) -> Path:
+        return sorted(self._get_ages(lst).items(), key=lambda p_a: p_a[::-1])[0][0]
+
+    def _accept_biggest(self, lst) -> Path:
+        return sorted(self._get_sizes(lst).items(), key=lambda s_p: s_p[::-1])[-1][0]
+
+
+class DataFilterBlacknWhitelist(DataFilter):
+    def __init__(self, whitelist=[], blacklist=[]):
+        self.type = FilterTypes.FULL
+        self.whitelist = whitelist
+        self.blacklist = blacklist
+
+    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> bool:
+        out = lst
+        if self.whitelist:
+            out = self._whitelist(out, self.whitelist)
+            print(f"whitelist {self.whitelist}: {len(out)}")
+        if self.blacklist:
+            out = self._blacklist(out, self.blacklist)
+            print(f"blacklist {self.blacklist}: {len(out)}")
+
+        return out
+
+    def _whitelist(self, imglist, whitelist) -> set:
+        return {j for i in whitelist for j in imglist if i in str(j)}
+
+    def _blacklist(self, imglist, blacklist) -> set:
+        return set(imglist).difference(self._whitelist(imglist, blacklist))
 
 
 def starmap(func, args):
@@ -461,7 +636,7 @@ def main(args):
 
     args.minsize = args.minsize if args.minsize != -1 else None
     args.maxsize = args.maxsize if args.maxsize != -1 else None
-    df.add_filters(DataFilterRes(args.minsize, args.maxsize, args.crop_mod, args.scale))
+    # df.add_filters(DataFilterRes(args.minsize, args.maxsize, args.crop_mod, args.scale))
 
     if args.before or args.after:
         s.print(f"Filtering by time ({args.before} <= x <= {args.after})")
@@ -502,20 +677,7 @@ def main(args):
         image_list = image_list[:args.image_limit]
     s.print(f"Gathered {len(image_list)} images")
 
-    if args.whitelist:
-        args.whitelist = args.whitelist.split(args.list_separator)
-        image_list = whitelist(image_list, args.whitelist)
-        s.print(f"whitelist {args.whitelist}: {len(image_list)}")
-    if args.blacklist:
-        args.blacklist = args.blacklist.split(args.list_separator)
-        image_list = blacklist(image_list, args.blacklist)
-        s.print(f"blacklist {args.blacklist}: {len(image_list)}")
-
     s.next()
-
-# # * hashing option
-#     if args.hash:
-#         df.add_filters(DataFilterHash(args.hash_type, args.hash_choice))
 
 # * Discard symbolic duplicates
     original_total = len(image_list)
@@ -525,6 +687,29 @@ def main(args):
                           for i in ipbar(image_list, clear=True)}.values())
         if len(image_list) != original_total:
             s.print(f"Discarded {original_total - len(image_list)} symbolic links")
+
+# * hashing option
+    if args.hash:
+        df.add_filters(DataFilterHash(args.hash_type, args.hash_choice))
+
+        # * white / blacklist option
+    if args.whitelist or args.blacklist:
+        whitelist = []
+        blacklist = []
+        if args.whitelist:
+            whitelist = args.whitelist.split(args.list_separator)
+
+            args.whitelist = args.whitelist.split(args.list_separator)
+            # image_list = whitelist(image_list, args.whitelist)
+            # s.print(f"whitelist {args.whitelist}: {len(image_list)}")
+        if args.blacklist:
+            blacklist = args.blacklist.split(args.list_separator)
+
+            args.blacklist = args.blacklist.split(args.list_separator)
+            # image_list = blacklist(image_list, args.blacklist)
+            # s.print(f"blacklist {args.blacklist}: {len(image_list)}")
+        df.add_filters(DataFilterBlacknWhitelist(whitelist, blacklist))
+
 
 # * Purge existing images
     if args.purge:
@@ -537,16 +722,25 @@ def main(args):
         s.print("Purged.")
 
 # * Run filters
-    s.print(
-        "Filtering using: ",
-        *[f" - {str(filter)}" for filter in df.filters]
-    )
-    results = df.map({*map(lambda x: args.input / x, image_list), })
-    image_list = [i[0] for i in tqdm(zip(image_list, results), total=len(image_list)) if i[1]]
-
+    if df.full_filters:
+        s.print(
+            "Filtering using: ",
+            *[f' - {str(filter)}' for filter in df.full_filters]
+        )
+        image_list: list[Path] = [
+            p.relative_to(args.input)
+            for p in
+            df.full_map({*map(lambda x: args.input / x, image_list), }, use_pool=True)
+        ]
+    if df.filters:
+        s.print(
+            "Filtering using: ",
+            *[f" - {str(filter)}" for filter in df.filters]
+        )
+        results = df.map({*map(lambda x: args.input / x, image_list), })
+        image_list = [i[0] for i in tqdm(zip(image_list, results), total=len(image_list)) if i[1]]
     if not check_for_images(image_list):
         return 0
-
 
 # * Get files that were already converted
     original_total = len(image_list)
@@ -570,10 +764,15 @@ def main(args):
     if args.simulate:
         s.next(f"Simulated. {len(image_list)} images remain.")
         return 0
-
+    image_list: list[Path] = [Path(p) for p in image_list]
     try:
-        pargs = [(v, args.input / v, args.scale, hr_folder, lr_folder, args.recursive, args.extension)
-                 for v in image_list]
+        pargs = [
+            (DatasetFile(args.input / v,
+                         *hrlr_pair(v, hr_folder, lr_folder, args.recursive, args.extension)), args.scale) for v in image_list
+        ]
+        # rprint(pargs)
+        # pargs = [(v, args.input / v, args.scale, hr_folder, lr_folder, args.recursive, args.extension)
+        #          for v in image_list]
         with Pool(args.threads) as p:
             for _ in tqdm(istarmap(p, fileparse, pargs), total=len(image_list)):
                 pass
@@ -582,28 +781,6 @@ def main(args):
         s.print(-1, "KeyboardInterrupt")
 
 # >>> Hashing nonsense >>> (This will be reimplemented later)
-# class DataFilterHash(DataFilter):
-#     IMHASH_TYPES = {
-#         'average': imagehash.average_hash,
-#         'crop_resistant': imagehash.crop_resistant_hash,
-#         'color': imagehash.colorhash,
-#         'dhash': imagehash.dhash,
-#         'dhash_vertical': imagehash.dhash_vertical,
-#         'phash': imagehash.phash,
-#         'phash_simple': imagehash.phash_simple,
-#         'whash': imagehash.whash
-#     }
-
-#     def __init__(self, hasher: str, hash_choice: str):
-#         super().__init__()
-#         if hasher not in IMHASH_TYPES:
-#             raise KeyError(f"{hasher} is not in IMHASH_TYPES")
-#         self.hasher = IMHASH_TYPES[hasher]
-#         self.conflict_resolution = hash_choice
-
-#     def compare(self, file: Path) -> tuple[bool, dict]:
-#         hash = str(self.hasher(Image.open(file)))
-#         return (True, hash)
 
 # * filter by image hashes
     # if args.hash:

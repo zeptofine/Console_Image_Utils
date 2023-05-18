@@ -8,3 +8,6 @@ shtab
 tqdm
 cfg-argparser
 imagehash
+autopep8
+tables
+pandas

@@ -8,3 +8,4 @@ imgbrd_grabbergen.igl
 .venv
 tmp.py
 *.prof
+hashes.h5
