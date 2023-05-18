@@ -537,10 +537,10 @@ class DataFilterHash(DataFilter):
             if len(group) > 1:
                 rows = list(self.dataframe.iloc[group]['path'])
                 resolved = self.resolver(rows)
-                print(resolved)
+                # print(resolved)
                 if resolved is not None:
                     resolved_paths.append(Path(resolved))
-                    rprint(f"{rows} -> '{resolved}'")
+                    # rprint(f"{rows} -> '{resolved}'")
             elif len(group) == 1:
                 resolved_paths.append(Path(list(self.dataframe.iloc[group]['path'])[0]))
             else:
