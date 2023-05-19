@@ -85,7 +85,6 @@ with PipInstaller() as p:
         import imagehash
         import imagesize
         import pandas as pd
-        # trunk-ignore(flake8/F401)
         from cfg_argparser import CfgDict, ConfigArgParser
         from PIL import Image
         from rich import print as rprint
@@ -128,8 +127,6 @@ def main_parser() -> ArgumentParser:
     p_mods.add_argument("--limit_mode", choices=["before", "after"], default="before",
                         help="Changes the order of the limiter. By default, it happens before filtering out bad images.")
     # ^^ this choice is for if you want to convert n images, or only search n images.
-    p_mods.add_argument("--anonymous", action="store_true",
-                        help="hides path names in progress. Doesn't affect the result.")
     p_mods.add_argument("--simulate", action="store_true",
                         help="skips the conversion step. Used for debugging.")
     p_mods.add_argument("--purge", action="store_true",
@@ -478,7 +475,12 @@ class DataFilterHash(DataFilter):
             raise KeyError(f"{resolver} is not in IMHASH_RESOLVERS")
         self.hasher = IMHASH_TYPES[hash_choice]
         self.resolver = IMHASH_RESOLVERS[resolver]
-        self.filepath = "hashes.h5"
+        self.settings = CfgDict("hashing_config.json", {
+            "trim": True,
+            "trim_age_limit": 60 * 60 * 24 * 7,
+            "filepath": "hashes.h5"
+        }, autofill=True)
+        self.filepath = self.settings['filepath']
         if os.path.exists(self.filepath):
             print("Reading hash database...")
             self.dataframe = pd.read_hdf(self.filepath, 'table')
@@ -492,20 +494,21 @@ class DataFilterHash(DataFilter):
         resolved_lst = to_original.keys()
 
         # drop hashes that are too old or the modification time changed
-        original_size = len(self.dataframe)
-        maxduration_s = 60 * 60 * 24 * 7  # 7 days
+        if self.settings['trim']:
+            original_size = len(self.dataframe)
+            maxduration_s = self.settings['trim_age_limit']  # 7 days
 
-        current_time = time.time()
-        list_to_hash = []
-        for idx, row in tqdm(self.dataframe.iterrows(), "Trimming db...", total=len(self.dataframe)):
-            if (not os.path.exists(row['path'])
-                or Path(row['path']).stat().st_mtime != row['modifiedtime']
-                    or row['checkedtime'] < current_time - maxduration_s):
-                list_to_hash.append((idx, row['path']))
+            current_time = time.time()
+            list_to_hash = []
+            for idx, row in tqdm(self.dataframe.iterrows(), "Trimming db...", total=len(self.dataframe)):
+                if (not os.path.exists(row['path'])
+                    or Path(row['path']).stat().st_mtime != row['modifiedtime']
+                        or row['checkedtime'] < current_time - maxduration_s):
+                    list_to_hash.append((idx, row['path']))
 
-        self.dataframe.drop(map(lambda x: x[0], list_to_hash), inplace=True)
-        if len(self.dataframe) != original_size:
-            rprint(f"stripped old/invalid hashes from list. new hashlist length: {len(self.dataframe)}")
+            self.dataframe.drop(map(lambda x: x[0], list_to_hash), inplace=True)
+            if len(self.dataframe) != original_size:
+                rprint(f"stripped old/invalid hashes from list. new hashlist length: {len(self.dataframe)}")
 
         conv_lst = []
         hashed_lst = set(map(Path, self.dataframe['path']))
@@ -654,18 +657,6 @@ def main(args):
         lr_folder = Path(f"{str(lr_folder)}-{args.extension}")
     hr_folder.parent.mkdir(parents=True, exist_ok=True)
     lr_folder.parent.mkdir(parents=True, exist_ok=True)
-
-    # s.print(
-    #     f"input: {args.input}",
-    #     f"hr: {hr_folder}",
-    #     f"lr: {lr_folder}",
-    #     f"scale: {args.scale}",
-    #     f"threads: {args.threads}",
-    #     f"extension: {args.extension}",
-    #     f"recursive: {args.recursive}",
-    #     f"anonymous: {args.anonymous}",
-    #     f"crop_mod: {args.crop_mod}",
-    # )
 
 # * Gather images
     s.next("Gathering images...")
