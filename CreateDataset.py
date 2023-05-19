@@ -1,6 +1,6 @@
 from __future__ import annotations
-import time
 
+import time
 from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass
 from enum import Enum
@@ -18,11 +18,23 @@ from datetime import datetime
 from glob import glob
 from multiprocessing import Pool  # , Process, Queue, current_process
 from pathlib import Path
-from subprocess import SubprocessError
 
-from util.pip_helpers import PipInstaller
+import cv2
+import dateutil.parser as timeparser
+import imagehash
+import imagesize
+import pandas as pd
+from cfg_argparser import CfgDict, ConfigArgParser
+from PIL import Image
+from rich.traceback import install
+from rich_argparse import ArgumentDefaultsRichHelpFormatter
+from tqdm import tqdm
+from tqdm.rich import tqdm as rtqdm
+
 from util.print_funcs import ipbar  # , Timer
-from util.process_funcs import is_subprocess
+from util.print_funcs import RichStepper
+
+install()
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
 
@@ -30,70 +42,6 @@ if sys.platform == "win32":
     print("This application was not made for windows. Try Using WSL2")
     from time import sleep
     sleep(3)
-
-with PipInstaller() as p:
-    packages = {
-        'opencv-python':   "cv2",
-        'python-dateutil': "dateutil",
-        'imagehash':       "imagehash",
-        'imagesize':       "imagesize",
-        'pillow':          "PIL",
-        'rich':            "rich",
-        'rich-argparse':   "rich_argparse",
-        'shtab':           "shtab",
-        'tqdm':            "tqdm",
-        'cfg-argparser':   "cfg_argparser",
-        'pandas':          'pandas',
-        'tables':          'tables'
-    }
-
-    try:
-        # loop import packages
-        for i, package in enumerate(ipbar(packages, clear=True, print_item=True)):
-            if not p.available(packages[package]):
-                print(f"\033[2K !!! {packages[package]} failed to import !!!")
-                raise ImportError
-
-    except (ImportError, ModuleNotFoundError):
-        response = input("A package failed to import. Would you like to try and install required packages? y/N: ")
-        if response.lower() not in ["y", "yes"] or not response:
-            print("Please inspect the requirements.txt file.")
-            sys.exit()
-        # Try to install packages
-        try:
-            for i, package in enumerate(ipbar(packages)):
-                if not p.available(packages[package]):
-                    columns = os.get_terminal_size().columns
-                    print(f"{package} not detected. Attempting to install...".ljust(columns, '-'))
-                    p.install(package)
-                    print()
-                    if not p.available(packages[package]):
-                        raise ModuleNotFoundError(f"Failed to install '{package}'.")
-            # restart process once installing required packages is complete
-            if not is_subprocess():
-                os.execv(sys.executable, ['python', *sys.argv])
-            else:  # process failed even after installation, so something may be wrong with perms idk
-                raise SubprocessError("Failed to install packages.")
-        except (SubprocessError, ModuleNotFoundError) as err2:
-            print(f"{type(err2).__name__}: {err2}")
-            sys.exit(127)  # command not found
-
-    else:
-        print("\033[2K", end="")
-        import cv2
-        import dateutil.parser as timeparser
-        import imagehash
-        import imagesize
-        import pandas as pd
-        from cfg_argparser import CfgDict, ConfigArgParser
-        from PIL import Image
-#        from rich import print as rprint
-        from rich.traceback import install
-        from rich_argparse import ArgumentDefaultsRichHelpFormatter
-        from tqdm import tqdm
-
-        from util.print_funcs import RichStepper
-        install()
 
 
 def main_parser() -> ArgumentParser:
@@ -205,7 +153,7 @@ def get_file_list(*folders: Path) -> list[Path]:
     """
     Args    folders: One or more folder paths.
     Returns list[Path]: paths in the specified folders."""
-    i = ipbar(folders, clear=True) if len(folders) > 1 else folders
+    i = tqdm(folders) if len(folders) > 1 else folders
 
     return [
         Path(y) for x in (
@@ -347,8 +295,13 @@ class DatasetBuilder:
         else:
             p = None
             iterable = map(self.run_filters, lst)
-        for result in tqdm(iterable, "Running filters...", total=len(lst)):
+        for result in iterable:
             yield result
+        # with tqdm(desc="Running filters...") as t:
+        #     for result in iterable:
+        #         yield result
+        #         t.update()
+        #     t.close()
         if p:
             p.close()
 
@@ -518,9 +471,6 @@ class FilterHash(DataFilter):
 
             for pth, h in tqdm(iterable, "Gathering...", total=len(conv_lst)):
                 stat = pth.stat()
-                # if str(h) in set(self.dataframe['hash']):
-                #     rprint(f"'{p}' has the same hash as: ")
-                #     rprint(list(self.dataframe.loc[self.dataframe['hash'] == str(h)]['path']))
                 self.dataframe.loc[len(self.dataframe.index)] = [str(pth.resolve()), str(h), stat.st_mtime, time.time()]
 
             self.dataframe.to_hdf(self.filepath, 'table')
@@ -757,6 +707,7 @@ def main(args):
         return 0
 
 # * convert files. Finally!
+    s.next("Converting...")
     image_list: list[Path] = [Path(p) for p in image_list]
     try:
         pargs = [
@@ -764,7 +715,7 @@ def main(args):
                          *hrlr_pair(v, hr_folder, lr_folder, args.recursive, args.extension)), args.scale) for v in image_list
         ]
         with Pool(args.threads) as p:
-            for _ in tqdm(istarmap(p, fileparse, pargs), total=len(image_list)):
+            for _ in rtqdm(istarmap(p, fileparse, pargs), total=len(image_list)):
                 pass
 
     except KeyboardInterrupt:
