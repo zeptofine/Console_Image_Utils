@@ -9,3 +9,4 @@ imgbrd_grabbergen.igl
 tmp.py
 *.prof
 hashes.h5
+hashing_config.json
