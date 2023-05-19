@@ -87,7 +87,7 @@ with PipInstaller() as p:
         import pandas as pd
         from cfg_argparser import CfgDict, ConfigArgParser
         from PIL import Image
-        from rich import print as rprint
+#        from rich import print as rprint
         from rich.traceback import install
         from rich_argparse import ArgumentDefaultsRichHelpFormatter
         from tqdm import tqdm
@@ -110,7 +110,7 @@ def main_parser() -> ArgumentParser:
 
     p_reqs = parser.add_argument_group("Runtime")
     p_reqs.add_argument("-i", "--input",
-                        help="Input folder.")
+                        help="Input folder.", required=True)
     p_reqs.add_argument("-x", "--scale", type=int, default=4,
                         help="scale to downscale LR images")
     p_reqs.add_argument("-e", "--extension", metavar="EXT", default=None,
@@ -143,7 +143,7 @@ def main_parser() -> ArgumentParser:
                            help="only allows paths with the given string.")
     p_filters.add_argument("-b", "--blacklist", type=str, metavar="EXCLUDE",
                            help="excludes paths with the given string.")
-    p_filters.add_argument("--list-separator", default=" ",
+    p_filters.add_argument("--list_separator", default=" ",
                            help="separator for the white/blacklist.")
     # ^^ used for restricting the names allowed in the paths.
 
@@ -159,6 +159,8 @@ def main_parser() -> ArgumentParser:
                            "ex. '2020', or '2009 Sept 16th'")
     p_filters.add_argument("--before", type=str,
                            help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
+    p_filters.add_argument("--keep_links", action="store_true",
+                           help="Keeps links in the file list. Is useful if the dataset is messy regarding sym/hardlinks.")
     p_filters.add_argument("--hash", action="store_true",
                            help="Removes similar images. is better for perceptually similar images.")
     p_filters.add_argument("--hash-type", type=str, choices=["average", "crop_resistant", "color", "dhash", "dhash_vertical",
@@ -204,7 +206,14 @@ def get_file_list(*folders: Path) -> list[Path]:
     Args    folders: One or more folder paths.
     Returns list[Path]: paths in the specified folders."""
     i = ipbar(folders, clear=True) if len(folders) > 1 else folders
-    return [Path(y) for x in (glob(str(p), recursive=True) for p in i) for y in x]
+
+    return [
+        Path(y) for x in (
+            glob(str(p), recursive=True)
+            for p in i
+        )
+        for y in x
+    ]
 
 
 def get_existing(*folders: Path) -> set:
@@ -213,9 +222,13 @@ def get_existing(*folders: Path) -> set:
     Args    *: folders to be searched & compared.
     Returns tuple[set[Path], set[Path]]: HR and LR file paths in sets.
     """
-    return set.intersection(*({file.relative_to(folder).with_suffix('')
-                               for file in get_file_list((folder / "**" / "*"))}
-                              for folder in folders))
+    return set.intersection(*(
+        {
+            file.relative_to(folder).with_suffix('')
+            for file in get_file_list((folder / "**" / "*"))
+        }
+        for folder in folders
+    ))
 
 
 def has_links(paths) -> bool:
@@ -260,6 +273,10 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
     return hr_path, lr_path
 
 
+def hash_img(img, hasher):
+    return hasher(Image.open(img))
+
+
 @dataclass
 class DatasetFile:
     path: Path
@@ -288,20 +305,20 @@ def fileparse(dfile: DatasetFile, scale):
 
 
 class DatasetBuilder:
-    def __init__(self, rich_stepper_object, processes=1):
+    def __init__(self, rich_stepper_object, origin: str = None, processes=1):
         super().__init__()
-        self.filters: list[DataFilter] = [
-        ]
-        self.full_filters: list[DataFilter] = [
-        ]
+        self.filters: list[DataFilter] = []
+        self.full_filters: list[DataFilter] = []
         self.power = processes
         self.stepper = rich_stepper_object
+        self.origin = origin  # necessary for certain filters to work
 
     def add_filters(self, *filters: DataFilter) -> None:
         '''Adds filters to the filter list.
         '''
         for filter in filters:
             filter.set_parent(self)
+            filter.set_origin(self.origin)
             if filter.type == FilterTypes.PER_ITEM:
                 self.filters.append(filter)
             else:
@@ -321,51 +338,39 @@ class DatasetBuilder:
             whether or not to use a pool. defaults to False
         Yields
         ------
-        Generator[bool]
+        Iterable[bool]
             every result for every list
         '''
         if use_pool:
-            with Pool(self.power) as p:
-                for result in p.imap(self.run_filters, lst):
-                    yield result
+            p = Pool(self.power)
+            iterable = p.imap(self.run_filters, lst)
         else:
-            for result in map(self.run_filters, lst):
-                yield result
+            p = None
+            iterable = map(self.run_filters, lst)
+        for result in tqdm(iterable, "Running filters...", total=len(lst)):
+            yield result
+        if p:
+            p.close()
 
     def full_map(self, lst: Iterable, use_pool: bool = True):
-
         if use_pool:
-            with Pool(self.power) as p:
-                for filter in self.full_filters:
-                    lst = filter.full_compare(lst, p)
+            p = Pool(self.power)
         else:
-            for filter in self.full_filters:
-                lst = filter.full_compare(lst)
+            p = None
+        for filter in tqdm(self.full_filters, "Running full filters..."):
+            lst = filter.full_compare(lst, p)
+        if p:
+            p.close()
         return lst
 
     def filter(self, lst: Iterable, cond: Callable = lambda x: x, use_pool=False) -> Generator:
         '''A version of map that only yields successful results
         '''
-        for result, file in zip(self.map(lst, use_pool=use_pool), lst):
-            yield file
-            if cond(result):
-                yield file
+        return (file for result, file in zip(self.map(lst, use_pool=use_pool), lst) if cond(result))
 
     def _apply(self, filter_filelist):
         filter, filelist = filter_filelist
         return filter.apply(filelist)
-
-    def apply(self, filelist):
-        with Pool(self.power) as p:
-            # return set.intersection(
-            #     tqdm(p.imap)
-            # )
-            outcomes = []
-
-            for outcome in tqdm(p.imap(self._apply, zip(self.filters, [filelist]*len(self.filters))), total=len(self.filters)):
-                outcomes.append(set(outcome))
-            outset = set.intersection(*outcomes)
-        return outset
 
     def __enter__(self, *args, **kwargs):
         self.__init__(*args, **kwargs)
@@ -389,7 +394,10 @@ class DataFilter:
     def __init__(self):
         self.parent = None
         self.type = FilterTypes.PER_ITEM
-        pass
+        self.origin = None
+
+    def set_origin(self, value):
+        self.origin = value
 
     def set_parent(self, parent: DatasetBuilder):
         self.parent = parent
@@ -397,24 +405,21 @@ class DataFilter:
     def compare(self, file: Path) -> bool:
         raise NotImplementedError
 
-    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> bool:
+    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> list:
         raise NotImplementedError
 
     def __repr__(self):
-        attrlist = []
-        for key, val in self.__dict__.items():
-            if hasattr(val, "__iter__") and not isinstance(val, str):
-                attrlist.append(f"{key}=...")
-            else:
-                attrlist.append(f"{key}={val}")
-        out = ", ".join(attrlist)
-        return f"{self.__class__.__name__}({out})"
+        attrlist = [
+            f"{key}=..." if hasattr(val, "__iter__") and not isinstance(val, str) else f"{key}={val}"
+            for key, val in self.__dict__.items()
+        ]
+        return f"{self.__class__.__name__}({', '.join(attrlist)})"
 
     def __str__(self):
         return self.__class__.__name__
 
 
-class DataFilterStat(DataFilter):
+class FilterStat(DataFilter):
     def __init__(self, beforetime: datetime | None, aftertime: datetime | None):
         super().__init__()
         self.before = beforetime
@@ -422,11 +427,10 @@ class DataFilterStat(DataFilter):
 
     def compare(self, file: Path) -> bool:
         st_mtime = datetime.fromtimestamp(file.stat().st_mtime)
-
         return not ((self.after and self.after < st_mtime) or (self.before and self.before > st_mtime))
 
 
-class DataFilterRes(DataFilter):
+class FilterRes(DataFilter):
     def __init__(self, minsize: int | None, maxsize: int | None, crop_mod: bool, scale: int):
         super().__init__()
         self.min: int | None = minsize
@@ -435,7 +439,6 @@ class DataFilterRes(DataFilter):
         self.scale: int = scale
 
     def compare(self, file: Path) -> bool:
-        # setattr(file, "res", imagesize.get(file.path))
         res = imagesize.get(file)
         if self.crop:
             res = (res[0] // self.scale) * self.scale, (res[1] // self.scale) * self.scale
@@ -444,22 +447,7 @@ class DataFilterRes(DataFilter):
         return all(dim % self.scale == 0 and minsize <= dim <= maxsize for dim in res)
 
 
-def hash_img(img, hasher):
-    return hasher(Image.open(img))
-
-
-class DataFilterHash(DataFilter):
-    IMHASH_TYPES = {
-        'average': imagehash.average_hash,
-        'crop_resistant': imagehash.crop_resistant_hash,
-        'color': imagehash.colorhash,
-        'dhash': imagehash.dhash,
-        'dhash_vertical': imagehash.dhash_vertical,
-        'phash': imagehash.phash,
-        'phash_simple': imagehash.phash_simple,
-        'whash': imagehash.whash
-    }
-
+class FilterHash(DataFilter):
     def __init__(self, hash_choice, resolver='newest'):
         self.type = FilterTypes.FULL
 
@@ -488,10 +476,12 @@ class DataFilterHash(DataFilter):
         else:
             self.dataframe = pd.DataFrame(columns=['path', 'hash', 'modifiedtime', 'checkedtime'])
 
-    def full_compare(self, lst: list[Path], p: Pool = None) -> Iterable:
+    def full_compare(self, lst: list[Path], p: Pool = None) -> list:
         lst = set(sorted(lst, key=lambda _: random.random()))
-        to_original = {pth.resolve(): pth for pth in lst}
-        resolved_lst = to_original.keys()
+
+        from_full_to_relative = {(self.origin / pth).resolve(): pth for pth in lst}
+
+        resolved_lst = from_full_to_relative.keys()
 
         # drop hashes that are too old or the modification time changed
         if self.settings['trim']:
@@ -508,7 +498,7 @@ class DataFilterHash(DataFilter):
 
             self.dataframe.drop(map(lambda x: x[0], list_to_hash), inplace=True)
             if len(self.dataframe) != original_size:
-                rprint(f"stripped old/invalid hashes from list. new hashlist length: {len(self.dataframe)}")
+                print(f"stripped old/invalid hashes from list. new hashlist length: {len(self.dataframe)}")
 
         conv_lst = []
         hashed_lst = set(map(Path, self.dataframe['path']))
@@ -536,11 +526,15 @@ class DataFilterHash(DataFilter):
             self.dataframe.to_hdf(self.filepath, 'table')
 
         resolved_paths = []
-        for h, group in tqdm(self.dataframe.groupby('hash').groups.items(), "Grouping..."):
+
+        strlst = map(str, resolved_lst)
+        path_rows = self.dataframe.loc[self.dataframe['path'].isin(strlst)]
+        hashes = set(path_rows['hash'])
+        paths_with_identical_hashes = self.dataframe.loc[self.dataframe['hash'].isin(hashes)]
+        for h, group in tqdm(paths_with_identical_hashes.groupby('hash').groups.items(), "Grouping..."):
             if len(group) > 1:
                 rows = list(self.dataframe.iloc[group]['path'])
                 resolved = self.resolver(rows)
-                # print(resolved)
                 if resolved is not None:
                     resolved_paths.append(Path(resolved))
                     # rprint(f"{rows} -> '{resolved}'")
@@ -548,8 +542,8 @@ class DataFilterHash(DataFilter):
                 resolved_paths.append(Path(list(self.dataframe.iloc[group]['path'])[0]))
             else:
                 raise RuntimeError("What")
-        # exit()
-        return [to_original[i] for i in tqdm(resolved_paths) if i in lst]
+
+        return [from_full_to_relative[i] for i in resolved_paths if i in from_full_to_relative]
 
     def _ignore_all(self, _) -> Path:
         return None
@@ -570,13 +564,13 @@ class DataFilterHash(DataFilter):
         return sorted(self._get_sizes(lst).items(), key=lambda s_p: s_p[::-1])[-1][0]
 
 
-class DataFilterBlacknWhitelist(DataFilter):
+class FilterBlacknWhitelist(DataFilter):
     def __init__(self, whitelist=[], blacklist=[]):
         self.type = FilterTypes.FULL
         self.whitelist = whitelist
         self.blacklist = blacklist
 
-    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> bool:
+    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> list:
         out = lst
         if self.whitelist:
             out = self._whitelist(out, self.whitelist)
@@ -594,6 +588,31 @@ class DataFilterBlacknWhitelist(DataFilter):
         return set(imglist).difference(self._whitelist(imglist, blacklist))
 
 
+class FilterExisting(DataFilter):
+    def __init__(self, hr_folder, lr_folder, recursive=True):
+        self.type = FilterTypes.FULL
+        self.existing_list = get_existing(hr_folder, lr_folder)
+        self.recursive = recursive
+
+    def full_compare(self, lst: Iterable[Path], _=None) -> list:
+        return [
+            i
+            for i in tqdm(lst, "Removing existing images...")
+            if to_recursive(i, self.recursive).with_suffix("") not in self.existing_list
+        ]
+
+
+class FilterLinks(DataFilter):
+    def __init__(self):
+        self.type = FilterTypes.FULL
+
+    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> list:
+        return set({
+            (self.origin / pth).resolve(): self.origin / pth
+            for pth in tqdm(lst, "Resolving links...")
+        }.values())
+
+
 def starmap(func, args):
     # I'm surprised this isn't built in
     for arg in args:
@@ -605,7 +624,13 @@ def main(args):
     s = RichStepper(loglevel=1, step=-1)
     s.next("Settings: ")
 
-    df = DatasetBuilder(s, args.threads)
+    args.input = Path(args.input)
+
+    df = DatasetBuilder(
+        s,
+        origin=args.input,
+        processes=args.threads
+    )
 
     def check_for_images(image_list) -> bool:
         if not image_list:
@@ -614,9 +639,6 @@ def main(args):
         return True
 
 # * Make sure given args are valid
-    if not args.input:
-        s.print("Please specify an input directory.")
-        return 1
     if args.extension:
         if args.extension.startswith("."):
             args.extension = args.extension[1:]
@@ -635,11 +657,11 @@ def main(args):
             s.set(-9).print(str(err))
             return 1
 
-        df.add_filters(DataFilterStat(args.before, args.after))
+        df.add_filters(FilterStat(args.before, args.after))
 
     args.minsize = args.minsize if args.minsize != -1 else None
     args.maxsize = args.maxsize if args.maxsize != -1 else None
-    # df.add_filters(DataFilterRes(args.minsize, args.maxsize, args.crop_mod, args.scale))
+    df.add_filters(FilterRes(args.minsize, args.maxsize, args.crop_mod, args.scale))
 
     if args.before or args.after:
         s.print(f"Filtering by time ({args.before} <= x <= {args.after})")
@@ -663,48 +685,37 @@ def main(args):
     args.exts = args.exts.split(" ")
     s.print(f"Searched extensions: {args.exts}")
     file_list = get_file_list(*[args.input / "**" / f"*.{ext}" for ext in args.exts])
-    image_list = sorted(file_list)
+    image_list = set(map(lambda x: x.relative_to(args.input), sorted(file_list)))
     if args.image_limit and args.limit_mode == "before":  # limit image number
         image_list = image_list[:args.image_limit]
+
     s.print(f"Gathered {len(image_list)} images")
 
     s.next()
 
 # * Discard symbolic duplicates
-    original_total = len(image_list)
-    if has_links(image_list):
-        # vv This naturally removes the possibility of multiple files pointing to the same image
-        image_list = set({i.resolve(): i.relative_to(args.input)
-                          for i in ipbar(image_list, clear=True)}.values())
-        if len(image_list) != original_total:
-            s.print(f"Discarded {original_total - len(image_list)} symbolic links")
+    if not args.keep_links:
+        df.add_filters(FilterLinks())
 
-# * hashing option
+# * Hashing option
     if args.hash:
-        df.add_filters(DataFilterHash(args.hash_type, args.hash_choice))
+        df.add_filters(FilterHash(args.hash_type, args.hash_choice))
 
-        # * white / blacklist option
+# * white / blacklist option
     if args.whitelist or args.blacklist:
         whitelist = []
         blacklist = []
         if args.whitelist:
             whitelist = args.whitelist.split(args.list_separator)
-
-            args.whitelist = args.whitelist.split(args.list_separator)
-            # image_list = whitelist(image_list, args.whitelist)
-            # s.print(f"whitelist {args.whitelist}: {len(image_list)}")
         if args.blacklist:
             blacklist = args.blacklist.split(args.list_separator)
-
-            args.blacklist = args.blacklist.split(args.list_separator)
-            # image_list = blacklist(image_list, args.blacklist)
-            # s.print(f"blacklist {args.blacklist}: {len(image_list)}")
-        df.add_filters(DataFilterBlacknWhitelist(whitelist, blacklist))
+        df.add_filters(FilterBlacknWhitelist(whitelist, blacklist))
 
 
 # * Purge existing images
     if args.purge:
         s.next("Purging...")
+
         for path in ipbar(image_list):
             hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder, args.recursive, args.extension)
             hr_path.unlink(missing_ok=True)
@@ -712,39 +723,28 @@ def main(args):
 
         s.print("Purged.")
 
+    if not args.overwrite:
+        df.add_filters(FilterExisting(hr_folder, lr_folder, args.recursive))
+
+
 # * Run filters
     if df.full_filters:
         s.print(
             "Filtering using: ",
             *[f' - {str(filter)}' for filter in df.full_filters]
         )
-        image_list: list[Path] = [
-            p.relative_to(args.input)
-            for p in
-            df.full_map({*map(lambda x: args.input / x, image_list), }, use_pool=True)
-        ]
+        image_list = df.full_map(image_list, use_pool=True)
+
+    if not check_for_images(image_list):
+        return 0
+
     if df.filters:
         s.print(
             "Filtering using: ",
             *[f" - {str(filter)}" for filter in df.filters]
         )
         results = df.map({*map(lambda x: args.input / x, image_list), })
-        image_list = [i[0] for i in tqdm(zip(image_list, results), total=len(image_list)) if i[1]]
-    if not check_for_images(image_list):
-        return 0
-
-# * Get files that were already converted
-    original_total = len(image_list)
-    if not args.overwrite:
-        s.next("Removing existing images")
-        exist_list = get_existing(hr_folder, lr_folder)
-        image_list = [i for i in ipbar(image_list, clear=True)
-                      if to_recursive(i, args.recursive).with_suffix("") not in exist_list]
-
-    if len(image_list) != original_total:
-        s.print(f"Discarded {original_total-len(image_list)} existing images")
-    else:
-        s.print("None found")
+        image_list = [i[0] for i in zip(image_list, results) if i[1]]
 
     if not check_for_images(image_list):
         return 0
@@ -755,83 +755,20 @@ def main(args):
     if args.simulate:
         s.next(f"Simulated. {len(image_list)} images remain.")
         return 0
+
+# * convert files. Finally!
     image_list: list[Path] = [Path(p) for p in image_list]
     try:
         pargs = [
             (DatasetFile(args.input / v,
                          *hrlr_pair(v, hr_folder, lr_folder, args.recursive, args.extension)), args.scale) for v in image_list
         ]
-        # rprint(pargs)
-        # pargs = [(v, args.input / v, args.scale, hr_folder, lr_folder, args.recursive, args.extension)
-        #          for v in image_list]
         with Pool(args.threads) as p:
             for _ in tqdm(istarmap(p, fileparse, pargs), total=len(image_list)):
                 pass
 
     except KeyboardInterrupt:
         s.print(-1, "KeyboardInterrupt")
-
-# >>> Hashing nonsense >>> (This will be reimplemented later)
-
-# * filter by image hashes
-    # if args.hash:
-    #     s.next("Getting hashes...")
-    #     s.print(f"Hash type: {args.hash_type}")
-    #     original_total = len(image_list)
-
-    #     pargs = [(args.input / i, args.hash_type) for i in file_list]
-    #     # match each hash to the respective image
-    #     image_hashes: dict = {}
-    #     for index, file_hash in enumerate(poolmap(args.threads, get_imghash, pargs, postfix=False)):
-    #         file = file_list[index].relative_to(args.input)
-    #         file_hash = str(file_hash)
-    #         if file_hash in image_hashes:
-    #             image_hashes[file_hash].append(file)
-    #         else:
-    #             image_hashes[file_hash] = [file]
-
-    #     s.print(f"Comparing images (Conflict resolution: {args.hash_choice})...")
-
-    #     # hashes that belong to multiple images
-    #     conflicting_hashes: dict[str, list[Path]] = {}
-    #     # hashes that belong to a single image
-    #     final_hashes: dict[str, Path] = {}
-    #     for filehash, filelist in image_hashes.items():
-    #         if len(filelist) > 1:
-    #             conflicting_hashes.update({filehash: filelist})
-
-    #         if len(filelist) == 1:
-    #             final_hashes.update({filehash: filelist[0]})
-
-    #     for filehash, filelist in conflicting_hashes.items():
-    #         conflicting_hashes[filehash] = [file for file in filelist if file in image_data]
-    #         if len(filelist) == 1:
-    #             final_hashes.update({filehash: filelist[0]})
-
-    #     conflicting_hashes = {key: val for key, val in conflicting_hashes.items() if len(val) > 1}
-    #     # conflicting hashes now are all still valid but now a single image must be chosen to keep
-    #     for filehash, filelist in conflicting_hashes.items():
-    #         # choose based on sorting method (args.hash_choice)
-    #         chosen_file = sorted(filelist, key=sorting_methods[args.hash_choice])[-1]
-    #         final_hashes.update({filehash: chosen_file})
-    #         if args.print_filtered:
-    #             rprint(f'[yellow]"{filehash}"[/yellow]: ')
-    #             for file in filelist:
-    #                 rprint(
-    #                     (f'[bold   green]  \u2713 "{args.input / file}"[/bold   green]'  # ✓
-    #                      if file == chosen_file else
-    #                      f'[bright_black]  \u2717 "{args.input / file}"[/bright_black]')  # ✗
-    #                     + f' : {image_data[file][1]}'
-    #                 )
-
-    #             if any(file.with_suffix("") == i.with_suffix("") and file is not i
-    #                    for i in filelist
-    #                    for file in filelist):
-    #                 rprint(" [red]Warning: some of these images have very similar paths.")
-
-    #     image_list = set(image_list).intersection(final_hashes.values())
-    #     s.print(f"Discarded {original_total - len(image_list)} images via imagehash.{args.hash_choice}")
-# <<< Hashing nonsense <<<
 
 
 def wrap_profiler(func, filename):
