@@ -295,7 +295,7 @@ class DatasetBuilder:
         else:
             p = None
             iterable = map(self.run_filters, lst)
-        for result in iterable:
+        for result in tqdm(iterable, "Running filters..."):
             yield result
         # with tqdm(desc="Running filters...") as t:
         #     for result in iterable:
@@ -558,7 +558,7 @@ class FilterLinks(DataFilter):
 
     def full_compare(self, lst: Iterable[Path], p: Pool = None) -> list:
         return set({
-            (self.origin / pth).resolve(): self.origin / pth
+            (self.origin / pth).resolve(): pth
             for pth in tqdm(lst, "Resolving links...")
         }.values())
 
