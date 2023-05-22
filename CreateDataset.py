@@ -109,16 +109,12 @@ def main_parser() -> ArgumentParser:
                            help="Only uses before a given date. ex. 'Wed Jun 9 04:26:40', or 'Jun 9'")
     p_filters.add_argument("--keep_links", action="store_true",
                            help="Keeps links in the file list. Is useful if the dataset is messy regarding sym/hardlinks.")
+
     p_filters.add_argument("--hash", action="store_true",
                            help="Removes similar images. is better for perceptually similar images.")
     p_filters.add_argument("--hash-type", type=str, choices=["average", "crop_resistant", "color", "dhash", "dhash_vertical",
                                                              "phash", "phash_simple", "whash"], default="average",
                            help="type of image hasher to use for the slow method. read https://github.com/JohannesBuchner/imagehash for more info")
-    # {
-    #         'ignore_all': self._ignore_all,
-    #         'newest': self._accept_newest,
-    #         'oldest': self._accept_oldest
-    #     }
     p_filters.add_argument("--hash-choice", type=str, choices=["ignore_all", "newest", "oldest", "size"],
                            default='size', help="At the chance of a hash conflict, this will decide which to keep.")
     # # ^^ Used for filtering out too old or too new images.
@@ -367,7 +363,7 @@ class DataFilter:
         return self.__class__.__name__
 
 
-class FilterStat(DataFilter):
+class StatFilter(DataFilter):
     def __init__(self, beforetime: datetime | None, aftertime: datetime | None):
         super().__init__()
         self.before = beforetime
@@ -378,7 +374,7 @@ class FilterStat(DataFilter):
         return not ((self.after and self.after < st_mtime) or (self.before and self.before > st_mtime))
 
 
-class FilterRes(DataFilter):
+class ResFilter(DataFilter):
     def __init__(self, minsize: int | None, maxsize: int | None, crop_mod: bool, scale: int):
         super().__init__()
         self.min: int | None = minsize
@@ -395,7 +391,7 @@ class FilterRes(DataFilter):
         return all(dim % self.scale == 0 and minsize <= dim <= maxsize for dim in res)
 
 
-class FilterHash(DataFilter):
+class HashFilter(DataFilter):
     def __init__(self, hash_choice, resolver='newest'):
         self.type = FilterTypes.FULL
 
@@ -509,7 +505,7 @@ class FilterHash(DataFilter):
         return sorted(self._get_sizes(lst).items(), key=lambda s_p: s_p[::-1])[-1][0]
 
 
-class FilterBlacknWhitelist(DataFilter):
+class BlacknWhitelistFilter(DataFilter):
     def __init__(self, whitelist=[], blacklist=[]):
         self.type = FilterTypes.FULL
         self.whitelist = whitelist
@@ -533,7 +529,7 @@ class FilterBlacknWhitelist(DataFilter):
         return set(imglist).difference(self._whitelist(imglist, blacklist))
 
 
-class FilterExisting(DataFilter):
+class ExistingFilter(DataFilter):
     def __init__(self, hr_folder, lr_folder, recursive=True):
         self.type = FilterTypes.FULL
         self.existing_list = get_existing(hr_folder, lr_folder)
@@ -547,7 +543,7 @@ class FilterExisting(DataFilter):
         ]
 
 
-class FilterLinks(DataFilter):
+class LinkFilter(DataFilter):
     def __init__(self):
         self.type = FilterTypes.FULL
 
@@ -602,11 +598,11 @@ def main(args):
             s.set(-9).print(str(err))
             return 1
 
-        df.add_filters(FilterStat(args.before, args.after))
+        df.add_filters(StatFilter(args.before, args.after))
 
     args.minsize = args.minsize if args.minsize != -1 else None
     args.maxsize = args.maxsize if args.maxsize != -1 else None
-    df.add_filters(FilterRes(args.minsize, args.maxsize, args.crop_mod, args.scale))
+    df.add_filters(ResFilter(args.minsize, args.maxsize, args.crop_mod, args.scale))
 
     if args.before or args.after:
         s.print(f"Filtering by time ({args.before} <= x <= {args.after})")
@@ -640,11 +636,11 @@ def main(args):
 
 # * Discard symbolic duplicates
     if not args.keep_links:
-        df.add_filters(FilterLinks())
+        df.add_filters(LinkFilter())
 
 # * Hashing option
     if args.hash:
-        df.add_filters(FilterHash(args.hash_type, args.hash_choice))
+        df.add_filters(HashFilter(args.hash_type, args.hash_choice))
 
 # * white / blacklist option
     if args.whitelist or args.blacklist:
@@ -654,7 +650,7 @@ def main(args):
             whitelist = args.whitelist.split(args.list_separator)
         if args.blacklist:
             blacklist = args.blacklist.split(args.list_separator)
-        df.add_filters(FilterBlacknWhitelist(whitelist, blacklist))
+        df.add_filters(BlacknWhitelistFilter(whitelist, blacklist))
 
 
 # * Purge existing images
@@ -667,7 +663,7 @@ def main(args):
         s.print("Purged.")
 
     if not args.overwrite:
-        df.add_filters(FilterExisting(hr_folder, lr_folder, args.recursive))
+        df.add_filters(ExistingFilter(hr_folder, lr_folder, args.recursive))
 
 
 # * Run filters
