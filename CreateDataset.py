@@ -155,13 +155,13 @@ def get_file_list(*folders: Path) -> list[Path]:
     Returns list[Path]: paths in the specified folders."""
     i = tqdm(folders) if len(folders) > 1 else folders
 
-    return [
+    return {
         Path(y) for x in (
             glob(str(p), recursive=True)
             for p in i
         )
         for y in x
-    ]
+    }
 
 
 def get_existing(*folders: Path) -> set:
@@ -232,8 +232,6 @@ class DatasetFile:
     lr_path: Path
 
 
-# def fileparse(inpath: Path, source: Path, scale: int,
-#               hr_folder: Path, lr_folder: Path) -> Path:
 def fileparse(dfile: DatasetFile, scale):
     """Converts an image file to HR and LR versions and saves them to the specified folders.
     """
@@ -295,13 +293,10 @@ class DatasetBuilder:
         else:
             p = None
             iterable = map(self.run_filters, lst)
-        for result in tqdm(iterable, "Running filters..."):
-            yield result
-        # with tqdm(desc="Running filters...") as t:
-        #     for result in iterable:
-        #         yield result
-        #         t.update()
-        #     t.close()
+        with tqdm(desc="Running filters...") as t:
+            for result in iterable:
+                yield result
+                t.update()
         if p:
             p.close()
 
@@ -665,12 +660,10 @@ def main(args):
 # * Purge existing images
     if args.purge:
         s.next("Purging...")
-
         for path in ipbar(image_list):
             hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder, args.recursive, args.extension)
             hr_path.unlink(missing_ok=True)
             lr_path.unlink(missing_ok=True)
-
         s.print("Purged.")
 
     if not args.overwrite:
@@ -683,7 +676,7 @@ def main(args):
             "Filtering using: ",
             *[f' - {str(filter)}' for filter in df.full_filters]
         )
-        image_list = df.full_map(image_list, use_pool=True)
+        image_list = set(df.full_map(image_list, use_pool=True))
 
     if not check_for_images(image_list):
         return 0
@@ -694,7 +687,7 @@ def main(args):
             *[f" - {str(filter)}" for filter in df.filters]
         )
         results = df.map({*map(lambda x: args.input / x, image_list), })
-        image_list = [i[0] for i in zip(image_list, results) if i[1]]
+        image_list = {i[0] for i in zip(image_list, results) if i[1]}
 
     if not check_for_images(image_list):
         return 0
@@ -708,11 +701,15 @@ def main(args):
 
 # * convert files. Finally!
     s.next("Converting...")
-    image_list: list[Path] = [Path(p) for p in image_list]
+    image_list: set[Path] = {Path(p) for p in image_list}
     try:
         pargs = [
-            (DatasetFile(args.input / v,
-                         *hrlr_pair(v, hr_folder, lr_folder, args.recursive, args.extension)), args.scale) for v in image_list
+            (DatasetFile(
+                args.input / v,
+                *hrlr_pair(v, hr_folder, lr_folder, args.recursive, args.extension)
+            ),
+                args.scale)
+            for v in image_list
         ]
         with Pool(args.threads) as p:
             for _ in rtqdm(istarmap(p, fileparse, pargs), total=len(image_list)):
