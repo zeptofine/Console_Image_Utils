@@ -410,12 +410,14 @@ class HashFilter(DataFilter):
         self.settings = CfgDict("hashing_config.json", {
             "trim": True,
             "trim_age_limit": 60 * 60 * 24 * 7,
-            "filepath": "hashes.h5"
+            "filepath": "hashes.feather"
         }, autofill=True)
         self.filepath = self.settings['filepath']
+        if os.path.exists("hashes.h5"):
+            print("HDF5 usage is deprecated. use the util/convert_hdf5_to_feather.py script to convert it")
         if os.path.exists(self.filepath):
             print("Reading hash database...")
-            self.dataframe = pd.read_hdf(self.filepath, 'table')
+            self.dataframe = pd.read_feather(self.filepath)
             print("Finished.")
         else:
             self.dataframe = pd.DataFrame(columns=['path', 'hash', 'modifiedtime', 'checkedtime'])
@@ -464,7 +466,7 @@ class HashFilter(DataFilter):
                 stat = pth.stat()
                 self.dataframe.loc[len(self.dataframe.index)] = [str(pth.resolve()), str(h), stat.st_mtime, time.time()]
 
-            self.dataframe.to_hdf(self.filepath, 'table')
+            self.dataframe.to_feather(self.filepath)
 
         resolved_paths = []
 
