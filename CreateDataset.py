@@ -11,7 +11,6 @@ from enum import Enum
 '''
 import multiprocessing.pool as mpp
 import os
-import random
 import sys
 from argparse import ArgumentParser
 from datetime import datetime
@@ -23,7 +22,7 @@ import cv2
 import dateutil.parser as timeparser
 import imagehash
 import imagesize
-import pandas as pd
+import polars as pl
 from cfg_argparser import CfgDict, ConfigArgParser
 from PIL import Image
 from rich.traceback import install
@@ -78,7 +77,10 @@ def main_parser() -> ArgumentParser:
     p_mods.add_argument("--simulate", action="store_true",
                         help="skips the conversion step. Used for debugging.")
     p_mods.add_argument("--purge", action="store_true",
-                        help="Clears the output folder before running.")
+                        help="deletes the output files corresponding to the input files.")
+    p_mods.add_argument("--purge_all", action="store_true",
+                        help="deletes *every* file in the output directories.")
+
     p_mods.add_argument("--reverse", action="store_true",
                         help="reverses the sorting direction. it turns smallest-> largest to largest -> smallest")
     p_mods.add_argument("--overwrite", action="store_true",
@@ -121,6 +123,22 @@ def main_parser() -> ArgumentParser:
     # p_filters.add_argument("--print-filtered", action="store_true",
     #                        help="prints all images that were removed because of filters.")
     return parser
+
+
+def byte_format(size, suffix="B"):
+    '''modified version of: https://stackoverflow.com/a/1094933'''
+    if isinstance(size, str):
+        size = "".join([val for val in size if val.isnumeric()])
+    size = str(size)
+    if size != "":
+        size = int(size)
+        for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti']:
+            if abs(size) < 2**10:
+                return f"{size:3.1f}{unit}{suffix}"
+            size /= 2**10
+        return f"{size:3.1f}{unit}{suffix}"
+    else:
+        return f"N/A{suffix}"
 
 
 def istarmap(self, func, iterable, chunksize=1):
@@ -289,10 +307,8 @@ class DatasetBuilder:
         else:
             p = None
             iterable = map(self.run_filters, lst)
-        with tqdm(desc="Running filters...") as t:
-            for result in iterable:
-                yield result
-                t.update()
+        for result in ipbar(iterable, total=len(lst)):
+            yield result
         if p:
             p.close()
 
@@ -410,45 +426,54 @@ class HashFilter(DataFilter):
         self.settings = CfgDict("hashing_config.json", {
             "trim": True,
             "trim_age_limit": 60 * 60 * 24 * 7,
-            "filepath": "hashes.feather"
+            "trim_check_exists": True,
+            "save_interval": 500,
+            "filepath": "hashes.feather",
         }, autofill=True)
         self.filepath = self.settings['filepath']
-        if os.path.exists("hashes.h5"):
-            print("HDF5 usage is deprecated. use the util/convert_hdf5_to_feather.py script to convert it")
+
+        self.schema = {
+            "path": str,
+            'hash': str,
+            'modifiedtime': pl.Float64,
+            'checkedtime': pl.Float32
+        }
         if os.path.exists(self.filepath):
             print("Reading hash database...")
-            self.dataframe = pd.read_feather(self.filepath)
+            self.df = pl.read_ipc(self.filepath)
             print("Finished.")
         else:
-            self.dataframe = pd.DataFrame(columns=['path', 'hash', 'modifiedtime', 'checkedtime'])
+
+            self.df = pl.DataFrame({k: [] for k in self.schema.keys()},
+                                   schema=self.schema.items())
 
     def full_compare(self, lst: list[Path], p: Pool = None) -> list:
-        lst = set(sorted(lst, key=lambda _: random.random()))
-
-        from_full_to_relative = {(self.origin / pth).resolve(): pth for pth in lst}
-
+        from_full_to_relative = {str((self.origin / pth).resolve()): pth for pth in lst}
         resolved_lst = from_full_to_relative.keys()
 
         # drop hashes that are too old or the modification time changed
-        if self.settings['trim']:
-            original_size = len(self.dataframe)
-            maxduration_s = self.settings['trim_age_limit']  # 7 days
-
+        if self.settings['trim'] and len(self.df):
+            original_size = len(self.df)
+            maxduration_s = self.settings['trim_age_limit']
             current_time = time.time()
-            list_to_hash = []
-            for idx, row in tqdm(self.dataframe.iterrows(), "Trimming db...", total=len(self.dataframe)):
-                if (not os.path.exists(row['path'])
-                    or Path(row['path']).stat().st_mtime != row['modifiedtime']
-                        or row['checkedtime'] < current_time - maxduration_s):
-                    list_to_hash.append((idx, row['path']))
+            print("Trimming DB...")
+            f = (pl.col("checkedtime") > current_time - maxduration_s)
+            if self.settings['trim_check_exists']:
+                f = (
+                    f & (pl.col("path").apply(lambda x: os.path.exists(x)))
+                    & (pl.col("path").apply(lambda x: os.stat(x).st_mtime) == pl.col("modifiedtime"))
+                )
+            self.df = self.df.filter(f)
+            print("Trimmed.")
+            if len(self.df) != original_size:
+                print(f"stripped old/invalid hashes from list. new hashlist length: {len(self.df)}")
 
-            self.dataframe.drop(map(lambda x: x[0], list_to_hash), inplace=True)
-            if len(self.dataframe) != original_size:
-                print(f"stripped old/invalid hashes from list. new hashlist length: {len(self.dataframe)}")
-
+        # get and save new hashes
         conv_lst = []
-        hashed_lst = set(map(Path, self.dataframe['path']))
+
+        hashed_lst = set(self.df.select(pl.col('path')).to_series())
         conv_lst = [path for path in resolved_lst if path not in hashed_lst]
+
         if conv_lst:
             print(f"Getting hashes for {len(conv_lst)} images")
             if p:
@@ -462,49 +487,69 @@ class HashFilter(DataFilter):
                     map(lambda p: hash_img(p, self.hasher), conv_lst),
                 )
 
-            for pth, h in tqdm(iterable, "Gathering...", total=len(conv_lst)):
-                stat = pth.stat()
-                self.dataframe.loc[len(self.dataframe.index)] = [str(pth.resolve()), str(h), stat.st_mtime, time.time()]
+            timer = 0
+            with tqdm(desc="Gathering...", total=len(conv_lst)) as t:
+                for pth, h in iterable:
+                    self.df.vstack(
+                        pl.DataFrame({
+                            "path": str(pth),
+                            'hash': str(h),
+                            'modifiedtime': os.stat(pth).st_mtime,
+                            'checkedtime': time.time()
+                        }, schema=self.schema),
+                        in_place=True
+                    )
+                    timer += 1
+                    if timer > self.settings['save_interval'] and self.settings['save_interval'] > -1:
+                        self.df = self.df.rechunk()
+                        self.df.write_ipc(self.filepath)
+                        timer = 0
+                        t.set_postfix({'DB_size': byte_format(os.stat(self.settings['filepath']).st_size)})
 
-            self.dataframe.to_feather(self.filepath)
+                    t.update(1)
+            self.df = self.df.rechunk()
+            self.df.write_ipc(self.filepath)
 
-        resolved_paths = []
+        # get the rows of the files that exist in the database
+        print("Grouping...")
+        strlst = set(map(str, resolved_lst))
+        selected_files = self.df.filter(
+            pl.col('hash').is_in(
+                self.df.filter(
+                    pl.col("path").is_in(strlst)
+                ).select(pl.col("hash")).unique().to_series()  # all unique file hashes that occur in the requested files
+            )
+        )
 
-        strlst = map(str, resolved_lst)
-        path_rows = self.dataframe.loc[self.dataframe['path'].isin(strlst)]
-        hashes = set(path_rows['hash'])
-        paths_with_identical_hashes = self.dataframe.loc[self.dataframe['hash'].isin(hashes)]
-        for h, group in tqdm(paths_with_identical_hashes.groupby('hash').groups.items(), "Grouping..."):
-            if len(group) > 1:
-                rows = list(self.dataframe.iloc[group]['path'])
-                resolved = self.resolver(rows)
-                if resolved is not None:
-                    resolved_paths.append(Path(resolved))
-                    # rprint(f"{rows} -> '{resolved}'")
-            elif len(group) == 1:
-                resolved_paths.append(Path(list(self.dataframe.iloc[group]['path'])[0]))
-            else:
-                raise RuntimeError("What")
+        # resolve hash conflicts
+        groups = selected_files.groupby('hash')
+        applied = groups.apply(
+            lambda df: self.resolver(
+                df
+            ) if len(df) > 1 else df
+        )
+        resolved_paths = set(applied.select(pl.col('path')).to_series())
 
-        return [from_full_to_relative[i] for i in resolved_paths if i in from_full_to_relative]
+        print("Grouped.")
+        out = [from_full_to_relative[i] for i in resolved_paths if i in from_full_to_relative]
+        return out
 
-    def _ignore_all(self, _) -> Path:
-        return None
+    def _ignore_all(self, df: pl.DataFrame) -> Path:
+        return df.clear()
 
-    def _get_ages(self, lst) -> dict:
-        return {pth: Path(pth).stat().st_mtime for pth in lst}
+    def _df_with_path_sizes(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.with_columns(
+            pl.col("path").apply(lambda p: os.stat(p).st_size).alias('sizes')
+        )
 
-    def _get_sizes(self, lst) -> dict:
-        return {pth: Path(pth).stat().st_size for pth in lst}
+    def _accept_newest(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.sort(pl.col('modifiedtime')).tail(1)
 
-    def _accept_newest(self, lst) -> Path:
-        return sorted(self._get_ages(lst).items(), key=lambda p_a: p_a[::-1])[-1][0]
+    def _accept_oldest(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.sort(pl.col('modifiedtime')).head(1)
 
-    def _accept_oldest(self, lst) -> Path:
-        return sorted(self._get_ages(lst).items(), key=lambda p_a: p_a[::-1])[0][0]
-
-    def _accept_biggest(self, lst) -> Path:
-        return sorted(self._get_sizes(lst).items(), key=lambda s_p: s_p[::-1])[-1][0]
+    def _accept_biggest(self, df: pl.DataFrame) -> pl.DataFrame:
+        return self._df_with_path_sizes(df).sort(pl.col('sizes')).tail(1).drop('sizes')
 
 
 class BlacknWhitelistFilter(DataFilter):
@@ -656,7 +701,19 @@ def main(args):
 
 
 # * Purge existing images
-    if args.purge:
+    if args.purge_all:
+        lst = get_file_list(hr_folder / "**" / "*",
+                            lr_folder / "**" / "*")
+        if lst:
+            s.next("Purging...")
+            for file in ipbar(lst):
+                if file.is_file():
+                    file.unlink()
+            for folder in ipbar(lst):
+                if folder.is_dir():
+                    folder.rmdir()
+            s.print("Purged.")
+    elif args.purge:
         s.next("Purging...")
         for path in ipbar(image_list):
             hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder, args.recursive, args.extension)
@@ -696,6 +753,7 @@ def main(args):
     if args.simulate:
         s.next(f"Simulated. {len(image_list)} images remain.")
         return 0
+
 
 # * convert files. Finally!
     s.next("Converting...")

@@ -7,6 +7,7 @@ prefixes.txt
 imgbrd_grabbergen.igl
 .venv
 tmp.py
+tmp.ipynb
 *.prof
 hashes.h5
 hashing_config.json
