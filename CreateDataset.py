@@ -741,7 +741,7 @@ def main(args):
             "Filtering using: ",
             *[f" - {str(filter)}" for filter in df.filters]
         )
-        results = df.map({*map(lambda x: args.input / x, image_list), }, use_pool=True)
+        results = df.map({*map(lambda x: args.input / x, image_list), })
         image_list = {i[0] for i in zip(image_list, results) if i[1]}
 
     if not check_for_images(image_list):
