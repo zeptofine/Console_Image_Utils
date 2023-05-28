@@ -12,3 +12,5 @@ tmp.ipynb
 hashes.h5
 hashing_config.json
 hashes.feather
+filedb.feather
+database_config.json

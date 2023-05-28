@@ -39,12 +39,13 @@ if __name__ == "__main__":
 
     folder = Path(args.input)
     new_folder = folder.parent / 'linked'
-    for file in new_folder.glob("*"):
+    for file in new_folder.rglob("*"):
         file.unlink()
     new_folder.mkdir(exist_ok=True)
 
     exts = ['.jpg', '.jpeg', '.png', '.webp']
-    files = list(i for i in folder.rglob("*") if i.is_file() and i.suffix in exts)
+    files = list(i for i in folder.rglob("*") if i.suffix in exts)
+    print(files)
     with Pool(args.power) as p:
         hashes = {}
         try:

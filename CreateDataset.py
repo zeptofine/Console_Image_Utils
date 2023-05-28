@@ -1,4 +1,20 @@
+# %%
 from __future__ import annotations
+from argparse import Namespace
+from util.print_funcs import RichStepper
+from util.print_funcs import ipbar  # , Timer
+from tqdm.rich import tqdm as rtqdm
+from tqdm import tqdm
+from rich_argparse import ArgumentDefaultsRichHelpFormatter
+from rich.traceback import install
+from PIL import Image
+from cfg_argparser import CfgDict, ConfigArgParser
+from polars import DataFrame, Expr
+import polars as pl
+import imagesize
+import imagehash
+import dateutil.parser as timeparser
+import cv2
 
 import time
 from collections.abc import Callable, Generator, Iterable
@@ -10,39 +26,26 @@ from enum import Enum
     Author: Zeptofine
 '''
 import multiprocessing.pool as mpp
+
 import os
 import sys
 from argparse import ArgumentParser
 from datetime import datetime
 from glob import glob
-from multiprocessing import Pool  # , Process, Queue, current_process
+from multiprocessing import Pool, freeze_support  # , Process, Queue, current_process
 from pathlib import Path
-
-import cv2
-import dateutil.parser as timeparser
-import imagehash
-import imagesize
-import polars as pl
-from cfg_argparser import CfgDict, ConfigArgParser
-from PIL import Image
-from rich.traceback import install
-from rich_argparse import ArgumentDefaultsRichHelpFormatter
-from tqdm import tqdm
-from tqdm.rich import tqdm as rtqdm
-
-from util.print_funcs import ipbar  # , Timer
-from util.print_funcs import RichStepper
-
-install()
+from collections import defaultdict
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
 
-if sys.platform == "win32":
-    print("This application was not made for windows. Try Using WSL2")
-    from time import sleep
-    sleep(3)
+
+# %%
+# third party imports
+
+install()
 
 
+# %%
 def main_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="CreateDataset.py",
@@ -125,6 +128,8 @@ def main_parser() -> ArgumentParser:
     return parser
 
 
+# %%
+# byte_format, istarmap, get_file_list, to_recursive
 def byte_format(size, suffix="B"):
     '''modified version of: https://stackoverflow.com/a/1094933'''
     if isinstance(size, str):
@@ -132,7 +137,8 @@ def byte_format(size, suffix="B"):
     size = str(size)
     if size != "":
         size = int(size)
-        for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti']:
+        unit = ''
+        for unit in [unit, 'Ki', 'Mi', 'Gi', 'Ti']:
             if abs(size) < 2**10:
                 return f"{size:3.1f}{unit}{suffix}"
             size /= 2**10
@@ -167,40 +173,120 @@ def get_file_list(*folders: Path) -> list[Path]:
     """
     Args    folders: One or more folder paths.
     Returns list[Path]: paths in the specified folders."""
-    i = tqdm(folders) if len(folders) > 1 else folders
 
     return {
         Path(y) for x in (
             glob(str(p), recursive=True)
-            for p in i
+            for p in folders
         )
         for y in x
     }
-
-
-def get_existing(*folders: Path) -> set:
-    """
-    Returns the files that already exist in the specified folders.
-    Args    *: folders to be searched & compared.
-    Returns tuple[set[Path], set[Path]]: HR and LR file paths in sets.
-    """
-    return set.intersection(*(
-        {
-            file.relative_to(folder).with_suffix('')
-            for file in get_file_list((folder / "**" / "*"))
-        }
-        for folder in folders
-    ))
-
-
-def has_links(paths) -> bool:
-    return any(i for i in paths if i is not i.resolve())
 
 
 def to_recursive(path, recursive) -> Path:
     """Convert the file path to a recursive path if recursive is False
     Ex: i/path/to/image.png => i/path_to_image.png"""
     return Path(path) if recursive else Path(str(path).replace(os.sep, "_"))
+
+
+# %%
+class DataFilter:
+    '''An abstract DataFilter format, for use in DatasetBuilder.
+    '''
+
+    def __init__(self):
+        self.mergeable = False
+        self.origin = None
+        self.filedict = {}  # used for certain filters, like Existing
+        self.column_schema = {}
+        self.build_schema: dict[str, Expr] | None = None
+
+    def set_origin(self, value):
+        self.origin = value
+
+    def compare(self, lst, cols: DataFrame) -> list:
+        raise NotImplementedError
+
+    def fast_comp(self) -> Expr:
+        raise NotImplementedError
+
+    def __repr__(self):
+        attrlist = [
+            f"{key}=..." if hasattr(val, "__iter__") and not isinstance(val, str) else f"{key}={val}"
+            for key, val in self.__dict__.items()
+        ]
+        return f"{self.__class__.__name__}({', '.join(attrlist)})"
+
+    def __str__(self):
+        return self.__class__.__name__
+
+
+class StatFilter(DataFilter):
+    def __init__(self, beforetime: datetime | None, aftertime: datetime | None):
+        super().__init__()
+        self.mergeable = True
+        self.before = beforetime
+        self.after = aftertime
+        self.column_schema = {'modifiedtime': pl.Datetime}
+        self.build_schema: dict[str, pl.Expr] = {
+            'modifiedtime': pl.col('path').apply(lambda x: datetime.fromtimestamp(os.stat(x).st_mtime))  # type: ignore
+        }
+
+    def compare(self, lst, cols: pl.DataFrame) -> list:
+
+        files = cols.filter(pl.col('path').is_in(lst))
+        files = files.filter(self.fast_comp()
+                             )
+
+        return set(files.select('path').to_series())
+
+    def fast_comp(self) -> Expr:
+        return (
+            pl.when(bool(self.after)).then(
+                self.after < pl.col('modifiedtime')
+            ).otherwise(True)
+            & pl.when(bool(self.before)).then(
+                self.before > pl.col('modifiedtime')
+            ).otherwise(True)
+        )
+
+
+class ResFilter(DataFilter):
+    def __init__(self, minsize: int | None, maxsize: int | None, crop_mod: bool, scale: int):
+        super().__init__()
+        self.mergeable = True
+        self.min: int | None = minsize
+        self.max: int | None = maxsize
+        self.crop: bool = crop_mod
+        self.scale: int = scale
+        self.column_schema = {'resolution': pl.List(int)}
+        self.build_schema = {'resolution': pl.col('path').apply(lambda x: imagesize.get(x))}
+
+    def compare(self, lst, cols: pl.DataFrame) -> list:
+        files = cols.filter(pl.col('path').is_in(lst))
+        files = files.filter(self.fast_comp())
+        return set(files.select(pl.col('path')).to_series())
+
+    def fast_comp(self) -> Expr:
+        if self.crop:
+            return (
+                pl.when(bool(self.min)).then(
+                    pl.col('resolution').apply(lambda l: (min(l) // self.scale) * self.scale >= self.min)
+                ).otherwise(True)
+                & pl.when(bool(self.max)).then(
+                    pl.col('resolution').apply(lambda l: (max(l) // self.scale) * self.scale <= self.max)
+                ).otherwise(True)
+            )
+        else:
+            return (
+                pl.col('resolution').apply(lambda l: all(dim % self.scale == 0 for dim in l)).all()
+                & pl.when(bool(self.min)).then(
+                    pl.col('resolution').apply(lambda l: min(l) >= self.min)
+                ).otherwise(True)
+                & pl.when(bool(self.max)).then(
+                    pl.col('resolution').apply(lambda l: max(l) <= self.max)
+                ).otherwise(True)
+            )
 
 
 IMHASH_TYPES = {
@@ -213,6 +299,350 @@ IMHASH_TYPES = {
     'phash_simple': imagehash.phash_simple,
     'whash': imagehash.whash
 }
+
+
+class HashFilter(DataFilter):
+    def __init__(self, hash_choice, resolver='newest'):
+        super().__init__()
+
+        IMHASH_RESOLVERS = {
+            'ignore_all': self._ignore_all,
+            'newest': self._accept_newest,
+            'oldest': self._accept_oldest,
+            'size': self._accept_biggest
+        }
+        if hash_choice not in IMHASH_TYPES:
+            raise KeyError(f"{hash_choice} is not in IMHASH_TYPES")
+        if resolver not in IMHASH_RESOLVERS:
+            raise KeyError(f"{resolver} is not in IMHASH_RESOLVERS")
+        self.hasher = IMHASH_TYPES[hash_choice]
+        self.resolver = IMHASH_RESOLVERS[resolver]
+        self.column_schema = {'hash': str, 'modifiedtime': pl.Datetime}
+        self.build_schema: dict[str, pl.Expr] = {
+            'hash': pl.col('path').apply(self._hash_img)
+        }
+        self.data = None
+
+    def compare(self, lst, cols: pl.DataFrame) -> list:
+        applied = (
+            cols
+            # get all files with hashes that correspond to files in lst
+            .filter(
+                pl.col('hash').is_in(
+                    cols.filter(
+                        pl.col('path').is_in(lst)
+                    ).select(pl.col("hash")).unique().to_series()
+                )
+            )
+            # resolve hash conflicts
+            .groupby('hash')
+            .apply(
+                lambda df: df.filter(self.resolver()) if len(df) > 1 else df
+            )
+        )
+
+        resolved_paths = set(applied.select(pl.col('path')).to_series())
+        return resolved_paths
+
+    # def fast_comp(self) -> Expr:
+    #     return (
+    #         df
+
+    #         .groupby('hash')
+    #         .apply(
+    #             lambda df: df.filter(self.resolver()) if len(df) > 1 else df
+    #         )
+    #     )
+
+    def _hash_img(self, pth):
+        return str(self.hasher(Image.open(pth)))
+
+    def _ignore_all(self) -> Path:
+        return False
+
+    def _df_with_path_sizes(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.with_columns(
+            pl.col("path").apply(lambda p: os.stat(p).st_size).alias('sizes')
+        )
+
+    def _accept_newest(self) -> pl.DataFrame:
+        return (
+            pl.col('modifiedtime') == pl.col('modifiedtime').max()
+        )
+
+    def _accept_oldest(self) -> pl.DataFrame:
+        return (
+            pl.col('modifiedtime') == pl.col('modifiedtime').min()
+        )
+
+    def _accept_biggest(self) -> pl.DataFrame:
+        sizes = pl.col("path").apply(lambda p: os.stat(p).st_size)
+        return (sizes == sizes.max())
+
+
+class BlacknWhitelistFilter(DataFilter):
+    def __init__(self, whitelist=[], blacklist=[]):
+        super().__init__()
+        self.mergeable = True
+        self.whitelist = whitelist
+        self.blacklist = blacklist
+
+    def compare(self, lst, cols: pl.DataFrame) -> list:
+        out = lst
+        if self.whitelist:
+            out = self._whitelist(out, self.whitelist)
+        if self.blacklist:
+            out = self._blacklist(out, self.blacklist)
+        return out
+
+    def fast_comp(self) -> Expr:
+        args = True
+        if self.whitelist:
+            for item in self.whitelist:
+                args = args & pl.col('path').str.contains(item)
+
+        if self.blacklist:
+            for item in self.blacklist:
+                args = args & pl.col('path').str.contains(item).is_not()
+            # args = args & pl.col('path').is_in(self.blacklist).is_not()
+        return args
+
+    def _whitelist(self, imglist, whitelist) -> set:
+        return {j for i in whitelist for j in imglist if i in str(j)}
+
+    def _blacklist(self, imglist, blacklist) -> set:
+        return set(imglist).difference(self._whitelist(imglist, blacklist))
+
+
+class ExistingFilter(DataFilter):
+    def __init__(self, hr_folder, lr_folder, recursive=True):
+        super().__init__()
+        self.mergeable = True
+        self.existing_list = ExistingFilter._get_existing(hr_folder, lr_folder)
+        # print(self.existing_list)
+        self.recursive = recursive
+
+    def compare(self, lst, cols: pl.DataFrame) -> list:
+        print("Exist")
+        for i in lst:
+            print(to_recursive(self.filedict[i], self.recursive).with_suffix(""))
+        return [
+            i
+            for i in lst
+            if to_recursive(self.filedict[i], self.recursive).with_suffix("") not in self.existing_list
+        ]
+
+    def fast_comp(self) -> Expr:
+        return (
+            pl.col('path').apply(
+                lambda p: to_recursive(self.filedict[p], self.recursive).with_suffix("") not in self.existing_list
+            )
+        )
+
+    @ staticmethod
+    def _get_existing(*folders: Path) -> set:
+        return set.intersection(*(
+            {
+                file.relative_to(folder).with_suffix('')
+                for file in get_file_list((folder / "**" / "*"))
+            }
+            for folder in folders
+        ))
+
+
+def starmap(func, args):
+    # I'm surprised this isn't built in
+    for arg in args:
+        yield func(*arg)
+
+
+# %%
+# Builder
+
+
+def current_time() -> datetime:
+    return datetime.fromtimestamp(time.time())
+
+
+class DatasetBuilder:
+    def __init__(self, rich_stepper_object, origin: str, processes=1):
+        super().__init__()
+        self.filters: list[DataFilter] = []
+        self.power = processes
+        self.stepper = rich_stepper_object
+        self.origin = origin  # necessary for certain filters to work
+
+        self.config = CfgDict("database_config.json", {
+            "trim": True,
+            'trim_age_limit': 60 * 60 * 24 * 7,
+            "trim_check_exists": True,
+            "save_interval": 500,
+            "chunksize": 100,
+            "filepath": "filedb.feather"
+        }, autofill=True)
+        self.filepath = self.config['filepath']
+        self.time_threshold = self.config['trim_age_limit']
+
+        self.basic_schema = {
+            'path': str,
+            'checkedtime': pl.Datetime
+        }
+
+        if os.path.exists(self.filepath):
+            print("Reading database...")
+            self.df = pl.read_ipc(self.config['filepath'], use_pyarrow=True)
+            print("Finished.")
+        else:
+            self.df = pl.DataFrame(schema=self.basic_schema)
+
+    def absolute_dict(self, lst: list[Path]):
+        return {(str((self.origin / pth).resolve())): pth for pth in lst}
+
+    def populate_df(self, lst: list[Path]):
+        from_full_to_relative = self.absolute_dict(lst)
+        abs_paths = from_full_to_relative.keys()
+
+        # build a new schema
+        new_schema = dict(self.df.schema).copy()
+        build_exprs = dict()
+        for f in self.filters:
+            f.filedict = from_full_to_relative
+            expr = f.build_schema
+            if expr is not None:
+                build_exprs.update(expr)
+            schemas = f.column_schema
+            new_schema.update({schema: value
+                               for schema, value in schemas.items()
+                               if schema not in self.df.schema})
+
+        # add new paths to the dataframe with missing data
+        existing_paths = set(self.df.select(pl.col('path')).to_series())
+        new_paths = [path for path in abs_paths if path not in existing_paths]
+        if new_paths:
+            self.df = pl.concat(
+                [
+                    self.df,
+                    pl.DataFrame({
+                        'path': new_paths,
+                        'checkedtime': [current_time()] * len(new_paths)
+                    })
+                ],
+                how="diagonal"
+            )
+
+        # get paths with missing data
+        self.df = DatasetBuilder._make_schema_compliant(self.df, new_schema)
+        unfinished = self.df.filter(pl.any(pl.col(col).is_null() for col in self.df.columns))
+        try:
+            if len(unfinished):
+                with tqdm(desc="Gathering file info...", total=len(unfinished)) as t:
+                    chunksize = self.config['chunksize']
+                    save_timer = 0
+                    collected_data = pl.DataFrame(schema=new_schema)
+                    for df in (
+                        unfinished
+                        .with_row_count('idx')
+                        .with_columns(pl.col('idx') // chunksize)
+                        .partition_by('idx')
+                    ):
+                        df.drop_in_place('idx')
+                        new_data = df.with_columns(**{
+                            col: pl.when(pl.col(col).is_null()).then(expr).otherwise(pl.col(col))
+                            for col, expr in build_exprs.items()
+                        })
+                        collected_data.vstack(new_data, in_place=True)
+                        t.update(len(df))
+                        save_timer += chunksize
+                        if save_timer > self.config['save_interval']:
+                            self.df = self.df.update(collected_data, on='path')
+                            self.save_df()
+                            t.set_postfix_str(f"Autosaved at {current_time()}")
+                            collected_data = collected_data.clear()
+                            save_timer = 0
+
+                self.df = self.df.update(collected_data, on='path').rechunk()
+                self.save_df()
+                self.stepper.print(f"new DB size: [bold yellow]{byte_format(self.get_db_disk_size())}[/bold yellow]")
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt detected! attempting to save dataframe...")
+            self.save_df()
+            print("Saved.")
+            raise KeyboardInterrupt
+
+        return
+
+    def save_df(self):
+        self.df.write_ipc(self.filepath)
+
+    def get_db_disk_size(self):
+        """gets the database size on disk."""
+        return os.stat(self.config['filepath']).st_size
+
+    @staticmethod
+    def _make_schema_compliant(df: pl.DataFrame, schema) -> pl.DataFrame:
+        """adds columns from the schema to the dataframe. (not in-place)"""
+        return pl.concat(
+            [
+                df,
+                pl.DataFrame(schema=schema)
+            ], how="diagonal"
+        )
+
+    def add_filters(self, *filters: DataFilter) -> None:
+        '''Adds filters to the filter list.'''
+        for filter in filters:
+            filter.set_origin(self.origin)
+            self.filters.append(filter)
+
+    def filter(self, lst: Iterable):
+        from_full_to_relative = self.absolute_dict(lst)
+        paths = from_full_to_relative.keys()
+        with tqdm(self.filters, "Running full filters...") as t:
+            vdf = self.df.filter(pl.col('path').is_in(paths))
+            comp = True
+            count = 0
+            for dfilter in self.filters:
+                if dfilter.mergeable:
+                    comp = comp & dfilter.fast_comp()
+                    count += 1
+                else:
+                    vdf = vdf.filter(
+                        comp & pl.col('path').is_in(
+                            dfilter.compare(
+                                set(vdf.select(pl.col('path')).to_series()),
+                                self.df.select(
+                                    pl.col('path'),
+                                    *[pl.col(col) for col in dfilter.column_schema]
+                                )
+                            )
+                        )
+                    )
+                    t.update(count + 1)
+                    count = 0
+                    comp = True
+            vdf = vdf.filter(comp)
+            t.update(count)
+        return [from_full_to_relative[p] for p in vdf.select(pl.col('path')).to_series()]
+
+    def _apply(self, filter_filelist):
+        filter, filelist = filter_filelist
+        return filter.apply(filelist)
+
+    def __enter__(self, *args, **kwargs):
+        self.__init__(*args, **kwargs)
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        pass
+
+# DatasetFile, hrlr_pair, fileparse
+
+
+@dataclass
+class DatasetFile:
+    path: Path
+    hr_path: Path
+    lr_path: Path
 
 
 def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
@@ -235,17 +665,6 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path,
     return hr_path, lr_path
 
 
-def hash_img(img, hasher):
-    return hasher(Image.open(img))
-
-
-@dataclass
-class DatasetFile:
-    path: Path
-    hr_path: Path
-    lr_path: Path
-
-
 def fileparse(dfile: DatasetFile, scale):
     """Converts an image file to HR and LR versions and saves them to the specified folders.
     """
@@ -264,349 +683,6 @@ def fileparse(dfile: DatasetFile, scale):
     os.utime(str(dfile.lr_path), (mtime, mtime))
 
 
-class DatasetBuilder:
-    def __init__(self, rich_stepper_object, origin: str = None, processes=1):
-        super().__init__()
-        self.filters: list[DataFilter] = []
-        self.full_filters: list[DataFilter] = []
-        self.power = processes
-        self.stepper = rich_stepper_object
-        self.origin = origin  # necessary for certain filters to work
-
-    def add_filters(self, *filters: DataFilter) -> None:
-        '''Adds filters to the filter list.
-        '''
-        for filter in filters:
-            filter.set_parent(self)
-            filter.set_origin(self.origin)
-            if filter.type == FilterTypes.PER_ITEM:
-                self.filters.append(filter)
-            else:
-                self.full_filters.append(filter)
-
-    def run_filters(self, x):
-        return all(filter.compare(x) for filter in self.filters)
-
-    def map(self, lst: Iterable, use_pool: bool = False) -> Iterable[bool]:
-        '''Maps all input to all the filters.
-
-        Parameters
-        ----------
-        lst : Iterable
-            the iterable to run through.
-        use_pool : bool
-            whether or not to use a pool. defaults to False
-        Yields
-        ------
-        Iterable[bool]
-            every result for every list
-        '''
-        if use_pool:
-            p = Pool(self.power)
-            iterable = p.imap(self.run_filters, lst)
-        else:
-            p = None
-            iterable = map(self.run_filters, lst)
-        for result in ipbar(iterable, total=len(lst)):
-            yield result
-        if p:
-            p.close()
-
-    def full_map(self, lst: Iterable, use_pool: bool = True):
-        if use_pool:
-            p = Pool(self.power)
-        else:
-            p = None
-        for filter in tqdm(self.full_filters, "Running full filters..."):
-            lst = filter.full_compare(lst, p)
-        if p:
-            p.close()
-        return lst
-
-    def filter(self, lst: Iterable, cond: Callable = lambda x: x, use_pool=False) -> Generator:
-        '''A version of map that only yields successful results
-        '''
-        return (file for result, file in zip(self.map(lst, use_pool=use_pool), lst) if cond(result))
-
-    def _apply(self, filter_filelist):
-        filter, filelist = filter_filelist
-        return filter.apply(filelist)
-
-    def __enter__(self, *args, **kwargs):
-        self.__init__(*args, **kwargs)
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.filters.clear()
-        del self.filters
-        pass
-
-
-class FilterTypes(Enum):
-    PER_ITEM = 1
-    FULL = 2
-
-
-class DataFilter:
-    '''An abstract DataFilter format, for use in DatasetBuilder.
-    '''
-
-    def __init__(self):
-        self.parent = None
-        self.type = FilterTypes.PER_ITEM
-        self.origin = None
-
-    def set_origin(self, value):
-        self.origin = value
-
-    def set_parent(self, parent: DatasetBuilder):
-        self.parent = parent
-
-    def compare(self, file: Path) -> bool:
-        raise NotImplementedError
-
-    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> list:
-        raise NotImplementedError
-
-    def __repr__(self):
-        attrlist = [
-            f"{key}=..." if hasattr(val, "__iter__") and not isinstance(val, str) else f"{key}={val}"
-            for key, val in self.__dict__.items()
-        ]
-        return f"{self.__class__.__name__}({', '.join(attrlist)})"
-
-    def __str__(self):
-        return self.__class__.__name__
-
-
-class StatFilter(DataFilter):
-    def __init__(self, beforetime: datetime | None, aftertime: datetime | None):
-        super().__init__()
-        self.before = beforetime
-        self.after = aftertime
-
-    def compare(self, file: Path) -> bool:
-        st_mtime = datetime.fromtimestamp(file.stat().st_mtime)
-        return not ((self.after and self.after < st_mtime) or (self.before and self.before > st_mtime))
-
-
-class ResFilter(DataFilter):
-    def __init__(self, minsize: int | None, maxsize: int | None, crop_mod: bool, scale: int):
-        super().__init__()
-        self.min: int | None = minsize
-        self.max: int | None = maxsize
-        self.crop: bool = crop_mod
-        self.scale: int = scale
-
-    def compare(self, file: Path) -> bool:
-        res = imagesize.get(file)
-        if self.crop:
-            res = (res[0] // self.scale) * self.scale, (res[1] // self.scale) * self.scale
-        minsize, maxsize = self.min or min(res), self.max or max(res)
-
-        return all(dim % self.scale == 0 and minsize <= dim <= maxsize for dim in res)
-
-
-class HashFilter(DataFilter):
-    def __init__(self, hash_choice, resolver='newest'):
-        self.type = FilterTypes.FULL
-
-        IMHASH_RESOLVERS = {
-            'ignore_all': self._ignore_all,
-            'newest': self._accept_newest,
-            'oldest': self._accept_oldest,
-            'size': self._accept_biggest
-        }
-        if hash_choice not in IMHASH_TYPES:
-            raise KeyError(f"{hash_choice} is not in IMHASH_TYPES")
-        if resolver not in IMHASH_RESOLVERS:
-            raise KeyError(f"{resolver} is not in IMHASH_RESOLVERS")
-        self.hasher = IMHASH_TYPES[hash_choice]
-        self.resolver = IMHASH_RESOLVERS[resolver]
-        self.settings = CfgDict("hashing_config.json", {
-            "trim": True,
-            "trim_age_limit": 60 * 60 * 24 * 7,
-            "trim_check_exists": True,
-            "save_interval": 500,
-            "filepath": "hashes.feather",
-        }, autofill=True)
-        self.filepath = self.settings['filepath']
-
-        self.schema = {
-            "path": str,
-            'hash': str,
-            'modifiedtime': pl.Float64,
-            'checkedtime': pl.Float32
-        }
-        if os.path.exists(self.filepath):
-            print("Reading hash database...")
-            self.df = pl.read_ipc(self.filepath)
-            print("Finished.")
-        else:
-
-            self.df = pl.DataFrame({k: [] for k in self.schema.keys()},
-                                   schema=self.schema.items())
-
-    def full_compare(self, lst: list[Path], p: Pool = None) -> list:
-        from_full_to_relative = {str((self.origin / pth).resolve()): pth for pth in lst}
-        resolved_lst = from_full_to_relative.keys()
-
-        # drop hashes that are too old or the modification time changed
-        if self.settings['trim'] and len(self.df):
-            original_size = len(self.df)
-            maxduration_s = self.settings['trim_age_limit']
-            current_time = time.time()
-            print("Trimming DB...")
-            f = (pl.col("checkedtime") > current_time - maxduration_s)
-            if self.settings['trim_check_exists']:
-                f = (
-                    f & (pl.col("path").apply(lambda x: os.path.exists(x)))
-                    & (pl.col("path").apply(lambda x: os.stat(x).st_mtime) == pl.col("modifiedtime"))
-                )
-            self.df = self.df.filter(f)
-            print("Trimmed.")
-            if len(self.df) != original_size:
-                print(f"stripped old/invalid hashes from list. new hashlist length: {len(self.df)}")
-
-        # get and save new hashes
-        conv_lst = []
-
-        hashed_lst = set(self.df.select(pl.col('path')).to_series())
-        conv_lst = [path for path in resolved_lst if path not in hashed_lst]
-
-        if conv_lst:
-            print(f"Getting hashes for {len(conv_lst)} images")
-            if p:
-                iterable = zip(
-                    conv_lst,
-                    istarmap(p, hash_img, zip(conv_lst, [self.hasher]*len(conv_lst))),
-                )
-            else:
-                iterable = zip(
-                    conv_lst,
-                    map(lambda p: hash_img(p, self.hasher), conv_lst),
-                )
-
-            timer = 0
-            with tqdm(desc="Gathering...", total=len(conv_lst)) as t:
-                for pth, h in iterable:
-                    self.df.vstack(
-                        pl.DataFrame({
-                            "path": str(pth),
-                            'hash': str(h),
-                            'modifiedtime': os.stat(pth).st_mtime,
-                            'checkedtime': time.time()
-                        }, schema=self.schema),
-                        in_place=True
-                    )
-                    timer += 1
-                    if timer > self.settings['save_interval'] and self.settings['save_interval'] > -1:
-                        self.df = self.df.rechunk()
-                        self.df.write_ipc(self.filepath)
-                        timer = 0
-                        t.set_postfix({'DB_size': byte_format(os.stat(self.settings['filepath']).st_size)})
-
-                    t.update(1)
-            self.df = self.df.rechunk()
-            self.df.write_ipc(self.filepath)
-
-        # get the rows of the files that exist in the database
-        print("Grouping...")
-        strlst = set(map(str, resolved_lst))
-        selected_files = self.df.filter(
-            pl.col('hash').is_in(
-                self.df.filter(
-                    pl.col("path").is_in(strlst)
-                ).select(pl.col("hash")).unique().to_series()  # all unique file hashes that occur in the requested files
-            )
-        )
-
-        # resolve hash conflicts
-        groups = selected_files.groupby('hash')
-        applied = groups.apply(
-            lambda df: self.resolver(
-                df
-            ) if len(df) > 1 else df
-        )
-        resolved_paths = set(applied.select(pl.col('path')).to_series())
-
-        print("Grouped.")
-        out = [from_full_to_relative[i] for i in resolved_paths if i in from_full_to_relative]
-        return out
-
-    def _ignore_all(self, df: pl.DataFrame) -> Path:
-        return df.clear()
-
-    def _df_with_path_sizes(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.with_columns(
-            pl.col("path").apply(lambda p: os.stat(p).st_size).alias('sizes')
-        )
-
-    def _accept_newest(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.sort(pl.col('modifiedtime')).tail(1)
-
-    def _accept_oldest(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.sort(pl.col('modifiedtime')).head(1)
-
-    def _accept_biggest(self, df: pl.DataFrame) -> pl.DataFrame:
-        return self._df_with_path_sizes(df).sort(pl.col('sizes')).tail(1).drop('sizes')
-
-
-class BlacknWhitelistFilter(DataFilter):
-    def __init__(self, whitelist=[], blacklist=[]):
-        self.type = FilterTypes.FULL
-        self.whitelist = whitelist
-        self.blacklist = blacklist
-
-    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> list:
-        out = lst
-        if self.whitelist:
-            out = self._whitelist(out, self.whitelist)
-            print(f"whitelist {self.whitelist}: {len(out)}")
-        if self.blacklist:
-            out = self._blacklist(out, self.blacklist)
-            print(f"blacklist {self.blacklist}: {len(out)}")
-
-        return out
-
-    def _whitelist(self, imglist, whitelist) -> set:
-        return {j for i in whitelist for j in imglist if i in str(j)}
-
-    def _blacklist(self, imglist, blacklist) -> set:
-        return set(imglist).difference(self._whitelist(imglist, blacklist))
-
-
-class ExistingFilter(DataFilter):
-    def __init__(self, hr_folder, lr_folder, recursive=True):
-        self.type = FilterTypes.FULL
-        self.existing_list = get_existing(hr_folder, lr_folder)
-        self.recursive = recursive
-
-    def full_compare(self, lst: Iterable[Path], _=None) -> list:
-        return [
-            i
-            for i in tqdm(lst, "Removing existing images...")
-            if to_recursive(i, self.recursive).with_suffix("") not in self.existing_list
-        ]
-
-
-class LinkFilter(DataFilter):
-    def __init__(self):
-        self.type = FilterTypes.FULL
-
-    def full_compare(self, lst: Iterable[Path], p: Pool = None) -> list:
-        return set({
-            (self.origin / pth).resolve(): pth
-            for pth in tqdm(lst, "Resolving links...")
-        }.values())
-
-
-def starmap(func, args):
-    # I'm surprised this isn't built in
-    for arg in args:
-        yield func(*arg)
-
-
 def main(args):
 
     s = RichStepper(loglevel=1, step=-1)
@@ -616,7 +692,7 @@ def main(args):
 
     df = DatasetBuilder(
         s,
-        origin=args.input,
+        origin=str(args.input),
         processes=args.threads
     )
 
@@ -671,19 +747,13 @@ def main(args):
 # * Gather images
     s.next("Gathering images...")
     args.exts = args.exts.split(" ")
-    s.print(f"Searched extensions: {args.exts}")
+    s.print(f"Searching extensions: {args.exts}")
     file_list = get_file_list(*[args.input / "**" / f"*.{ext}" for ext in args.exts])
     image_list = set(map(lambda x: x.relative_to(args.input), sorted(file_list)))
     if args.image_limit and args.limit_mode == "before":  # limit image number
-        image_list = image_list[:args.image_limit]
+        image_list = set(list(image_list)[:args.image_limit])
 
     s.print(f"Gathered {len(image_list)} images")
-
-    s.next()
-
-# * Discard symbolic duplicates
-    if not args.keep_links:
-        df.add_filters(LinkFilter())
 
 # * Hashing option
     if args.hash:
@@ -726,23 +796,15 @@ def main(args):
 
 
 # * Run filters
-    if df.full_filters:
-        s.print(
-            "Filtering using: ",
-            *[f' - {str(filter)}' for filter in df.full_filters]
-        )
-        image_list = set(df.full_map(image_list, use_pool=True))
+    s.next("Populating df...")
+    df.populate_df(image_list)
 
-    if not check_for_images(image_list):
-        return 0
-
+    s.next("Filtering using:")
     if df.filters:
         s.print(
-            "Filtering using: ",
-            *[f" - {str(filter)}" for filter in df.filters]
+            *[f' - {str(filter)}' for filter in df.filters]
         )
-        results = df.map({*map(lambda x: args.input / x, image_list), })
-        image_list = {i[0] for i in zip(image_list, results) if i[1]}
+        image_list = set(df.filter(image_list))
 
     if not check_for_images(image_list):
         return 0
@@ -790,6 +852,7 @@ def wrap_profiler(func, filename):
 
 
 if __name__ == "__main__":
+    freeze_support()
     cparser = ConfigArgParser(main_parser(), "config.json", exit_on_change=True)
     args = cparser.parse_args()
     if args.perfdump:
