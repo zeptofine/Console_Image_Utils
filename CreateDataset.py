@@ -1,51 +1,38 @@
-# %%
 from __future__ import annotations
-from argparse import Namespace
-from util.print_funcs import RichStepper
-from util.print_funcs import ipbar  # , Timer
-from tqdm.rich import tqdm as rtqdm
-from tqdm import tqdm
-from rich_argparse import ArgumentDefaultsRichHelpFormatter
-from rich.traceback import install
-from PIL import Image
-from cfg_argparser import CfgDict, ConfigArgParser
-from polars import DataFrame, Expr
-import polars as pl
-import imagesize
-import imagehash
-import dateutil.parser as timeparser
-import cv2
 
-import time
-from collections.abc import Callable, Generator, Iterable
-from dataclasses import dataclass
-from enum import Enum
-
-'''
-    Conversion script from folder to hr/lr pair.
-    Author: Zeptofine
-'''
 import multiprocessing.pool as mpp
-
 import os
 import sys
+import time
 from argparse import ArgumentParser
+from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
 from glob import glob
-from multiprocessing import Pool, freeze_support  # , Process, Queue, current_process
+from multiprocessing import Pool  # , Process, Queue, current_process
+from multiprocessing import freeze_support
 from pathlib import Path
-from collections import defaultdict
+
+import cv2
+import dateutil.parser as timeparser
+import imagehash
+import imagesize
+import polars as pl
+from cfg_argparser import CfgDict, ConfigArgParser
+from PIL import Image
+from polars import DataFrame, Expr
+from rich.traceback import install
+from rich_argparse import ArgumentDefaultsRichHelpFormatter
+from tqdm import tqdm
+from tqdm.rich import tqdm as rtqdm
+
+from util.print_funcs import ipbar  # , Timer
+from util.print_funcs import RichStepper
 
 CPU_COUNT: int = os.cpu_count()  # type: ignore
-
-
-# %%
-# third party imports
-
 install()
 
 
-# %%
 def main_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="CreateDataset.py",
@@ -128,7 +115,6 @@ def main_parser() -> ArgumentParser:
     return parser
 
 
-# %%
 # byte_format, istarmap, get_file_list, to_recursive
 def byte_format(size, suffix="B"):
     '''modified version of: https://stackoverflow.com/a/1094933'''
@@ -189,7 +175,6 @@ def to_recursive(path, recursive) -> Path:
     return Path(path) if recursive else Path(str(path).replace(os.sep, "_"))
 
 
-# %%
 class DataFilter:
     '''An abstract DataFilter format, for use in DatasetBuilder.
     '''
@@ -456,10 +441,6 @@ def starmap(func, args):
         yield func(*arg)
 
 
-# %%
-# Builder
-
-
 def current_time() -> datetime:
     return datetime.fromtimestamp(time.time())
 
@@ -634,8 +615,6 @@ class DatasetBuilder:
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         pass
-
-# DatasetFile, hrlr_pair, fileparse
 
 
 @dataclass
