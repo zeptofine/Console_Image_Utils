@@ -2,6 +2,23 @@ from os import get_terminal_size
 import time
 
 
+def byte_format(size, suffix="B"):
+    '''modified version of: https://stackoverflow.com/a/1094933'''
+    if isinstance(size, str):
+        size = "".join([val for val in size if val.isnumeric()])
+    size = str(size)
+    if size != "":
+        size = int(size)
+        unit = ''
+        for unit in [unit, 'Ki', 'Mi', 'Gi', 'Ti']:
+            if abs(size) < 2**10:
+                return f"{size:3.1f}{unit}{suffix}"
+            size /= 2**10
+        return f"{size:3.1f}{unit}{suffix}"
+    else:
+        return f"N/A{suffix}"
+
+
 def pbar(iteration: int, total: int, length=20,
          fill="#", nullp="-", corner="[]", pref='', suff='') -> str:
     filled = (length * iteration) // total
@@ -43,8 +60,10 @@ PRINT_MODES: dict[str, tuple[str, str]] = {
     "sameline": ("\033[2K", ""),
     "append": ("", "")
 }
+
+
 class Stepper:
-    def __init__(self, step=0, print_mode = "newline", print_class=print):
+    def __init__(self, step=0, print_mode="newline", print_class=print):
         self.step = step
         self.print_mode: tuple[str, str] = PRINT_MODES[print_mode]
         self.printer = print_class
