@@ -1,6 +1,6 @@
 {
   "editor.formatOnSave": true,
-  "python.analysis.typeCheckingMode": "off",
+  "python.analysis.typeCheckingMode": "basic",
   "python.formatting.autopep8Args": ["--max-line-length=120"],
   "[python]": {
     "editor.defaultFormatter": "ms-python.python",

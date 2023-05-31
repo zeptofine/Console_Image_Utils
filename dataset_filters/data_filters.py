@@ -53,11 +53,10 @@ class StatFilter(DataFilter):
             'modifiedtime': pl.col('path').apply(lambda x: datetime.fromtimestamp(os.stat(x).st_mtime))  # type: ignore
         }
 
-    def compare(self, lst, cols: DataFrame) -> list:
+    def compare(self, lst, cols: DataFrame) -> set:
 
         files = cols.filter(pl.col('path').is_in(lst))
-        files = files.filter(self.fast_comp()
-                             )
+        files = files.filter(self.fast_comp())
 
         return set(files.select('path').to_series())
 
@@ -83,7 +82,7 @@ class ResFilter(DataFilter):
         self.column_schema = {'resolution': pl.List(int)}
         self.build_schema = {'resolution': pl.col('path').apply(lambda x: imagesize.get(x))}
 
-    def compare(self, lst, cols: DataFrame) -> list:
+    def compare(self, lst, cols: DataFrame) -> set:
         files = cols.filter(pl.col('path').is_in(lst))
         files = files.filter(self.fast_comp())
         return set(files.select(pl.col('path')).to_series())
@@ -144,10 +143,11 @@ class HashFilter(DataFilter):
         }
         self.data = None
 
-    def compare(self, lst, cols: DataFrame) -> list:
+    def compare(self, lst, cols: DataFrame) -> set:
         applied = (
             cols
-            # get all files with hashes that correspond to files in lst
+            # get all of the files with hashes that correspond to a file in lst
+            # how though
             .filter(
                 pl.col('hash').is_in(
                     cols.filter(
@@ -178,21 +178,21 @@ class HashFilter(DataFilter):
     def _hash_img(self, pth):
         return str(self.hasher(Image.open(pth)))
 
-    def _ignore_all(self) -> Path:
+    def _ignore_all(self) -> Expr | bool:
         return False
 
-    def _accept_newest(self) -> DataFrame:
+    def _accept_newest(self) -> Expr:
         return (
             pl.col('modifiedtime') == pl.col('modifiedtime').max()
         )
 
-    def _accept_oldest(self) -> DataFrame:
+    def _accept_oldest(self) -> Expr:
         return (
             pl.col('modifiedtime') == pl.col('modifiedtime').min()
         )
 
-    def _accept_biggest(self) -> DataFrame:
-        sizes = pl.col("path").apply(lambda p: os.stat(p).st_size)
+    def _accept_biggest(self) -> Expr:
+        sizes = pl.col("path").apply(lambda p: os.stat(str(p)).st_size)
         return (sizes == sizes.max())
 
 
@@ -203,7 +203,7 @@ class BlacknWhitelistFilter(DataFilter):
         self.whitelist = whitelist
         self.blacklist = blacklist
 
-    def compare(self, lst, cols: DataFrame) -> list:
+    def compare(self, lst, cols: DataFrame) -> set:
         out = lst
         if self.whitelist:
             out = self._whitelist(out, self.whitelist)
@@ -211,7 +211,7 @@ class BlacknWhitelistFilter(DataFilter):
             out = self._blacklist(out, self.blacklist)
         return out
 
-    def fast_comp(self) -> Expr:
+    def fast_comp(self) -> Expr | bool:
         args = True
         if self.whitelist:
             for item in self.whitelist:
@@ -220,7 +220,6 @@ class BlacknWhitelistFilter(DataFilter):
         if self.blacklist:
             for item in self.blacklist:
                 args = args & pl.col('path').str.contains(item).is_not()
-            # args = args & pl.col('path').is_in(self.blacklist).is_not()
         return args
 
     def _whitelist(self, imglist, whitelist) -> set:

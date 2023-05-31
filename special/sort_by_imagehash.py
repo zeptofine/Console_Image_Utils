@@ -45,7 +45,7 @@ if __name__ == "__main__":
 
     exts = ['.jpg', '.jpeg', '.png', '.webp']
     files = list(i for i in folder.rglob("*") if i.suffix in exts)
-    print(files)
+
     with Pool(args.power) as p:
         hashes = {}
         try:
@@ -55,6 +55,8 @@ if __name__ == "__main__":
             print("Interrupted hashing. trying to run with given hashes")
     sorted_hashes = dict(sorted(hashes.items(), key=lambda x: x[::-1]))
 
-    for idx, (path, hash) in tqdm(enumerate(sorted_hashes.items())):
-        (new_folder / Path(str(idx))).with_suffix(path.suffix).symlink_to(path)
-    rprint(sorted_hashes)
+    for (path, hash) in tqdm(sorted_hashes.items()):
+        new_path: Path = new_folder / hash
+        new_path = new_path.with_name(f"{new_path.name}_{path.stem}").with_suffix(path.suffix)
+        new_path.symlink_to(path)
+        print(new_path)

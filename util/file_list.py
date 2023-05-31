@@ -3,7 +3,7 @@ from glob import glob
 from os import sep
 
 
-def get_file_list(*folders: Path) -> list[Path]:
+def get_file_list(*folders: Path) -> set[Path]:
     """
     Args    folders: One or more folder paths.
     Returns list[Path]: paths in the specified folders."""

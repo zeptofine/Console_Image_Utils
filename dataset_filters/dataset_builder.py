@@ -49,10 +49,10 @@ class DatasetBuilder:
         else:
             self.df = DataFrame(schema=self.basic_schema)
 
-    def absolute_dict(self, lst: list[Path]):
+    def absolute_dict(self, lst: set[Path]):
         return {(str((self.origin / pth).resolve())): pth for pth in lst}
 
-    def populate_df(self, lst: list[Path]):
+    def populate_df(self, lst: set[Path]):
         from_full_to_relative = self.absolute_dict(lst)
         abs_paths = from_full_to_relative.keys()
 
@@ -153,28 +153,29 @@ class DatasetBuilder:
         paths = from_full_to_relative.keys()
         with tqdm(self.filters, "Running full filters...") as t:
             vdf = self.df.filter(pl.col('path').is_in(paths))
-            comp = True
+            # comp = True
             count = 0
             for dfilter in self.filters:
-                if dfilter.mergeable:
-                    comp = comp & dfilter.fast_comp()
-                    count += 1
-                else:
-                    vdf = vdf.filter(
-                        comp & pl.col('path').is_in(
-                            dfilter.compare(
-                                set(vdf.select(pl.col('path')).to_series()),
-                                self.df.select(
-                                    pl.col('path'),
-                                    *[pl.col(col) for col in dfilter.column_schema]
-                                )
+                # if dfilter.mergeable:
+                #     comp = comp & dfilter.fast_comp()
+                #     count += 1
+                # else:
+                vdf = vdf.filter(
+                    pl.col('path').is_in(
+                        dfilter.compare(
+                            set(vdf.select(pl.col('path')).to_series()),
+                            self.df.select(
+                                pl.col('path'),
+                                *[pl.col(col) for col in dfilter.column_schema]
                             )
                         )
                     )
-                    t.update(count + 1)
-                    count = 0
-                    comp = True
-            vdf = vdf.filter(comp)
+                )
+                print(vdf)
+                t.update(count + 1)
+                count = 0
+                # comp = True
+            # vdf = vdf.filter(comp).rechunk()
             t.update(count)
         return [from_full_to_relative[p] for p in vdf.select(pl.col('path')).to_series()]
 

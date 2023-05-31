@@ -13,8 +13,8 @@ import dateutil.parser as timeparser
 from cfg_argparser import ConfigArgParser
 from rich.traceback import install
 from rich_argparse import ArgumentDefaultsRichHelpFormatter
-from tqdm.rich import tqdm as rtqdm
-
+# from tqdm.rich import tqdm as rtqdm
+from tqdm import tqdm
 from dataset_filters.data_filters import (
     BlacknWhitelistFilter,
     ExistingFilter,
@@ -307,7 +307,7 @@ def main(args):
         return 0
 
     if args.image_limit and args.limit_mode == "after":
-        image_list = set(image_list[:args.image_limit])
+        image_list = set(list(image_list)[:args.image_limit])
 
     if args.simulate:
         s.next(f"Simulated. {len(image_list)} images remain.")
@@ -326,8 +326,9 @@ def main(args):
                 args.scale)
             for v in image_list
         ]
+        print(len(pargs))
         with Pool(args.threads) as p:
-            for _ in rtqdm(istarmap(p, fileparse, pargs), total=len(image_list)):
+            for _ in tqdm(istarmap(p, fileparse, pargs, chunksize=1), total=len(image_list)):
                 pass
 
     except KeyboardInterrupt:
