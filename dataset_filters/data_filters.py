@@ -232,29 +232,19 @@ class BlacknWhitelistFilter(DataFilter):
 class ExistingFilter(DataFilter):
     def __init__(self, hr_folder, lr_folder, recursive=True):
         super().__init__()
-        self.mergeable = True
+        # self.mergeable = True
         self.existing_list = ExistingFilter._get_existing(hr_folder, lr_folder)
         # print(self.existing_list)
         self.recursive = recursive
 
     def compare(self, lst, cols: DataFrame) -> list:
-        print("Exist")
-        for i in lst:
-            print(to_recursive(self.filedict[i], self.recursive).with_suffix(""))
         return [
             i
             for i in lst
             if to_recursive(self.filedict[i], self.recursive).with_suffix("") not in self.existing_list
         ]
 
-    def fast_comp(self) -> Expr:
-        return (
-            pl.col('path').apply(
-                lambda p: to_recursive(self.filedict[p], self.recursive).with_suffix("") not in self.existing_list
-            )
-        )
-
-    @ staticmethod
+    @staticmethod
     def _get_existing(*folders: Path) -> set:
         return set.intersection(*(
             {

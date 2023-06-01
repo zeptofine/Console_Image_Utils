@@ -58,5 +58,6 @@ if __name__ == "__main__":
     for (path, hash) in tqdm(sorted_hashes.items()):
         new_path: Path = new_folder / hash
         new_path = new_path.with_name(f"{new_path.name}_{path.stem}").with_suffix(path.suffix)
-        new_path.symlink_to(path)
-        print(new_path)
+        if not new_path.exists():
+            new_path.symlink_to(path)
+            print(new_path)

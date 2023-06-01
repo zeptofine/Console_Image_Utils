@@ -153,13 +153,8 @@ class DatasetBuilder:
         paths = from_full_to_relative.keys()
         with tqdm(self.filters, "Running full filters...") as t:
             vdf = self.df.filter(pl.col('path').is_in(paths))
-            # comp = True
             count = 0
             for dfilter in self.filters:
-                # if dfilter.mergeable:
-                #     comp = comp & dfilter.fast_comp()
-                #     count += 1
-                # else:
                 vdf = vdf.filter(
                     pl.col('path').is_in(
                         dfilter.compare(

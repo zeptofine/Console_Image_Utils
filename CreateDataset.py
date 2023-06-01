@@ -178,6 +178,7 @@ def fileparse(dfile: DatasetFile, scale):
     mtime = dfile.path.stat().st_mtime
     os.utime(str(dfile.hr_path), (mtime, mtime))
     os.utime(str(dfile.lr_path), (mtime, mtime))
+    return dfile.path
 
 
 def main(args):
@@ -328,9 +329,9 @@ def main(args):
         ]
         print(len(pargs))
         with Pool(args.threads) as p:
-            for _ in tqdm(istarmap(p, fileparse, pargs, chunksize=1), total=len(image_list)):
-                pass
-
+            with tqdm(istarmap(p, fileparse, pargs, chunksize=1), total=len(image_list)) as t:
+                for pth in t:
+                    pass
     except KeyboardInterrupt:
         s.print(-1, "KeyboardInterrupt")
 
