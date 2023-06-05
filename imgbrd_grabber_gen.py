@@ -33,7 +33,7 @@ outputJson = {
     "version": 3
 }
 
-prefixes = [i.strip().split(" ") for i in prefixes]
+prefixes = map(lambda i: i.strip().split(" "), prefixes)
 blacklist = [
     "watersports",
     "urine",

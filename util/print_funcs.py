@@ -1,5 +1,6 @@
 from os import get_terminal_size
 import time
+from typing import Callable
 
 
 def byte_format(size, suffix="B"):
@@ -48,7 +49,7 @@ def ipbar(iterable, total=None, refresh_interval=0.25,
           end="\033[2K\r" if clear else very_end)
 
 
-def thread_status(pid: int, item: str = "", extra: str = "", item_size=None):
+def thread_status(pid: int, item: str = "", extra: str = "", item_size: int | None = None):
     item_size = item_size or get_terminal_size().columns
     message = f"{pid}: {item}".ljust(
         item_size)[:item_size - len(extra)] + extra
@@ -63,10 +64,10 @@ PRINT_MODES: dict[str, tuple[str, str]] = {
 
 
 class Stepper:
-    def __init__(self, step=0, print_mode="newline", print_class=print):
+    def __init__(self, step=0, print_mode="newline", print_method: Callable = print):
         self.step = step
         self.print_mode: tuple[str, str] = PRINT_MODES[print_mode]
-        self.printer = print_class
+        self.printer = print_method
 
     def next(self, s=None, **kwargs):
         self.step += 1
@@ -122,13 +123,11 @@ class RichStepper(Stepper):
             2: "[bold red]ERROR[/bold red]",
             3: "[bold white]CRITICAL[/bold white]"
         }.get(level, f"[{self.pstepcolor}]{level}:[/{self.pstepcolor}]")
-        output = [
-            f" [{self.pstepcolor}]{self.step}:[/{self.pstepcolor}]" for _ in lines]
+        prefix = f" [{self.pstepcolor}]{self.step}:[/{self.pstepcolor}]"
         if self.loglevel <= level:
-            output = [f"{l} {printed_output}: " for i, l in enumerate(output)]
-        output = [f"{output[i]} {s}" for i, s in enumerate(lines)]
-        for line in output:
-            self._print(line, **kwargs)
+            prefix += f"{printed_output}:"
+        for line in lines:
+            self._print(f"{prefix} {line}")
         return self
 
 

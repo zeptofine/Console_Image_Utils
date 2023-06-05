@@ -1,6 +1,7 @@
 import logicmin
 
 table = {}
+inlen = outlen = 0
 with open("logic.txt", "r") as txt:
     for line in txt:
         line = line.strip().split(":")

@@ -14,3 +14,4 @@ hashing_config.json
 hashes.feather
 filedb.feather
 database_config.json
+sequence/

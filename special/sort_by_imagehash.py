@@ -44,7 +44,7 @@ if __name__ == "__main__":
     new_folder.mkdir(exist_ok=True)
 
     exts = ['.jpg', '.jpeg', '.png', '.webp']
-    files = list(i for i in folder.rglob("*") if i.suffix in exts)
+    files = list(filter(lambda i: i.suffix in exts, folder.rglob("*")))
 
     with Pool(args.power) as p:
         hashes = {}
@@ -55,8 +55,8 @@ if __name__ == "__main__":
             print("Interrupted hashing. trying to run with given hashes")
     sorted_hashes = dict(sorted(hashes.items(), key=lambda x: x[::-1]))
 
-    for (path, hash) in tqdm(sorted_hashes.items()):
-        new_path: Path = new_folder / hash
+    for (path, hash_) in tqdm(sorted_hashes.items()):
+        new_path: Path = new_folder / hash_
         new_path = new_path.with_name(f"{new_path.name}_{path.stem}").with_suffix(path.suffix)
         if not new_path.exists():
             new_path.symlink_to(path)

@@ -16,7 +16,7 @@ class DataFilter:
     '''
 
     def __init__(self):
-        self.mergeable = False
+        self.is_fast = False
         self.origin = None
         self.filedict = {}  # used for certain filters, like Existing
         self.column_schema = {}
@@ -45,7 +45,7 @@ class DataFilter:
 class StatFilter(DataFilter):
     def __init__(self, beforetime: datetime | None, aftertime: datetime | None):
         super().__init__()
-        self.mergeable = True
+        self.is_fast = True
         self.before = beforetime
         self.after = aftertime
         self.column_schema = {'modifiedtime': pl.Datetime}
@@ -74,7 +74,7 @@ class StatFilter(DataFilter):
 class ResFilter(DataFilter):
     def __init__(self, minsize: int | None, maxsize: int | None, crop_mod: bool, scale: int):
         super().__init__()
-        self.mergeable = True
+        self.is_fast = True
         self.min: int | None = minsize
         self.max: int | None = maxsize
         self.crop: bool = crop_mod
@@ -109,18 +109,6 @@ class ResFilter(DataFilter):
             )
 
 
-IMHASH_TYPES = {
-    'average': imagehash.average_hash,
-    'crop_resistant': imagehash.crop_resistant_hash,
-    'color': imagehash.colorhash,
-    'dhash': imagehash.dhash,
-    'dhash_vertical': imagehash.dhash_vertical,
-    'phash': imagehash.phash,
-    'phash_simple': imagehash.phash_simple,
-    'whash': imagehash.whash
-}
-
-
 class HashFilter(DataFilter):
     def __init__(self, hash_choice, resolver='newest'):
         super().__init__()
@@ -131,17 +119,29 @@ class HashFilter(DataFilter):
             'oldest': self._accept_oldest,
             'size': self._accept_biggest
         }
+        IMHASH_TYPES = {
+            'average': imagehash.average_hash,
+            'crop_resistant': imagehash.crop_resistant_hash,
+            'color': imagehash.colorhash,
+            'dhash': imagehash.dhash,
+            'dhash_vertical': imagehash.dhash_vertical,
+            'phash': imagehash.phash,
+            'phash_simple': imagehash.phash_simple,
+            'whash': imagehash.whash,
+            'whash-db4': lambda img: imagehash.whash(img, mode='db4')
+        }
+
         if hash_choice not in IMHASH_TYPES:
             raise KeyError(f"{hash_choice} is not in IMHASH_TYPES")
         if resolver not in IMHASH_RESOLVERS:
             raise KeyError(f"{resolver} is not in IMHASH_RESOLVERS")
+
         self.hasher = IMHASH_TYPES[hash_choice]
         self.resolver = IMHASH_RESOLVERS[resolver]
         self.column_schema = {'hash': str, 'modifiedtime': pl.Datetime}
         self.build_schema: dict[str, Expr] = {
             'hash': pl.col('path').apply(self._hash_img)
         }
-        self.data = None
 
     def compare(self, lst, cols: DataFrame) -> set:
         applied = (
@@ -165,16 +165,6 @@ class HashFilter(DataFilter):
         resolved_paths = set(applied.select(pl.col('path')).to_series())
         return resolved_paths
 
-    # def fast_comp(self) -> Expr:
-    #     return (
-    #         df
-
-    #         .groupby('hash')
-    #         .apply(
-    #             lambda df: df.filter(self.resolver()) if len(df) > 1 else df
-    #         )
-    #     )
-
     def _hash_img(self, pth):
         return str(self.hasher(Image.open(pth)))
 
@@ -182,14 +172,10 @@ class HashFilter(DataFilter):
         return False
 
     def _accept_newest(self) -> Expr:
-        return (
-            pl.col('modifiedtime') == pl.col('modifiedtime').max()
-        )
+        return pl.col('modifiedtime') == pl.col('modifiedtime').max()
 
     def _accept_oldest(self) -> Expr:
-        return (
-            pl.col('modifiedtime') == pl.col('modifiedtime').min()
-        )
+        return pl.col('modifiedtime') == pl.col('modifiedtime').min()
 
     def _accept_biggest(self) -> Expr:
         sizes = pl.col("path").apply(lambda p: os.stat(str(p)).st_size)
@@ -197,11 +183,11 @@ class HashFilter(DataFilter):
 
 
 class BlacknWhitelistFilter(DataFilter):
-    def __init__(self, whitelist=[], blacklist=[]):
+    def __init__(self, whitelist: list | None = None, blacklist: list | None = None):
         super().__init__()
-        self.mergeable = True
-        self.whitelist = whitelist
-        self.blacklist = blacklist
+        self.is_fast = True
+        self.whitelist = whitelist or []
+        self.blacklist = blacklist or []
 
     def compare(self, lst, cols: DataFrame) -> set:
         out = lst
@@ -209,7 +195,7 @@ class BlacknWhitelistFilter(DataFilter):
             out = self._whitelist(out, self.whitelist)
         if self.blacklist:
             out = self._blacklist(out, self.blacklist)
-        return out
+        return set(out)
 
     def fast_comp(self) -> Expr | bool:
         args = True
@@ -222,27 +208,36 @@ class BlacknWhitelistFilter(DataFilter):
                 args = args & pl.col('path').str.contains(item).is_not()
         return args
 
-    def _whitelist(self, imglist, whitelist) -> set:
-        return {j for i in whitelist for j in imglist if i in str(j)}
+    def _whitelist(self, imglist, whitelist) -> filter:
+        return filter(
+            lambda x: any(x in white for white in whitelist),
+            imglist
+        )
 
-    def _blacklist(self, imglist, blacklist) -> set:
-        return set(imglist).difference(self._whitelist(imglist, blacklist))
+    def _blacklist(self, imglist, blacklist) -> filter:
+        return filter(
+            lambda x: all(x not in black for black in blacklist),
+            imglist
+        )
 
 
 class ExistingFilter(DataFilter):
     def __init__(self, hr_folder, lr_folder, recursive=True):
         super().__init__()
-        # self.mergeable = True
+        self.is_fast = True
         self.existing_list = ExistingFilter._get_existing(hr_folder, lr_folder)
         # print(self.existing_list)
         self.recursive = recursive
 
     def compare(self, lst, cols: DataFrame) -> list:
-        return [
-            i
-            for i in lst
-            if to_recursive(self.filedict[i], self.recursive).with_suffix("") not in self.existing_list
-        ]
+        return list(filter(
+            lambda x: to_recursive(self.filedict[x], self.recursive).with_suffix("") not in self.existing_list,
+            lst
+        ))
+
+    def fast_comp(self) -> Expr:
+        return pl.col('path').apply(lambda x: to_recursive(self.filedict[x], self.recursive).with_suffix("") not in self.existing_list)
+        # return pl.col("path").is_in(self.existing_list)
 
     @staticmethod
     def _get_existing(*folders: Path) -> set:

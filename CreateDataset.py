@@ -302,7 +302,7 @@ def main(args):
         s.print(
             *[f' - {str(filter)}' for filter in df.filters]
         )
-        image_list = set(df.filter(image_list))
+        image_list = set(df.filter(image_list, sort_col="hash"))
 
     if not check_for_images(image_list):
         return 0
@@ -317,7 +317,7 @@ def main(args):
 
 # * convert files. Finally!
     s.next("Converting...")
-    image_list: set[Path] = {Path(p) for p in image_list}
+    image_list: set[Path] = set(map(Path, image_list))  # {Path(p) for p in image_list}
     try:
         pargs = [
             (DatasetFile(

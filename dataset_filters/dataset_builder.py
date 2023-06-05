@@ -1,6 +1,5 @@
 
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -11,11 +10,12 @@ from tqdm import tqdm
 
 from util.print_funcs import byte_format
 
-from .data_filters import DataFilter
+from dataset_filters.data_filters import DataFilter
 
 
 def current_time() -> datetime:
-    return datetime.fromtimestamp(time.time())
+    return datetime.now().replace(microsecond=0)
+    # return datetime.fromtimestamp(time.time())
 
 
 class DatasetBuilder:
@@ -59,15 +59,17 @@ class DatasetBuilder:
         # build a new schema
         new_schema = dict(self.df.schema).copy()
         build_exprs = dict()
-        for f in self.filters:
-            f.filedict = from_full_to_relative
-            expr = f.build_schema
+        for filter_ in self.filters:
+            filter_.filedict = from_full_to_relative
+            expr = filter_.build_schema
             if expr is not None:
                 build_exprs.update(expr)
-            schemas = f.column_schema
-            new_schema.update({schema: value
-                               for schema, value in schemas.items()
-                               if schema not in self.df.schema})
+            schemas = filter_.column_schema
+            new_schema.update({
+                schema: value
+                for schema, value in schemas.items()
+                if schema not in self.df.schema
+            })
 
         # add new paths to the dataframe with missing data
         existing_paths = set(self.df.select(pl.col('path')).to_series())
@@ -93,19 +95,19 @@ class DatasetBuilder:
                     chunksize = self.config['chunksize']
                     save_timer = 0
                     collected_data = DataFrame(schema=new_schema)
-                    for df in (
+                    for df_group in (
                         unfinished
                         .with_row_count('idx')
                         .with_columns(pl.col('idx') // chunksize)
                         .partition_by('idx')
                     ):
-                        df.drop_in_place('idx')
-                        new_data = df.with_columns(**{
+                        df_group.drop_in_place('idx')
+                        new_data = df_group.with_columns(**{
                             col: pl.when(pl.col(col).is_null()).then(expr).otherwise(pl.col(col))
                             for col, expr in build_exprs.items()
                         })
                         collected_data.vstack(new_data, in_place=True)
-                        t.update(len(df))
+                        t.update(len(df_group))
                         save_timer += chunksize
                         if save_timer > self.config['save_interval']:
                             self.df = self.df.update(collected_data, on='path')
@@ -117,11 +119,11 @@ class DatasetBuilder:
                 self.df = self.df.update(collected_data, on='path').rechunk()
                 self.save_df()
                 self.stepper.print(f"new DB size: [bold yellow]{byte_format(self.get_db_disk_size())}[/bold yellow]")
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as exc:
             print("KeyboardInterrupt detected! attempting to save dataframe...")
             self.save_df()
             print("Saved.")
-            raise KeyboardInterrupt
+            raise exc
 
         return
 
@@ -133,29 +135,32 @@ class DatasetBuilder:
         return os.stat(self.config['filepath']).st_size
 
     @staticmethod
-    def _make_schema_compliant(df: DataFrame, schema) -> DataFrame:
+    def _make_schema_compliant(data_frame: DataFrame, schema) -> DataFrame:
         """adds columns from the schema to the dataframe. (not in-place)"""
         return pl.concat(
             [
-                df,
+                data_frame,
                 DataFrame(schema=schema)
             ], how="diagonal"
         )
 
     def add_filters(self, *filters: DataFilter) -> None:
         '''Adds filters to the filter list.'''
-        for filter in filters:
-            filter.set_origin(self.origin)
-            self.filters.append(filter)
+        for filter_ in filters:
+            filter_.set_origin(self.origin)
+            self.filters.append(filter_)
 
-    def filter(self, lst):
+    def filter(self, lst, sort_col="path"):
+        assert sort_col in self.df.columns, "Sorting column is not in the database"
         from_full_to_relative = self.absolute_dict(lst)
         paths = from_full_to_relative.keys()
         with tqdm(self.filters, "Running full filters...") as t:
-            vdf = self.df.filter(pl.col('path').is_in(paths))
+            vdf = self.df.filter(pl.col('path').is_in(paths)).rechunk()
             count = 0
             for dfilter in self.filters:
                 vdf = vdf.filter(
+                    dfilter.fast_comp()
+                    if dfilter.is_fast else
                     pl.col('path').is_in(
                         dfilter.compare(
                             set(vdf.select(pl.col('path')).to_series()),
@@ -166,17 +171,14 @@ class DatasetBuilder:
                         )
                     )
                 )
-                print(vdf)
                 t.update(count + 1)
                 count = 0
-                # comp = True
-            # vdf = vdf.filter(comp).rechunk()
             t.update(count)
-        return [from_full_to_relative[p] for p in vdf.select(pl.col('path')).to_series()]
+        return [from_full_to_relative[p] for p in vdf.sort(sort_col).select(pl.col('path')).to_series()]
 
     def _apply(self, filter_filelist):
-        filter, filelist = filter_filelist
-        return filter.apply(filelist)
+        filter_, filelist = filter_filelist
+        return filter_.apply(filelist)
 
     def __enter__(self, *args, **kwargs):
         self.__init__(*args, **kwargs)
