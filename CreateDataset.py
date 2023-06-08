@@ -117,6 +117,9 @@ def main(
     threads: Annotated[
         int, typer.Option(help="number of threads for multiprocessing.", rich_help_panel="modifiers")
     ] = int(CPU_COUNT * (3 / 4)),
+    chunksize: Annotated[
+        int, typer.Option(help="number of images to run with one thread per pool chunk", rich_help_panel="modifiers")
+    ] = 5,
     limit: Annotated[
         Optional[int], typer.Option(help="only gathers a given number of images.", rich_help_panel="modifiers")
     ] = None,
@@ -298,6 +301,7 @@ def main(
 
     if simulate:
         s.next(f"Simulated. {len(image_list)} images remain.")
+        return 0
 
     # * convert files. Finally!
     try:
@@ -307,7 +311,7 @@ def main(
         ]
         print(len(pargs))
         with Pool(threads) as p:
-            with tqdm(p.imap(fileparse, pargs, chunksize=10), total=len(image_list)) as t:
+            with tqdm(p.imap(fileparse, pargs, chunksize=chunksize), total=len(image_list)) as t:
                 for _ in t:
                     pass
     except KeyboardInterrupt:
