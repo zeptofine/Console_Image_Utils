@@ -144,8 +144,8 @@ def main(
         Optional[str], typer.Option(help="Excludes paths with the given strings.", rich_help_panel="filters")
     ] = None,
     list_separator: Annotated[
-        Optional[str], typer.Option(help="separator for the white/blacklists.", rich_help_panel="filters")
-    ] = None,
+        str, typer.Option(help="separator for the white/blacklists.", rich_help_panel="filters")
+    ] = ",",
     minsize: Annotated[
         Optional[int], typer.Option(help="minimum size an image must be.", rich_help_panel="filters")
     ] = None,
