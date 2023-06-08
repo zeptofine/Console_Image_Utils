@@ -10,3 +10,5 @@ cfg-argparser
 imagehash
 autopep8
 polars
+typer[all]
+pyarrow
