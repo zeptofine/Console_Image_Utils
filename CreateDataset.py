@@ -3,10 +3,10 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from multiprocessing import Pool
-from multiprocessing import cpu_count, freeze_support
+from multiprocessing import Pool, cpu_count, freeze_support
 from pathlib import Path
 from typing import Optional
+
 import cv2
 import dateutil.parser as timeparser
 import numpy as np
@@ -16,11 +16,15 @@ from rich import print as rprint
 from rich.traceback import install
 from tqdm import tqdm
 from typing_extensions import Annotated
-from dataset_filters.data_filters import BlacknWhitelistFilter, ExistingFilter, HashFilter, ResFilter, StatFilter
+
+from dataset_filters.data_filters import BlacknWhitelistFilter, ExistingFilter, StatFilter
 from dataset_filters.dataset_builder import DatasetBuilder
+from dataset_filters.external_filters import HashFilter, ResFilter
 from util.file_list import get_file_list, to_recursive
-from util.print_funcs import ipbar  # , Timer
-from util.print_funcs import RichStepper
+from util.print_funcs import (
+    RichStepper,
+    ipbar,  # , Timer
+)
 
 CPU_COUNT = int(cpu_count())
 install()
