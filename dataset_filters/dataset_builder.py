@@ -9,7 +9,7 @@ from polars import DataFrame, Expr, PolarsDataType
 from rich import print as rprint
 from tqdm import tqdm
 
-from dataset_filters.data_filters import Comparable, DataFilter, FastComparable
+from .base_filters import Comparable, DataFilter, FastComparable
 from util.print_funcs import byte_format
 
 

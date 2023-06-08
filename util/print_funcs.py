@@ -6,7 +6,7 @@ from typing import Callable, TypeVar
 from rich import print as rprint
 
 
-def byte_format(size, suffix="B"):
+def byte_format(size, leading: int = 3, trailing: int = 4, suffix="B") -> str:
     """modified version of: https://stackoverflow.com/a/1094933"""
     if isinstance(size, str):
         size = "".join([val for val in size if val.isnumeric()])
@@ -16,7 +16,7 @@ def byte_format(size, suffix="B"):
         unit = ""
         for unit in [unit, "Ki", "Mi", "Gi", "Ti"]:
             if abs(size) < 2**10:
-                return f"{size:3.4f}{unit}{suffix}"
+                return f"{size:{leading + trailing + 1}.{trailing}f}{unit}{suffix}"
             size /= 2**10
         return f"{size:3.1f}{unit}{suffix}"
     else:
@@ -24,14 +24,14 @@ def byte_format(size, suffix="B"):
 
 
 def pbar(iteration: int, total: int, length=20, fill="#", nullp="-", corner="[]", pref="", suff="") -> str:
-    filled = (length * iteration) // total
+    filled: int = (length * iteration) // total
     #    [#############################]
     c1, c2 = "\033[92m", "\033[93m"
     return f"{pref}{c1}{corner[0]}{c2}{(fill*length)[:filled]:{nullp}<{length}}{c1}{corner[1]}\033[0m{suff}"
 
 
 def isbar(iteration, total, suff="", **kwargs):
-    return f"{pbar(iteration, total, **kwargs)} {str(iteration).rjust(len(str(total)))}/{total} {suff}"
+    return f"{pbar(iteration, total, **kwargs)} {iteration:len(str(total))}/{total} {suff}"
 
 
 T = TypeVar("T")
