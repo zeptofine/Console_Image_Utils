@@ -12,10 +12,11 @@ import dateutil.parser as timeparser
 import numpy as np
 import typer
 from cfg_argparser import CfgDict, wrap_config
+from polars import col
 from rich import print as rprint
 from tqdm import tqdm
 from typing_extensions import Annotated
-from polars import col
+
 from dataset_filters.data_filters import BlacknWhitelistFilter, ExistingFilter, StatFilter
 from dataset_filters.dataset_builder import DatasetBuilder
 from dataset_filters.external_filters import HashFilter, ResFilter
@@ -26,27 +27,8 @@ CPU_COUNT = int(cpu_count())
 app = typer.Typer()
 
 
-def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path, recursive: bool = False, ext=None) -> tuple[Path, Path]:
-    """
-    gets the HR and LR file paths for a given file or directory path.
-    Args    recursive (bool): Whether to search for the file in subdirectories.
-            ext (str): The file extension to append to the file name.
-    Returns tuple[Path, Path]: HR and LR file paths.
-    """
-    hr_path: Path = hr_folder / to_recursive(path, recursive)
-    lr_path: Path = lr_folder / to_recursive(path, recursive)
-    # Create the HR and LR folders if they do not exist
-    hr_path.parent.mkdir(parents=True, exist_ok=True)
-    lr_path.parent.mkdir(parents=True, exist_ok=True)
-    # If an extension is provided, append it to the HR and LR file paths
-    if ext:
-        hr_path = hr_path.with_suffix(f".{ext}")
-        lr_path = lr_path.with_suffix(f".{ext}")
-    return hr_path, lr_path
-
-
 @dataclass
-class FileScenario:
+class Scenario:
     """A scenario which fileparse parses and creates hr/lr pairs with."""
 
     relative_path: Path
@@ -57,7 +39,7 @@ class FileScenario:
     scale: int
 
 
-def fileparse(dfile: FileScenario) -> FileScenario:
+def fileparse(dfile: Scenario) -> Scenario:
     """Converts an image file to HR and LR versions and saves them to the specified folders."""
     # Read the image file
     image: np.ndarray[int, np.dtype[np.generic]] = cv2.imread(str(dfile.absolute_path), cv2.IMREAD_UNCHANGED)
@@ -204,6 +186,9 @@ def main(
             return False
         return True
 
+    def recurse(path: Path):
+        return to_recursive(path, recursive)
+
     if not input_folder or not os.path.exists(input_folder):
         rprint("Please select a directory.")
         return 1
@@ -219,6 +204,24 @@ def main(
             extension = extension[1:]
         if extension.lower() in ["self", "none", "same", ""]:
             extension = None
+
+    def hrlr_pair(path: Path) -> tuple[Path, Path]:
+        """
+        gets the HR and LR file paths for a given file or directory path.
+        Args    recursive (bool): Whether to search for the file in subdirectories.
+                ext (str): The file extension to append to the file name.
+        Returns tuple[Path, Path]: HR and LR file paths.
+        """
+        hr_path: Path = hr_folder / recurse(path)
+        lr_path: Path = lr_folder / recurse(path)
+        # Create the HR and LR folders if they do not exist
+        hr_path.parent.mkdir(parents=True, exist_ok=True)
+        lr_path.parent.mkdir(parents=True, exist_ok=True)
+        # If an extension is provided, append it to the HR and LR file paths
+        if extension:
+            hr_path = hr_path.with_suffix(f".{extension}")
+            lr_path = lr_path.with_suffix(f".{extension}")
+        return hr_path, lr_path
 
     dtafter: datetime | None = None
     dtbefore: datetime | None = None
@@ -261,9 +264,6 @@ def main(
     if minsize or maxsize:
         s.print(f"Filtering by size ({minsize} <= x <= {maxsize})")
 
-    if not overwrite:
-        db.add_filters(ExistingFilter(hr_folder, lr_folder, recursive))
-
     # * Gather images
     s.next("Gathering images...")
     available_extensions: list[str] = extensions.split(",")
@@ -290,10 +290,13 @@ def main(
                     folder.rmdir()
     elif purge:
         s.next("Purging...")
-        for path in ipbar(image_list):
-            hr_path, lr_path = hrlr_pair(path, hr_folder, lr_folder, recursive, extension)
+        for path in ipbar(image_list, total=len(image_list)):
+            hr_path, lr_path = hrlr_pair(path)
             hr_path.unlink(missing_ok=True)
             lr_path.unlink(missing_ok=True)
+
+    if not overwrite:
+        db.add_filters(ExistingFilter(hr_folder, lr_folder, recursive))
 
     # * Run filters
     s.next("Populating df...")
@@ -315,14 +318,8 @@ def main(
 
     # * convert files. Finally!
     try:
-        pargs: list[FileScenario] = [
-            FileScenario(
-                path,
-                input_folder / path,
-                (input_folder / path).resolve(),
-                *hrlr_pair(path, hr_folder, lr_folder, recursive, extension),
-                scale,
-            )
+        pargs: list[Scenario] = [
+            Scenario(path, input_folder / path, (input_folder / path).resolve(), *hrlr_pair(path), scale)
             for path in image_list
         ]
         print(len(pargs))
@@ -334,7 +331,7 @@ def main(
                         print(db.df.filter(col("path") == str(file.resolved_path)))  # I can't imagine this is fast
                         rprint(" ├hr -> " + f"'{file.hr_path}'")
                         rprint(" └lr -> " + f"'{file.lr_path}'")
-                    pass
+
     except KeyboardInterrupt:
         print(-1, "KeyboardInterrupt")
         return 1
