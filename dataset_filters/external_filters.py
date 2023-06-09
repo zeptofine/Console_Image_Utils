@@ -26,6 +26,7 @@ class ResFilter(DataFilter, FastComparable):
         return pl.col("resolution").apply(lambda lst: all(dim % self.scale == 0 for dim in lst) and self.is_valid(lst))
 
     def is_valid(self, lst: Iterable[int]) -> bool:
+        lst = set(lst)
         return not ((self.min and min(lst) < self.min) or (self.max and max(lst) > self.max))
 
     def resize(self, i: int) -> int:
