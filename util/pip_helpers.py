@@ -24,7 +24,9 @@ class PipInstaller:
             return False
         return True
 
-    def install(self, *packages, post=['pip', 'install']) -> int:
+    def install(self, *packages, post=None) -> int:
+        if post is None:
+            post = ['pip', 'install']
         subprocess_input = [executable, '-m', *post, *packages] if packages else [executable, '-m', *post]
         with Popen(subprocess_input,
                    stdout=PIPE, stderr=PIPE) as import_proc:

@@ -1,26 +1,29 @@
 import os
-from collections.abc import Generator
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 from multiprocessing import Pool, cpu_count, freeze_support
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Annotated
 
 import cv2
 import dateutil.parser as timeparser
-import numpy as np
 import typer
 from cfg_argparser import CfgDict, wrap_config
+from polars import col
 from rich import print as rprint
 from tqdm import tqdm
-from typing_extensions import Annotated
-from polars import col
+
 from dataset_filters.data_filters import BlacknWhitelistFilter, ExistingFilter, StatFilter
 from dataset_filters.dataset_builder import DatasetBuilder
 from dataset_filters.external_filters import HashFilter, ResFilter
 from util.file_list import get_file_list, to_recursive
 from util.print_funcs import RichStepper, ipbar
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+    from datetime import datetime
+
+    import numpy as np
 
 CPU_COUNT = int(cpu_count())
 app = typer.Typer()
@@ -112,72 +115,72 @@ config = CfgDict("config.json")
 def main(
     input_folder: Annotated[Path, typer.Option(help="the folder to scan.")] = Path(),
     scale: Annotated[int, typer.Option(help="the scale to downscale.")] = 4,
-    extension: Annotated[Optional[str], typer.Option(help="export extension.")] = None,
+    extension: Annotated[str | None, typer.Option(help="export extension.")] = None,
     extensions: Annotated[str, typer.Option(help="extensions to search for. (split with commas)")] = "webp,png,jpg",
     recursive: Annotated[bool, typer.Option(help="preserves the tree hierarchy.", rich_help_panel="modifiers")] = False,
     threads: Annotated[
-        int, typer.Option(help="number of threads for multiprocessing.", rich_help_panel="modifiers")
+        int, typer.Option(help="number of threads for multiprocessing.", rich_help_panel="modifiers"),
     ] = int(CPU_COUNT * (3 / 4)),
     chunksize: Annotated[
-        int, typer.Option(help="number of images to run with one thread per pool chunk", rich_help_panel="modifiers")
+        int, typer.Option(help="number of images to run with one thread per pool chunk", rich_help_panel="modifiers"),
     ] = 5,
     limit: Annotated[
-        Optional[int], typer.Option(help="only gathers a given number of images.", rich_help_panel="modifiers")
+        int | None, typer.Option(help="only gathers a given number of images.", rich_help_panel="modifiers"),
     ] = None,
     limit_mode: Annotated[
-        LimitModes, typer.Option(help="which order the limiter is activated.", rich_help_panel="modifiers")
+        LimitModes, typer.Option(help="which order the limiter is activated.", rich_help_panel="modifiers"),
     ] = LimitModes.BEFORE,
     simulate: Annotated[
-        bool, typer.Option(help="skips the conversion step. Used for debugging.", rich_help_panel="modifiers")
+        bool, typer.Option(help="skips the conversion step. Used for debugging.", rich_help_panel="modifiers"),
     ] = False,
     purge: Annotated[
         bool,
         typer.Option(help="deletes the output files corresponding to the input files.", rich_help_panel="modifiers"),
     ] = False,
     purge_all: Annotated[
-        bool, typer.Option(help="Same as above, but deletes *everything*.", rich_help_panel="modifiers")
+        bool, typer.Option(help="Same as above, but deletes *everything*.", rich_help_panel="modifiers"),
     ] = False,
     overwrite: Annotated[
         bool,
         typer.Option(help="Skips checking existing files, overwrites existing files.", rich_help_panel="modifiers"),
     ] = False,
     verbose: Annotated[
-        bool, typer.Option(help="Prints the files when they are fully converted.", rich_help_panel="modifiers")
+        bool, typer.Option(help="Prints the files when they are fully converted.", rich_help_panel="modifiers"),
     ] = False,
     sort_by: Annotated[
         str,
         typer.Option(
-            help="Which column in the database to sort by. It must be in the database.", rich_help_panel="modifiers"
+            help="Which column in the database to sort by. It must be in the database.", rich_help_panel="modifiers",
         ),
     ] = "path",
     whitelist: Annotated[
-        Optional[str], typer.Option(help="only allows paths with the given strings.", rich_help_panel="filters")
+        str | None, typer.Option(help="only allows paths with the given strings.", rich_help_panel="filters"),
     ] = None,
     blacklist: Annotated[
-        Optional[str], typer.Option(help="Excludes paths with the given strings.", rich_help_panel="filters")
+        str | None, typer.Option(help="Excludes paths with the given strings.", rich_help_panel="filters"),
     ] = None,
     list_separator: Annotated[
-        str, typer.Option(help="separator for the white/blacklists.", rich_help_panel="filters")
+        str, typer.Option(help="separator for the white/blacklists.", rich_help_panel="filters"),
     ] = ",",
     minsize: Annotated[
-        Optional[int], typer.Option(help="minimum size an image must be.", rich_help_panel="filters")
+        int | None, typer.Option(help="minimum size an image must be.", rich_help_panel="filters"),
     ] = None,
     maxsize: Annotated[
-        Optional[int], typer.Option(help="maximum size an image can be.", rich_help_panel="filters")
+        int | None, typer.Option(help="maximum size an image can be.", rich_help_panel="filters"),
     ] = None,
     crop_mod: Annotated[
         bool,
         typer.Option(help="changes mod mode to crop the image to be divisible by scale", rich_help_panel="filters"),
     ] = False,
     before: Annotated[
-        Optional[str], typer.Option(help="only uses files before a given date", rich_help_panel="filters")
+        str | None, typer.Option(help="only uses files before a given date", rich_help_panel="filters"),
     ] = None,
     after: Annotated[
-        Optional[str], typer.Option(help="only uses after a given date.", rich_help_panel="filters")
+        str | None, typer.Option(help="only uses after a given date.", rich_help_panel="filters"),
     ] = None,
     # ^^ these will be parsed with dateutil.parser ^^
     hash_images: Annotated[
-        bool, typer.Option(help="Removes perceptually similar images.", rich_help_panel="filters")
+        bool, typer.Option(help="Removes perceptually similar images.", rich_help_panel="filters"),
     ] = False,
     hash_mode: Annotated[
         HashModes,
@@ -187,7 +190,7 @@ def main(
         ),
     ] = HashModes.AVERAGE,
     hash_choice: Annotated[
-        HashChoices, typer.Option(help="What to do in the occurance of a hash conflict.", rich_help_panel="filters")
+        HashChoices, typer.Option(help="What to do in the occurance of a hash conflict.", rich_help_panel="filters"),
     ] = HashChoices.IGNORE_ALL,
 ) -> int:
     """Does all the heavy lifting"""
@@ -204,13 +207,19 @@ def main(
             return False
         return True
 
-    if not input_folder or not os.path.exists(input_folder):
+    if not input_folder or not Path(input_folder).exists():
         rprint("Please select a directory.")
         return 1
 
     # * get hr / lr folders
-    hr_folder: Path = input_folder.parent / f"{scale}xHR{'-' + extension if extension else ''}"
-    lr_folder: Path = input_folder.parent / f"{scale}xLR{'-' + extension if extension else ''}"
+    hr_folder: Path = (
+        input_folder.parent
+        / f"{scale}xHR{f'-{extension}' if extension else ''}"
+    )
+    lr_folder: Path = (
+        input_folder.parent
+        / f"{scale}xLR{f'-{extension}' if extension else ''}"
+    )
     hr_folder.mkdir(parents=True, exist_ok=True)
     lr_folder.mkdir(parents=True, exist_ok=True)
 
@@ -228,9 +237,8 @@ def main(
                 dtafter = timeparser.parse(str(after))
             if before:
                 dtbefore = timeparser.parse(str(before))
-            if dtafter is not None and dtafter is not None:
-                if dtafter > dtbefore:  # type: ignore
-                    raise timeparser.ParserError(f"{dtbefore} (--before) is older than {dtafter} (--after)!")
+            if dtafter is not None and dtafter is not None and dtafter > dtbefore:
+                raise timeparser.ParserError(f"{dtbefore} (--before) is older than {dtafter} (--after)!")
 
             s.print(f"Filtering by time ({dtbefore} <= x <= {dtafter})")
 
@@ -269,9 +277,9 @@ def main(
     available_extensions: list[str] = extensions.split(",")
     s.print(f"Searching extensions: {available_extensions}")
     file_list: Generator[Path, None, None] = get_file_list(
-        *[input_folder / "**" / f"*.{ext}" for ext in available_extensions]
+        *[input_folder / "**" / f"*.{ext}" for ext in available_extensions],
     )
-    image_list: list[Path] = list(set(map(lambda x: x.relative_to(input_folder), sorted(file_list))))
+    image_list: list[Path] = list({x.relative_to(input_folder) for x in sorted(file_list)})
     if limit and limit == LimitModes.BEFORE:
         image_list = image_list[:limit]
 
@@ -300,7 +308,7 @@ def main(
     db.populate_df(image_list)
 
     s.next("Filtering using:")
-    s.print(*[f" - {str(filter_)}" for filter_ in db.filters])
+    s.print(*[f" - {filter_!s}" for filter_ in db.filters])
     image_list = db.filter(image_list, sort_col=sort_by)
 
     if limit and limit_mode == LimitModes.AFTER:
@@ -326,15 +334,13 @@ def main(
             for path in image_list
         ]
         print(len(pargs))
-        with Pool(threads) as p:
-            with tqdm(p.imap(fileparse, pargs, chunksize=chunksize), total=len(image_list)) as t:
-                for file in t:
-                    if verbose:
-                        print()
-                        print(db.df.filter(col("path") == str(file.resolved_path)))  # I can't imagine this is fast
-                        rprint(" ├hr -> " + f"'{file.hr_path}'")
-                        rprint(" └lr -> " + f"'{file.lr_path}'")
-                    pass
+        with Pool(threads) as p, tqdm(p.imap(fileparse, pargs, chunksize=chunksize), total=len(image_list)) as t:
+            for file in t:
+                if verbose:
+                    print()
+                    print(db.df.filter(col("path") == str(file.resolved_path)))  # I can't imagine this is fast
+                    rprint(f" ├hr -> '{file.hr_path}'")
+                    rprint(f" └lr -> '{file.lr_path}'")
     except KeyboardInterrupt:
         print(-1, "KeyboardInterrupt")
         return 1

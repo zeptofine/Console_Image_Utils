@@ -10,8 +10,7 @@ def byte_format(size, leading: int = 3, trailing: int = 4, suffix="B") -> str:
     """modified version of: https://stackoverflow.com/a/1094933"""
     if isinstance(size, str):
         size = "".join([val for val in size if val.isnumeric()])
-    size = str(size)
-    if size != "":
+    if size := str(size):
         size = int(size)
         unit = ""
         for unit in [unit, "Ki", "Mi", "Gi", "Ti"]:

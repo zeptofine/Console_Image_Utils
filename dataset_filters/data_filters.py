@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -13,16 +12,19 @@ from .base_filters import DataFilter, FastComparable
 
 
 class StatFilter(DataFilter, FastComparable):
-    def __init__(self, beforetime: datetime | None, aftertime: datetime | None):
+    def __init__(self, beforetime: datetime | None, aftertime: datetime | None) -> None:
         super().__init__()
         self.before: datetime | None = beforetime
         self.after: datetime | None = aftertime
         self.column_schema = {"modifiedtime": pl.Datetime}
-        self.build_schema: dict[str, Expr] = {"modifiedtime": pl.col("path").apply(StatFilter.get_modified_time)}
+        self.build_schema: dict[str, Expr] = {
+            "modifiedtime": pl.col("path").apply(StatFilter.get_modified_time),
+        }
 
     @staticmethod
     def get_modified_time(path: str) -> datetime:
-        return datetime.fromtimestamp(os.stat(path).st_mtime)
+        path = Path(path)
+        return datetime.fromtimestamp(path.stat().st_mtime)
 
     def fast_comp(self) -> Expr | bool:
         param: Expr | bool = True
@@ -34,12 +36,16 @@ class StatFilter(DataFilter, FastComparable):
 
 
 class BlacknWhitelistFilter(DataFilter, FastComparable):
-    def __init__(self, whitelist: list[str] | None = None, blacklist: list[str] | None = None):
+    def __init__(
+        self,
+        whitelist: list[str] | None = None,
+        blacklist: list[str] | None = None,
+    ) -> None:
         super().__init__()
         self.whitelist: list[str] = whitelist or []
         self.blacklist: list[str] = blacklist or []
 
-    def compare(self, lst, _: DataFrame) -> set:
+    def compare(self, lst: list[str], _: DataFrame) -> set:
         out = lst
         if self.whitelist:
             out = self._whitelist(out, self.whitelist)
@@ -58,15 +64,15 @@ class BlacknWhitelistFilter(DataFilter, FastComparable):
                 args = args & pl.col("path").str.contains(item).is_not()
         return args
 
-    def _whitelist(self, imglist, whitelist) -> filter:
+    def _whitelist(self, imglist: list[str], whitelist: list[str]) -> filter:
         return filter(lambda x: any(x in white for white in whitelist), imglist)
 
-    def _blacklist(self, imglist, blacklist) -> filter:
+    def _blacklist(self, imglist: list[str], blacklist: list[str]) -> filter:
         return filter(lambda x: all(x not in black for black in blacklist), imglist)
 
 
 class ExistingFilter(DataFilter, FastComparable):
-    def __init__(self, hr_folder, lr_folder, recursive=True):
+    def __init__(self, hr_folder: str, lr_folder: str, recursive: bool = True) -> None:
         super().__init__()
         self.existing_list = ExistingFilter._get_existing(hr_folder, lr_folder)
         # print(self.existing_list)
@@ -74,14 +80,20 @@ class ExistingFilter(DataFilter, FastComparable):
 
     def fast_comp(self) -> Expr | bool:
         return pl.col("path").apply(
-            lambda x: to_recursive(self.filedict[str(x)], self.recursive).with_suffix("") not in self.existing_list
+            lambda x: to_recursive(self.filedict[str(x)], self.recursive).with_suffix(
+                "",
+            )
+            not in self.existing_list,
         )
 
     @staticmethod
     def _get_existing(*folders: Path) -> set:
         return set.intersection(
             *(
-                {file.relative_to(folder).with_suffix("") for file in get_file_list((folder / "**" / "*"))}
+                {
+                    file.relative_to(folder).with_suffix("")
+                    for file in get_file_list(folder / "**" / "*")
+                }
                 for folder in folders
-            )
+            ),
         )
