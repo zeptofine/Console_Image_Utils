@@ -280,7 +280,7 @@ def main(
     file_list: Generator[Path, None, None] = get_file_list(
         *[input_folder / "**" / f"*.{ext}" for ext in available_extensions]
     )
-    image_list: list[Path] = list({x.relative_to(input_folder) for x in sorted(file_list)})
+    image_list: list[Path] = [x.relative_to(input_folder) for x in sorted(file_list)]
     if limit and limit == LimitModes.BEFORE:
         image_list = image_list[:limit]
 
