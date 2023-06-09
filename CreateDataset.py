@@ -13,21 +13,16 @@ import numpy as np
 import typer
 from cfg_argparser import CfgDict, wrap_config
 from rich import print as rprint
-from rich.traceback import install
 from tqdm import tqdm
 from typing_extensions import Annotated
-
+from polars import col
 from dataset_filters.data_filters import BlacknWhitelistFilter, ExistingFilter, StatFilter
 from dataset_filters.dataset_builder import DatasetBuilder
 from dataset_filters.external_filters import HashFilter, ResFilter
 from util.file_list import get_file_list, to_recursive
-from util.print_funcs import (
-    RichStepper,
-    ipbar,  # , Timer
-)
+from util.print_funcs import RichStepper, ipbar
 
 CPU_COUNT = int(cpu_count())
-install()
 app = typer.Typer()
 
 
@@ -54,16 +49,18 @@ def hrlr_pair(path: Path, hr_folder: Path, lr_folder: Path, recursive: bool = Fa
 class FileScenario:
     """A scenario which fileparse parses and creates hr/lr pairs with."""
 
-    path: Path
+    relative_path: Path
+    absolute_path: Path
+    resolved_path: Path
     hr_path: Path
     lr_path: Path
     scale: int
 
 
-def fileparse(dfile: FileScenario):
+def fileparse(dfile: FileScenario) -> FileScenario:
     """Converts an image file to HR and LR versions and saves them to the specified folders."""
     # Read the image file
-    image: np.ndarray[int, np.dtype[np.generic]] = cv2.imread(str(dfile.path), cv2.IMREAD_UNCHANGED)
+    image: np.ndarray[int, np.dtype[np.generic]] = cv2.imread(str(dfile.absolute_path), cv2.IMREAD_UNCHANGED)
     scale = float(dfile.scale)
     image = image[0 : int((image.shape[0] // scale) * scale), 0 : int((image.shape[1] // scale) * scale)]
     # Save the HR / LR version of the image
@@ -71,10 +68,10 @@ def fileparse(dfile: FileScenario):
     cv2.imwrite(str(dfile.lr_path), cv2.resize(image, (int(image.shape[0] // scale), int(image.shape[1] // scale))))
 
     # Set the modification time of the HR and LR image files to the original image's modification time
-    mtime: float = dfile.path.stat().st_mtime
+    mtime: float = dfile.absolute_path.stat().st_mtime
     os.utime(str(dfile.hr_path), (mtime, mtime))
     os.utime(str(dfile.lr_path), (mtime, mtime))
-    return dfile.path
+    return dfile
 
 
 class LimitModes(str, Enum):
@@ -144,6 +141,15 @@ def main(
         bool,
         typer.Option(help="Skips checking existing files, overwrites existing files.", rich_help_panel="modifiers"),
     ] = False,
+    verbose: Annotated[
+        bool, typer.Option(help="Prints the files when they are fully converted.", rich_help_panel="modifiers")
+    ] = False,
+    sort_by: Annotated[
+        str,
+        typer.Option(
+            help="Which column in the database to sort by. It must be in the database.", rich_help_panel="modifiers"
+        ),
+    ] = "path",
     whitelist: Annotated[
         Optional[str], typer.Option(help="only allows paths with the given strings.", rich_help_panel="filters")
     ] = None,
@@ -188,7 +194,7 @@ def main(
     s: RichStepper = RichStepper(loglevel=1, step=-1)
     s.next("Settings: ")
 
-    df = DatasetBuilder(origin=str(input_folder), processes=threads)
+    db = DatasetBuilder(origin=str(input_folder), processes=threads)
 
     # return 0
 
@@ -232,13 +238,13 @@ def main(
             s.set(-9).print(str(err))
             return 1
 
-    df.add_filters(StatFilter(dtbefore, dtafter))
+    db.add_filters(StatFilter(dtbefore, dtafter))
 
-    df.add_filters(ResFilter(minsize, maxsize, crop_mod, scale))
+    db.add_filters(ResFilter(minsize, maxsize, crop_mod, scale))
 
     # * Hashing option
     if hash_images:
-        df.add_filters(HashFilter(hash_mode, hash_choice))
+        db.add_filters(HashFilter(hash_mode, hash_choice))
 
     # * {White,Black}list option
     if whitelist or blacklist:
@@ -248,7 +254,7 @@ def main(
             whiteed_items = whitelist.split(list_separator)
         if blacklist:
             blacked_items = blacklist.split(list_separator)
-        df.add_filters(BlacknWhitelistFilter(whiteed_items, blacked_items))
+        db.add_filters(BlacknWhitelistFilter(whiteed_items, blacked_items))
 
     if (minsize and minsize <= 0) or (maxsize and maxsize <= 0):
         print("selected minsize and/or maxsize is invalid")
@@ -256,7 +262,7 @@ def main(
         s.print(f"Filtering by size ({minsize} <= x <= {maxsize})")
 
     if not overwrite:
-        df.add_filters(ExistingFilter(hr_folder, lr_folder, recursive))
+        db.add_filters(ExistingFilter(hr_folder, lr_folder, recursive))
 
     # * Gather images
     s.next("Gathering images...")
@@ -276,10 +282,10 @@ def main(
         to_delete: set[Path] = set(get_file_list(hr_folder / "**" / "*", lr_folder / "**" / "*"))
         if to_delete:
             s.next("Purging...")
-            for file in ipbar(to_delete):
+            for file in ipbar(to_delete, total=len(to_delete)):
                 if file.is_file():
                     file.unlink()
-            for folder in ipbar(to_delete):
+            for folder in ipbar(to_delete, total=len(to_delete)):
                 if folder.is_dir():
                     folder.rmdir()
     elif purge:
@@ -291,11 +297,11 @@ def main(
 
     # * Run filters
     s.next("Populating df...")
-    df.populate_df(image_list)
+    db.populate_df(image_list)
 
     s.next("Filtering using:")
-    s.print(*[f" - {str(filter_)}" for filter_ in df.filters])
-    image_list = df.filter(image_list)
+    s.print(*[f" - {str(filter_)}" for filter_ in db.filters])
+    image_list = db.filter(image_list, sort_col=sort_by)
 
     if limit and limit_mode == LimitModes.AFTER:
         image_list = image_list[:limit]
@@ -310,13 +316,24 @@ def main(
     # * convert files. Finally!
     try:
         pargs: list[FileScenario] = [
-            FileScenario(input_folder / path, *hrlr_pair(path, hr_folder, lr_folder, recursive, extension), scale)
+            FileScenario(
+                path,
+                input_folder / path,
+                (input_folder / path).resolve(),
+                *hrlr_pair(path, hr_folder, lr_folder, recursive, extension),
+                scale,
+            )
             for path in image_list
         ]
         print(len(pargs))
         with Pool(threads) as p:
             with tqdm(p.imap(fileparse, pargs, chunksize=chunksize), total=len(image_list)) as t:
-                for _ in t:
+                for file in t:
+                    if verbose:
+                        print()
+                        print(db.df.filter(col("path") == str(file.resolved_path)))  # I can't imagine this is fast
+                        rprint(" ├hr -> " + f"'{file.hr_path}'")
+                        rprint(" └lr -> " + f"'{file.lr_path}'")
                     pass
     except KeyboardInterrupt:
         print(-1, "KeyboardInterrupt")

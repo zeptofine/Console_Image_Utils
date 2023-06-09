@@ -9,7 +9,7 @@ from polars import DataFrame, Expr
 
 from util.file_list import get_file_list, to_recursive
 
-from .base_filters import Comparable, DataFilter, FastComparable
+from .base_filters import DataFilter, FastComparable
 
 
 class StatFilter(DataFilter, FastComparable):
