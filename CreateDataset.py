@@ -182,8 +182,6 @@ def main(
 
     db = DatasetBuilder(origin=str(input_folder), processes=threads)
 
-    # return 0
-
     def check_for_images(image_list: list[Path]) -> bool:
         if not image_list:
             s.print(-1, "No images left to process")
@@ -197,17 +195,20 @@ def main(
         rprint("Please select a directory.")
         return 1
 
-    # * get hr / lr folders
-    hr_folder: Path = input_folder.parent / f"{scale}xHR{'-' + extension if extension else ''}"
-    lr_folder: Path = input_folder.parent / f"{scale}xLR{'-' + extension if extension else ''}"
-    hr_folder.mkdir(parents=True, exist_ok=True)
-    lr_folder.mkdir(parents=True, exist_ok=True)
-
     if extension:
         if extension.startswith("."):
             extension = extension[1:]
         if extension.lower() in ["self", "none", "same", ""]:
             extension = None
+
+    # * get hr / lr folders
+    hr_folder: Path = input_folder.parent / f"{scale}xHR"
+    lr_folder: Path = input_folder.parent / f"{scale}xLR"
+    if extension:
+        hr_folder = hr_folder.with_name(f"{hr_folder.name}-{extension}")
+        lr_folder = lr_folder.with_name(f"{lr_folder.name}-{extension}")
+    hr_folder.mkdir(parents=True, exist_ok=True)
+    lr_folder.mkdir(parents=True, exist_ok=True)
 
     def hrlr_pair(path: Path) -> tuple[Path, Path]:
         """
@@ -287,6 +288,7 @@ def main(
 
     # * Purge existing images
     if purge_all:
+        # This could be cleaner
         to_delete: set[Path] = set(get_file_list(hr_folder / "**" / "*", lr_folder / "**" / "*"))
         if to_delete:
             s.next("Purging...")
@@ -331,14 +333,13 @@ def main(
             for path in image_list
         ]
         print(len(pargs))
-        with Pool(threads) as p:
-            with tqdm(p.imap(fileparse, pargs, chunksize=chunksize), total=len(image_list)) as t:
-                for file in t:
-                    if verbose:
-                        print()
-                        print(db.df.filter(col("path") == str(file.resolved_path)))  # I can't imagine this is fast
-                        rprint(" ├hr -> " + f"'{file.hr_path}'")
-                        rprint(" └lr -> " + f"'{file.lr_path}'")
+        with Pool(threads) as p, tqdm(p.imap(fileparse, pargs, chunksize=chunksize), total=len(image_list)) as t:
+            for file in t:
+                if verbose:
+                    print()
+                    print(db.df.filter(col("path") == str(file.resolved_path)))  # I can't imagine this is fast
+                    rprint(f" ├hr -> '{file.hr_path}'")
+                    rprint(f" └lr -> '{file.lr_path}'")
 
     except KeyboardInterrupt:
         print(-1, "KeyboardInterrupt")
