@@ -132,6 +132,7 @@ def main(
             help="Which column in the database to sort by. It must be in the database.", rich_help_panel="modifiers"
         ),
     ] = "path",
+    # BlacknWhitelistFilter
     whitelist: Annotated[
         Optional[str], typer.Option(help="only allows paths with the given strings.", rich_help_panel="filters")
     ] = None,
@@ -141,6 +142,7 @@ def main(
     list_separator: Annotated[
         str, typer.Option(help="separator for the white/blacklists.", rich_help_panel="filters")
     ] = ",",
+    # ResFilter
     minsize: Annotated[
         Optional[int], typer.Option(help="minimum size an image must be.", rich_help_panel="filters")
     ] = None,
@@ -151,6 +153,7 @@ def main(
         bool,
         typer.Option(help="changes mod mode to crop the image to be divisible by scale", rich_help_panel="filters"),
     ] = False,
+    # StatFilter
     before: Annotated[
         Optional[str], typer.Option(help="only uses files before a given date", rich_help_panel="filters")
     ] = None,
@@ -158,6 +161,7 @@ def main(
         Optional[str], typer.Option(help="only uses after a given date.", rich_help_panel="filters")
     ] = None,
     # ^^ these will be parsed with dateutil.parser ^^
+    # HashFilter
     hash_images: Annotated[
         bool, typer.Option(help="Removes perceptually similar images.", rich_help_panel="filters")
     ] = False,
@@ -241,14 +245,6 @@ def main(
             s.set(-9).print(str(err))
             return 1
 
-    db.add_filters(StatFilter(dtbefore, dtafter))
-
-    db.add_filters(ResFilter(minsize, maxsize, crop_mod, scale))
-
-    # * Hashing option
-    if hash_images:
-        db.add_filters(HashFilter(hash_mode, hash_choice))
-
     # * {White,Black}list option
     if whitelist or blacklist:
         whiteed_items: list[str] = []
@@ -264,6 +260,18 @@ def main(
     if minsize or maxsize:
         s.print(f"Filtering by size ({minsize} <= x <= {maxsize})")
 
+    stat_filter = StatFilter(dtbefore, dtafter)
+    res_filter = ResFilter(minsize, maxsize, crop_mod, scale)
+    hash_filter = HashFilter(hash_mode, hash_choice)
+    db.add_optional_from_filter(stat_filter)
+    db.add_optional_from_filter(res_filter)  # they may not be filtered but may be necessary for populating
+    if dtbefore or dtafter:
+        db.add_filters(stat_filter)
+    if scale != 1 or minsize or maxsize:
+        db.add_filters(res_filter)
+    if hash_images:
+        db.add_filters(hash_filter)
+
     # * Gather images
     s.next("Gathering images...")
     available_extensions: list[str] = extensions.split(",")
@@ -271,7 +279,7 @@ def main(
     file_list: Generator[Path, None, None] = get_file_list(
         *[input_folder / "**" / f"*.{ext}" for ext in available_extensions]
     )
-    image_list: list[Path] = list(set(map(lambda x: x.relative_to(input_folder), sorted(file_list))))
+    image_list: list[Path] = list({x.relative_to(input_folder) for x in sorted(file_list)})
     if limit and limit == LimitModes.BEFORE:
         image_list = image_list[:limit]
 
