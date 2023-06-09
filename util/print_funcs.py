@@ -31,7 +31,7 @@ def pbar(iteration: int, total: int, length=20, fill="#", nullp="-", corner="[]"
 
 
 def isbar(iteration, total, suff="", **kwargs):
-    return f"{pbar(iteration, total, **kwargs)} {iteration:len(str(total))}/{total} {suff}"
+    return f"{pbar(iteration, total, **kwargs)} {iteration:{len(str(total))}}/{total} {suff}"
 
 
 T = TypeVar("T")
