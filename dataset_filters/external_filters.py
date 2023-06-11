@@ -1,5 +1,5 @@
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 
 import imagehash
 import imagesize
@@ -13,12 +13,12 @@ from .base_filters import Comparable, DataFilter, FastComparable
 class ResFilter(DataFilter, FastComparable):
     def __init__(self, minsize: int | None, maxsize: int | None, crop_mod: bool, scale: int):
         super().__init__()
+        self.column_schema = {"resolution": pl.List(int)}
+        self.build_schema = {"resolution": pl.col("path").apply(imagesize.get)}
         self.min: int | None = minsize
         self.max: int | None = maxsize
         self.crop: bool = crop_mod
         self.scale: int = scale
-        self.column_schema = {"resolution": pl.List(int)}
-        self.build_schema = {"resolution": pl.col("path").apply(imagesize.get)}
 
     def fast_comp(self) -> Expr | bool:
         if self.crop:
@@ -31,6 +31,26 @@ class ResFilter(DataFilter, FastComparable):
 
     def resize(self, i: int) -> int:
         return (i // self.scale) * self.scale
+
+
+class ChannelFilter(DataFilter, FastComparable):
+    def __init__(self, channel_num: int | None, strict: bool = False):
+        super().__init__()
+        self.column_schema = {"channels": int}
+        self.build_schema = {"channels": pl.col("path").apply(self.get_channels)}
+
+        self.channel_num: int | None = channel_num
+        self.strict: bool = strict
+
+    def get_channels(self, pth: str) -> int:
+        return len(Image.open(pth).getbands())
+
+    def fast_comp(self) -> Expr | bool:
+        if not self.channel_num:
+            return True
+        if self.strict:
+            return pl.col("channels") == self.channel_num
+        return pl.col("channels") <= self.channel_num
 
 
 IMHASH_TYPES: dict[str, Callable] = {
@@ -53,6 +73,8 @@ class HashFilter(DataFilter, Comparable):
         resolver: str = "newest",
     ):
         super().__init__()
+        self.column_schema = {"hash": str, "modifiedtime": pl.Datetime}  # type: ignore
+        self.build_schema: dict[str, Expr] = {"hash": pl.col("path").apply(self._hash_img)}
 
         imhash_resolvers: dict[str, Callable] = {
             "ignore_all": HashFilter._ignore_all,
@@ -68,10 +90,8 @@ class HashFilter(DataFilter, Comparable):
 
         self.hasher: Callable[[Image.Image], imagehash.ImageHash] = IMHASH_TYPES[hash_choice]
         self.resolver: Callable[[], Expr | bool] = imhash_resolvers[resolver]
-        self.column_schema = {"hash": str, "modifiedtime": pl.Datetime}  # type: ignore
-        self.build_schema: dict[str, Expr] = {"hash": pl.col("path").apply(self._hash_img)}
 
-    def compare(self, lst, cols: DataFrame) -> set:
+    def compare(self, lst: Collection, cols: DataFrame) -> set:
         applied: DataFrame = (
             cols.filter(
                 pl.col("hash").is_in(cols.filter(pl.col("path").is_in(lst)).select(pl.col("hash")).unique().to_series())

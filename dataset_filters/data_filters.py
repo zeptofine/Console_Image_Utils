@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Collection
 from datetime import datetime
 from pathlib import Path
 
@@ -15,10 +16,10 @@ from .base_filters import DataFilter, FastComparable
 class StatFilter(DataFilter, FastComparable):
     def __init__(self, beforetime: datetime | None, aftertime: datetime | None):
         super().__init__()
-        self.before: datetime | None = beforetime
-        self.after: datetime | None = aftertime
         self.column_schema = {"modifiedtime": pl.Datetime}
         self.build_schema: dict[str, Expr] = {"modifiedtime": pl.col("path").apply(StatFilter.get_modified_time)}
+        self.before: datetime | None = beforetime
+        self.after: datetime | None = aftertime
 
     @staticmethod
     def get_modified_time(path: str) -> datetime:
@@ -39,7 +40,7 @@ class BlacknWhitelistFilter(DataFilter, FastComparable):
         self.whitelist: list[str] = whitelist or []
         self.blacklist: list[str] = blacklist or []
 
-    def compare(self, lst, _: DataFrame) -> set:
+    def compare(self, lst: Collection[Path], _: DataFrame) -> set:
         out = lst
         if self.whitelist:
             out = self._whitelist(out, self.whitelist)

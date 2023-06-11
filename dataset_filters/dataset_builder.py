@@ -84,11 +84,14 @@ class DatasetBuilder:
                 how="diagonal",
             )
 
-        modified_schema: dict[str, PolarsDataType] = dict(self.df.schema).copy()
+        modified_schema: dict[str, PolarsDataType | type] = dict(self.df.schema).copy()
         for filter_ in self.filters:
             filter_.filedict = from_full_to_relative
-            schemas: dict[str, PolarsDataType] = filter_.column_schema
-            modified_schema.update({schema: value for schema, value in schemas.items() if schema not in self.df.schema})
+            modified_schema.update(
+                {
+                    schema: value for schema, value in filter_.column_schema.items() if schema not in self.df.schema
+                }  # type: ignore
+            )
 
         full_build_expr: dict[str, Expr] = {
             col: pl.when(pl.col(col).is_null()).then(expr).otherwise(pl.col(col))

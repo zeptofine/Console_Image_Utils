@@ -1,11 +1,13 @@
-from pathlib import Path
 from abc import abstractmethod
+from collections.abc import Collection
+from pathlib import Path
+
 from polars import DataFrame, Expr, PolarsDataType
 
 
 class Comparable:
     @abstractmethod
-    def compare(self, lst, cols: DataFrame) -> list:
+    def compare(self, lst: Collection[Path], cols: DataFrame) -> list:
         """Uses collected data to return a new list of only valid images, depending on what the filter does."""
         raise NotImplementedError
 
@@ -25,7 +27,7 @@ class DataFilter:
         self.is_fast = False
         self.origin = None
         self.filedict: dict[str, Path] = {}  # used for certain filters, like Existing
-        self.column_schema: dict[str, PolarsDataType] = {}
+        self.column_schema: dict[str, PolarsDataType | type] = {}
         self.build_schema: dict[str, Expr] | None = None
 
     def set_origin(self, value):

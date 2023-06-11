@@ -19,7 +19,7 @@ from typing_extensions import Annotated
 
 from dataset_filters.data_filters import BlacknWhitelistFilter, ExistingFilter, StatFilter
 from dataset_filters.dataset_builder import DatasetBuilder
-from dataset_filters.external_filters import HashFilter, ResFilter
+from dataset_filters.external_filters import ChannelFilter, HashFilter, ResFilter
 from util.file_list import get_file_list, to_recursive
 from util.print_funcs import RichStepper, ipbar
 
@@ -161,6 +161,10 @@ def main(
         Optional[str], typer.Option(help="only uses after a given date.", rich_help_panel="filters")
     ] = None,
     # ^^ these will be parsed with dateutil.parser ^^
+    # ChannelFilter
+    channel_num: Annotated[
+        Optional[int], typer.Option(help="number of channels an image must have.", rich_help_panel="filters")
+    ] = None,
     # HashFilter
     hash_images: Annotated[
         bool, typer.Option(help="Removes perceptually similar images.", rich_help_panel="filters")
@@ -264,14 +268,18 @@ def main(
     stat_filter = StatFilter(dtbefore, dtafter)
     res_filter = ResFilter(minsize, maxsize, crop_mod, scale)
     hash_filter = HashFilter(hash_mode, hash_choice)
+    channel_filter = ChannelFilter(channel_num)
     db.add_optional_from_filter(stat_filter)
     db.add_optional_from_filter(res_filter)  # they may not be filtered but may be necessary for populating
+    db.add_optional_from_filter(channel_filter)
     if dtbefore or dtafter:
         db.add_filters(stat_filter)
     if scale != 1 or minsize or maxsize:
         db.add_filters(res_filter)
     if hash_images:
         db.add_filters(hash_filter)
+    if channel_num:
+        db.add_filters(channel_filter)
 
     # * Gather images
     s.next("Gathering images...")
