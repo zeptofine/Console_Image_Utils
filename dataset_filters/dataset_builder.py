@@ -18,6 +18,10 @@ def current_time() -> datetime:
     return datetime.now().replace(microsecond=0)
 
 
+def _time(_=None) -> datetime:
+    return current_time()
+
+
 class DatasetBuilder:
     def __init__(self, origin: str, processes=1) -> None:
         super().__init__()
@@ -29,7 +33,7 @@ class DatasetBuilder:
             "database_config.toml",
             {
                 "trim": True,
-                "trim_age_limit": 60 * 60 * 24 * 7,
+                "trim_age_limit_secs": 60 * 60 * 24 * 7,
                 "trim_check_exists": True,
                 "save_interval": 500,
                 "chunksize": 100,
@@ -39,10 +43,12 @@ class DatasetBuilder:
             save_mode="toml",
         )
         self.filepath: str = self.config["filepath"]
-        self.time_threshold: int = self.config["trim_age_limit"]
+        self.trim: bool = self.config["trim"]
+        self.time_threshold: datetime = datetime.fromtimestamp(self.config["trim_age_limit_secs"])
+        self.check_exists: bool = self.config["trim_check_exists"]
 
         self.basic_schema = {"path": str, "checkedtime": pl.Datetime}
-        self.build_schema: dict[str, Expr] = {}
+        self.build_schema: dict[str, Expr] = {"checkedtime": pl.col("path").apply(_time)}
         if os.path.exists(self.filepath):
             print("Reading database...")
             self.df = pl.read_ipc(self.config["filepath"], use_pyarrow=True)
@@ -71,7 +77,18 @@ class DatasetBuilder:
         self.build_schema.update(filter_.build_schema)
 
     def populate_df(self, lst: Iterable[Path]):
-        # TODO: Re-add dataset trimming
+        if self.trim and len(self.df):
+            print("Attempting to trim db...")
+            now: datetime = current_time()
+            original_size: int = len(self.df)
+
+            cond: Expr = now - pl.col("checkedtime") < self.time_threshold
+            if self.check_exists:
+                cond &= pl.col("path").apply(os.path.exists)
+
+            self.df = self.df.filter(cond).rechunk()
+            if diff := original_size - len(self.df):
+                print(f"Removed {diff} images")
 
         from_full_to_relative: dict[str, Path] = self.absolute_dict(lst)
         abs_paths: set[str] = set(from_full_to_relative.keys())
@@ -81,7 +98,7 @@ class DatasetBuilder:
         new_paths: list[str] = [path for path in abs_paths if path not in existing_paths]
         if new_paths:
             self.df = pl.concat(
-                [self.df, DataFrame({"path": new_paths, "checkedtime": [current_time()] * len(new_paths)})],
+                [self.df, DataFrame({"path": new_paths})],
                 how="diagonal",
             )
 
@@ -106,7 +123,6 @@ class DatasetBuilder:
         unfinished: DataFrame = self.df.filter(pl.any(pl.col(col).is_null() for col in self.df.columns))
 
         if len(unfinished):
-            print("Gathering...")
             try:
                 # gather new data and add it to the dataframe
                 old_db_size: str = byte_format(self.get_db_disk_size())
@@ -181,7 +197,7 @@ class DatasetBuilder:
         self.df.write_ipc(self.filepath)
 
     def absolute_dict(self, lst: Iterable[Path]) -> dict[str, Path]:
-        return {(str((self.origin / pth).resolve())): pth for pth in lst}
+        return {(str((self.origin / pth).resolve())): pth for pth in lst}  # type: ignore
 
     @staticmethod
     def _make_schema_compliant(data_frame: DataFrame, schema) -> DataFrame:
