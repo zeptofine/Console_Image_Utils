@@ -6,9 +6,8 @@ rich
 rich_argparse
 shtab
 tqdm
-cfg-argparser
+cfg-param-wrapper
 imagehash
-autopep8
 polars
 typer[all]
 pyarrow

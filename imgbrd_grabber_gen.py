@@ -2,7 +2,7 @@ import json
 import os
 from argparse import ArgumentParser
 
-from cfg_argparser import ConfigArgParser
+from cfg_param_wrapper import ConfigArgParser
 
 parser = ArgumentParser()
 parser.add_argument("-s", "--sort", action="store_true", help="Sorts the list of entries.")

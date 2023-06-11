@@ -11,7 +11,7 @@ import cv2
 import dateutil.parser as timeparser
 import numpy as np
 import typer
-from cfg_argparser import CfgDict, wrap_config
+from cfg_param_wrapper import CfgDict, wrap_config
 from polars import col
 from rich import print as rprint
 from tqdm import tqdm
@@ -40,7 +40,18 @@ class Scenario:
 
 
 def fileparse(dfile: Scenario) -> Scenario:
-    """Converts an image file to HR and LR versions and saves them to the specified folders."""
+    """Converts an image file to HR and LR versions and saves them to the specified folders.
+
+    Parameters
+    ----------
+    dfile : Scenario
+        The Scenario object to get info from and generate the files from
+
+    Returns
+    -------
+    Scenario
+        Just passes the dfile back.
+    """
     # Read the image file
     image: np.ndarray[int, np.dtype[np.generic]] = cv2.imread(str(dfile.absolute_path), cv2.IMREAD_UNCHANGED)
     scale = float(dfile.scale)
@@ -86,7 +97,7 @@ class HashChoices(str, Enum):
     SIZE = "size"
 
 
-config = CfgDict("config.json")
+config = CfgDict("config.toml", save_mode="toml")
 
 
 @app.command()
@@ -132,6 +143,9 @@ def main(
             help="Which column in the database to sort by. It must be in the database.", rich_help_panel="modifiers"
         ),
     ] = "path",
+    convert_spaces: Annotated[
+        bool, typer.Option(help="Whether to replace spaces with underscores when creating the output.")
+    ] = False,
     # BlacknWhitelistFilter
     whitelist: Annotated[
         Optional[str], typer.Option(help="only allows paths with the given strings.", rich_help_panel="filters")
@@ -193,7 +207,7 @@ def main(
         return True
 
     def recurse(path: Path):
-        return to_recursive(path, recursive)
+        return to_recursive(path, recursive, convert_spaces)
 
     if not input_folder or not os.path.exists(input_folder):
         rprint("Please select a directory.")
@@ -215,11 +229,17 @@ def main(
     lr_folder.mkdir(parents=True, exist_ok=True)
 
     def hrlr_pair(path: Path) -> tuple[Path, Path]:
-        """
-        gets the HR and LR file paths for a given file or directory path.
-        Args    recursive (bool): Whether to search for the file in subdirectories.
-                ext (str): The file extension to append to the file name.
-        Returns tuple[Path, Path]: HR and LR file paths.
+        """Gets the HR and LR file paths for a given file or dir path.
+
+        Parameters
+        ----------
+        path : Path
+            the path to use.
+
+        Returns
+        -------
+        tuple[Path, Path]
+            HR and LR file paths.
         """
         hr_path: Path = hr_folder / recurse(path)
         lr_path: Path = lr_folder / recurse(path)

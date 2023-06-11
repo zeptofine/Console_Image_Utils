@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 import polars as pl
-from cfg_argparser import CfgDict
+from cfg_param_wrapper import CfgDict
 from polars import DataFrame, Expr, PolarsDataType
 from rich import print as rprint
 from tqdm import tqdm
@@ -16,18 +16,17 @@ from .base_filters import Comparable, DataFilter, FastComparable
 
 def current_time() -> datetime:
     return datetime.now().replace(microsecond=0)
-    # return datetime.fromtimestamp(time.time())
 
 
 class DatasetBuilder:
-    def __init__(self, origin: str, processes=1):
+    def __init__(self, origin: str, processes=1) -> None:
         super().__init__()
         self.filters: list[DataFilter] = []
         self.power: int = processes
-        self.origin: str = origin  # necessary for certain filters to work
+        self.origin: str = origin
 
         self.config = CfgDict(
-            "database_config.json",
+            "database_config.toml",
             {
                 "trim": True,
                 "trim_age_limit": 60 * 60 * 24 * 7,
@@ -37,12 +36,13 @@ class DatasetBuilder:
                 "filepath": "filedb.feather",
             },
             autofill=True,
+            save_mode="toml",
         )
         self.filepath: str = self.config["filepath"]
         self.time_threshold: int = self.config["trim_age_limit"]
 
         self.basic_schema = {"path": str, "checkedtime": pl.Datetime}
-        self.build_schema: dict[str, Expr] = {}  # {col: how to build it}
+        self.build_schema: dict[str, Expr] = {}
         if os.path.exists(self.filepath):
             print("Reading database...")
             self.df = pl.read_ipc(self.config["filepath"], use_pyarrow=True)
@@ -53,7 +53,6 @@ class DatasetBuilder:
     def add_filters(self, *filters: DataFilter) -> None:
         """Adds filters to the filter list."""
         for filter_ in filters:
-            filter_.set_origin(self.origin)
             self.filters.append(filter_)
             if filter_.build_schema:
                 if any(col not in self.build_schema for col in filter_.build_schema):
@@ -72,6 +71,8 @@ class DatasetBuilder:
         self.build_schema.update(filter_.build_schema)
 
     def populate_df(self, lst: Iterable[Path]):
+        # TODO: Re-add dataset trimming
+
         from_full_to_relative: dict[str, Path] = self.absolute_dict(lst)
         abs_paths: set[str] = set(from_full_to_relative.keys())
 
@@ -102,18 +103,12 @@ class DatasetBuilder:
         # get paths with missing data
         self.df: DataFrame = DatasetBuilder._make_schema_compliant(self.df, modified_schema)
 
-        print("finding unfinished...")
         unfinished: DataFrame = self.df.filter(pl.any(pl.col(col).is_null() for col in self.df.columns))
-        # print(unfinished)
-        # print(self.build_schema)
-        # print(modified_schema)
-
-        # print(full_build_expr)
-        # print(self.filters)
 
         if len(unfinished):
             print("Gathering...")
             try:
+                # gather new data and add it to the dataframe
                 old_db_size: str = byte_format(self.get_db_disk_size())
                 with tqdm(desc="Gathering file info...", total=len(unfinished)) as t:
                     chunksize: int = self.config["chunksize"]

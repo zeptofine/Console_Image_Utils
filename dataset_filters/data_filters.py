@@ -14,7 +14,7 @@ from .base_filters import DataFilter, FastComparable
 
 
 class StatFilter(DataFilter, FastComparable):
-    def __init__(self, beforetime: datetime | None, aftertime: datetime | None):
+    def __init__(self, beforetime: datetime | None, aftertime: datetime | None) -> None:
         super().__init__()
         self.column_schema = {"modifiedtime": pl.Datetime}
         self.build_schema: dict[str, Expr] = {"modifiedtime": pl.col("path").apply(StatFilter.get_modified_time)}
@@ -35,7 +35,7 @@ class StatFilter(DataFilter, FastComparable):
 
 
 class BlacknWhitelistFilter(DataFilter, FastComparable):
-    def __init__(self, whitelist: list[str] | None = None, blacklist: list[str] | None = None):
+    def __init__(self, whitelist: list[str] | None = None, blacklist: list[str] | None = None) -> None:
         super().__init__()
         self.whitelist: list[str] = whitelist or []
         self.blacklist: list[str] = blacklist or []
@@ -67,7 +67,7 @@ class BlacknWhitelistFilter(DataFilter, FastComparable):
 
 
 class ExistingFilter(DataFilter, FastComparable):
-    def __init__(self, hr_folder, lr_folder, recursive=True):
+    def __init__(self, hr_folder, lr_folder, recursive=True) -> None:
         super().__init__()
         self.existing_list = ExistingFilter._get_existing(hr_folder, lr_folder)
         # print(self.existing_list)

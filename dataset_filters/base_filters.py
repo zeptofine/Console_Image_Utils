@@ -19,23 +19,29 @@ class FastComparable:
         raise NotImplementedError
 
 
-# pylint: disable=unused-argument
 class DataFilter:
     """An abstract DataFilter format, for use in DatasetBuilder."""
 
-    def __init__(self):
-        self.is_fast = False
-        self.origin = None
+    def __init__(self) -> None:
+        """
+
+        filedict: dict[str, Path]
+            This is filled from the dataset builder, and contains a dictionary going from the resolved versions of
+            the files to the ones given from the user.
+
+        column_schema: dict[str, PolarsDataType | type]
+            This is used to add a column using names and types to the file database.
+
+        build_schema: dict[str, Expr]
+            This is used to build the data given in the column_schema.
+
+        """
         self.filedict: dict[str, Path] = {}  # used for certain filters, like Existing
         self.column_schema: dict[str, PolarsDataType | type] = {}
         self.build_schema: dict[str, Expr] | None = None
 
-    def set_origin(self, value):
-        """sets the filter's origin."""
-        self.origin = value
-
     def __repr__(self):
-        attrlist = [
+        attrlist: list[str] = [
             f"{key}=..." if hasattr(val, "__iter__") and not isinstance(val, str) else f"{key}={val}"
             for key, val in self.__dict__.items()
         ]

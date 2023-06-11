@@ -11,7 +11,9 @@ from .base_filters import Comparable, DataFilter, FastComparable
 
 
 class ResFilter(DataFilter, FastComparable):
-    def __init__(self, minsize: int | None, maxsize: int | None, crop_mod: bool, scale: int):
+    """A filter checking the size of an image."""
+
+    def __init__(self, minsize: int | None, maxsize: int | None, crop_mod: bool, scale: int) -> None:
         super().__init__()
         self.column_schema = {"resolution": pl.List(int)}
         self.build_schema = {"resolution": pl.col("path").apply(imagesize.get)}
@@ -34,7 +36,9 @@ class ResFilter(DataFilter, FastComparable):
 
 
 class ChannelFilter(DataFilter, FastComparable):
-    def __init__(self, channel_num: int | None, strict: bool = False):
+    """Checks the number of channels in the image."""
+
+    def __init__(self, channel_num: int | None, strict: bool = False) -> None:
         super().__init__()
         self.column_schema = {"channels": int}
         self.build_schema = {"channels": pl.col("path").apply(self.get_channels)}
@@ -67,11 +71,7 @@ IMHASH_TYPES: dict[str, Callable] = {
 
 
 class HashFilter(DataFilter, Comparable):
-    def __init__(
-        self,
-        hash_choice: str = "average",
-        resolver: str = "newest",
-    ):
+    def __init__(self, hash_choice: str = "average", resolver: str = "newest") -> None:
         super().__init__()
         self.column_schema = {"hash": str, "modifiedtime": pl.Datetime}  # type: ignore
         self.build_schema: dict[str, Expr] = {"hash": pl.col("path").apply(self._hash_img)}
