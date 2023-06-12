@@ -58,10 +58,11 @@ def fileparse(dfile: Scenario) -> Scenario:
     image = image[0 : int((image.shape[0] // scale) * scale), 0 : int((image.shape[1] // scale) * scale)]
     mtime: float = dfile.absolute_path.stat().st_mtime
     # Save the HR / LR version of the image
-    cv2.imwrite(str(dfile.hr_path), image)
-    os.utime(str(dfile.hr_path), (mtime, mtime))
+    if not os.path.exists(dfile.hr_path):
+        cv2.imwrite(str(dfile.hr_path), image)
+        os.utime(str(dfile.hr_path), (mtime, mtime))
 
-    if dfile.lr_path is not None:
+    if dfile.lr_path is not None and not os.path.exists(dfile.lr_path):
         cv2.imwrite(str(dfile.lr_path), cv2.resize(image, (int(image.shape[1] // scale), int(image.shape[0] // scale))))
         os.utime(str(dfile.lr_path), (mtime, mtime))
 
@@ -376,8 +377,11 @@ def main(
                 if verbose:
                     print()
                     print(db.df.filter(col("path") == str(file.resolved_path)))  # I can't imagine this is fast
-                    rprint(f" ├hr -> '{file.hr_path}'")
-                    rprint(f" └lr -> '{file.lr_path}'")
+                    if file.lr_path is not None:
+                        rprint(f"├hr -> '{file.hr_path}'")
+                        rprint(f"└lr -> '{file.lr_path}'")
+                    else:
+                        rprint(f"└hr -> '{file.hr_path}'")
 
     except KeyboardInterrupt:
         print(-1, "KeyboardInterrupt")
