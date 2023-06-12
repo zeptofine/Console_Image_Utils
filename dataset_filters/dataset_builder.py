@@ -162,11 +162,13 @@ class DatasetBuilder:
         assert (
             sort_col in self.df.columns
         ), f"the column '{sort_col}' is not in the database. Available columns: {self.df.columns}"
+
         from_full_to_relative: dict[str, Path] = self.absolute_dict(lst)
         paths: set[str] = set(from_full_to_relative.keys())
         with tqdm(self.filters, "Running full filters...") as t:
             vdf: DataFrame = self.df.filter(pl.col("path").is_in(paths)).rechunk()
             count = 0
+            print(f"Original size: {len(vdf)}")
             for dfilter in self.filters:
                 if len(vdf) == 0:
                     break
@@ -181,6 +183,7 @@ class DatasetBuilder:
                             )
                         )
                     )
+                print(f"{dfilter}: {len(vdf)}")
                 t.update(count + 1)
                 count = 0
             t.update(count)

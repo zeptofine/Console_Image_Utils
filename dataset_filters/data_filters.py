@@ -4,7 +4,7 @@ import os
 from collections.abc import Collection
 from datetime import datetime
 from pathlib import Path
-
+from typing import Callable
 import polars as pl
 from polars import DataFrame, Expr
 
@@ -67,15 +67,15 @@ class BlacknWhitelistFilter(DataFilter, FastComparable):
 
 
 class ExistingFilter(DataFilter, FastComparable):
-    def __init__(self, hr_folder, lr_folder, recursive=True) -> None:
+    def __init__(self, hr_folder, lr_folder, recurse_func: Callable) -> None:
         super().__init__()
         self.existing_list = ExistingFilter._get_existing(hr_folder, lr_folder)
         # print(self.existing_list)
-        self.recursive = recursive
+        self.recurse_func: Callable[[Path], Path] = recurse_func
 
     def fast_comp(self) -> Expr | bool:
         return pl.col("path").apply(
-            lambda x: to_recursive(self.filedict[str(x)], self.recursive).with_suffix("") not in self.existing_list
+            lambda x: self.recurse_func(self.filedict[str(x)]).with_suffix("") not in self.existing_list
         )
 
     @staticmethod

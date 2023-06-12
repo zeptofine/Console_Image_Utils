@@ -58,7 +58,7 @@ def fileparse(dfile: Scenario) -> Scenario:
     image = image[0 : int((image.shape[0] // scale) * scale), 0 : int((image.shape[1] // scale) * scale)]
     # Save the HR / LR version of the image
     cv2.imwrite(str(dfile.hr_path), image)
-    cv2.imwrite(str(dfile.lr_path), cv2.resize(image, (int(image.shape[0] // scale), int(image.shape[1] // scale))))
+    cv2.imwrite(str(dfile.lr_path), cv2.resize(image, (int(image.shape[1] // scale), int(image.shape[0] // scale))))
 
     # Set the modification time of the HR and LR image files to the original image's modification time
     mtime: float = dfile.absolute_path.stat().st_mtime
@@ -334,7 +334,7 @@ def main(
             lr_path.unlink(missing_ok=True)
 
     if not overwrite:
-        db.add_filters(ExistingFilter(hr_folder, lr_folder, recursive))
+        db.add_filters(ExistingFilter(hr_folder, lr_folder, recurse))
 
     # * Run filters
     s.next("Populating df...")
@@ -361,6 +361,7 @@ def main(
             for path in image_list
         ]
         print(len(pargs))
+        # return 0
         with Pool(threads) as p, tqdm(p.imap(fileparse, pargs, chunksize=chunksize), total=len(image_list)) as t:
             for file in t:
                 if verbose:
