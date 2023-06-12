@@ -67,9 +67,9 @@ class BlacknWhitelistFilter(DataFilter, FastComparable):
 
 
 class ExistingFilter(DataFilter, FastComparable):
-    def __init__(self, hr_folder, lr_folder, recurse_func: Callable) -> None:
+    def __init__(self, *folders, recurse_func: Callable) -> None:
         super().__init__()
-        self.existing_list = ExistingFilter._get_existing(hr_folder, lr_folder)
+        self.existing_list = ExistingFilter._get_existing(*folders)
         # print(self.existing_list)
         self.recurse_func: Callable[[Path], Path] = recurse_func
 

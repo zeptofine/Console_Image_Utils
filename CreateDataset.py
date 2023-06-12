@@ -35,7 +35,7 @@ class Scenario:
     absolute_path: Path
     resolved_path: Path
     hr_path: Path
-    lr_path: Path
+    lr_path: Path | None
     scale: int
 
 
@@ -56,14 +56,15 @@ def fileparse(dfile: Scenario) -> Scenario:
     image: np.ndarray[int, np.dtype[np.generic]] = cv2.imread(str(dfile.absolute_path), cv2.IMREAD_UNCHANGED)
     scale = float(dfile.scale)
     image = image[0 : int((image.shape[0] // scale) * scale), 0 : int((image.shape[1] // scale) * scale)]
+    mtime: float = dfile.absolute_path.stat().st_mtime
     # Save the HR / LR version of the image
     cv2.imwrite(str(dfile.hr_path), image)
-    cv2.imwrite(str(dfile.lr_path), cv2.resize(image, (int(image.shape[1] // scale), int(image.shape[0] // scale))))
-
-    # Set the modification time of the HR and LR image files to the original image's modification time
-    mtime: float = dfile.absolute_path.stat().st_mtime
     os.utime(str(dfile.hr_path), (mtime, mtime))
-    os.utime(str(dfile.lr_path), (mtime, mtime))
+
+    if dfile.lr_path is not None:
+        cv2.imwrite(str(dfile.lr_path), cv2.resize(image, (int(image.shape[1] // scale), int(image.shape[0] // scale))))
+        os.utime(str(dfile.lr_path), (mtime, mtime))
+
     return dfile
 
 
@@ -124,12 +125,12 @@ def main(
         bool, typer.Option(help="skips the conversion step. Used for debugging.", rich_help_panel="modifiers")
     ] = False,
     purge: Annotated[
-        bool,
-        typer.Option(help="deletes the output files corresponding to the input files.", rich_help_panel="modifiers"),
+        bool, typer.Option(help="deletes output corresponding to input files.", rich_help_panel="modifiers")
     ] = False,
     purge_all: Annotated[
         bool, typer.Option(help="Same as above, but deletes *everything*.", rich_help_panel="modifiers")
     ] = False,
+    make_lr: Annotated[bool, typer.Option(help="whether to make an LR folder.", rich_help_panel="modifiers")] = True,
     overwrite: Annotated[
         bool,
         typer.Option(help="Skips checking existing files, overwrites existing files.", rich_help_panel="modifiers"),
@@ -226,9 +227,10 @@ def main(
         hr_folder = hr_folder.with_name(f"{hr_folder.name}-{extension}")
         lr_folder = lr_folder.with_name(f"{lr_folder.name}-{extension}")
     hr_folder.mkdir(parents=True, exist_ok=True)
-    lr_folder.mkdir(parents=True, exist_ok=True)
+    if make_lr:
+        lr_folder.mkdir(parents=True, exist_ok=True)
 
-    def hrlr_pair(path: Path) -> tuple[Path, Path]:
+    def hrlr_pair(path: Path) -> tuple[Path, Path | None]:
         """Gets the HR and LR file paths for a given file or dir path.
 
         Parameters
@@ -241,15 +243,18 @@ def main(
         tuple[Path, Path]
             HR and LR file paths.
         """
-        hr_path: Path = hr_folder / recurse(path)
-        lr_path: Path = lr_folder / recurse(path)
         # Create the HR and LR folders if they do not exist
+        hr_path: Path = hr_folder / recurse(path)
         hr_path.parent.mkdir(parents=True, exist_ok=True)
-        lr_path.parent.mkdir(parents=True, exist_ok=True)
-        # If an extension is provided, append it to the HR and LR file paths
         if extension:
             hr_path = hr_path.with_suffix(f".{extension}")
-            lr_path = lr_path.with_suffix(f".{extension}")
+        lr_path: Path | None = None
+        if make_lr:
+            lr_path = lr_folder / recurse(path)
+            lr_path.parent.mkdir(parents=True, exist_ok=True)
+            if extension:
+                lr_path = lr_path.with_suffix(f".{extension}")
+
         return hr_path, lr_path
 
     dtafter: datetime | None = None
@@ -331,10 +336,14 @@ def main(
         for path in ipbar(image_list, total=len(image_list)):
             hr_path, lr_path = hrlr_pair(path)
             hr_path.unlink(missing_ok=True)
-            lr_path.unlink(missing_ok=True)
+            if lr_path is not None:
+                lr_path.unlink(missing_ok=True)
 
     if not overwrite:
-        db.add_filters(ExistingFilter(hr_folder, lr_folder, recurse))
+        folders = [hr_folder]
+        if make_lr:
+            folders.append(lr_folder)
+        db.add_filters(ExistingFilter(*folders, recurse_func=recurse))
 
     # * Run filters
     s.next("Populating df...")
