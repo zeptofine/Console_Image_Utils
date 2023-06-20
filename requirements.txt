@@ -11,3 +11,4 @@ imagehash
 polars
 typer[all]
 pyarrow
+ffmpeg-python
