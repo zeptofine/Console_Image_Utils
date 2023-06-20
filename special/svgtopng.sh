@@ -39,7 +39,7 @@ echo -e "\nConverting SVG to PNG; res:$resolution; number: ${#svglist[@]}\n"
 function convert_svg_to_png {
 	# echo -e "Converting $1 of ${#svglist[@]} files"
 	if [ ! -f "${1%.*}.png" ]; then
-		inkscape -z -o "${svglist[i]%.svg}.png" -w 4096 -h 4096 "$1" >>/dev/null 2>&1
+		inkscape -z -o "${svglist[i]%.svg}.png" -w resolution -h resolution "$1" >>/dev/null 2>&1
 	fi
 }
 export -f convert_svg_to_png
