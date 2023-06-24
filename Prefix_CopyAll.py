@@ -1,19 +1,15 @@
 import shutil
+import typer
 from pathlib import Path
 
-print("This will not work on subdirectories.")
+def main(copy_from: Path, copy_to: Path, prefix: str=""):
+    in_list = list(copy_from.rglob("*"))
+    for file in in_list:
+        file = file.relative_to(copy_from)
+        
+        if prefix in str(file):        
+            (copy_to / file.parent).mkdir(parents=True, exist_ok=True)
+            shutil.copy(copy_from / file, copy_to / file)
 
-copy_from = input("Folder to copy: ")
-copy_to = input("Folder to copy to: ")
-prefix = input("Prefix: ")
-in_list = list(Path(copy_from).rglob("*"))
-file = 0
-
-for file in in_list:
-    
-    copyfile = file
-    file = file.relative_to(copy_from)
-    
-    if prefix in str(file):        
-        (copy_to / file.parent).mkdir(parents=True, exist_ok=True)
-        shutil.copy(copy_from / file, copy_to / file)
+if __name__ == "__main__":
+    typer.run(main)
