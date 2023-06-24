@@ -3,12 +3,9 @@ opencv-python
 pillow
 python-dateutil
 rich
-rich_argparse
 shtab
 tqdm
 cfg-param-wrapper
 imagehash
-polars
 typer[all]
-pyarrow
 ffmpeg-python
