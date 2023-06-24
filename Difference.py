@@ -1,38 +1,20 @@
-import ffmpeg
-import time
+import typer
+from pathlib import Path
+import cv2
 import os
 
-dir_in = input("File input directory: ")
-dir_out = input("File output dir: ")
-file_type = input("Image type to convert to (png, jpg, etc): ")
-res = input("X and Y res, separate with \"x\" (leave blank for original res): ")
-in_list = os.listdir(dir_in)
-file = 0
-
-while file < len(in_list):
-    try:
-        if "mp4" or "mov" or "gif" in in_list[file]:
-            os.mkdir(f"{dir_in}/{in_list[file]}split")
-            split_out = f"{dir_in}/{in_list[file]}split"
-            (
-            ffmpeg
-            .input(f"{dir_in}/{in_list[file]}")
-            .filter('scale', res)
-            .output(f"{split_out}/{in_list[file]}.{file_type}")
-            .run()
-            )
-            
-        else:
-            (
-                ffmpeg
-                .input(f"{dir_in}/{in_list[file]}")
-                .filter('scale', res)
-                .output(f"{dir_out}/{in_list[file]}.{file_type}")
-                .run()
-            )
-            
-    except:
-        print(f"Couldn't convert image {in_list[file]}")
-        time.sleep(2)
+def main(dir_in: Path, dir_out: Path, file_type: str="png", scale: int=0):
+    in_list = list(Path(dir_in).rglob("*"))
+    for file in in_list:
+        file = file.relative_to(dir_in)
+        if not (dir_in / file).is_dir():
+            img = cv2.imread(str(dir_in / file))
+            y, x = img.shape[0], img.shape[1]
+            if (y > scale or x > scale) and scale != 0:
+                ratio = scale / max(x, y)
+                img = cv2.resize(img, (int(ratio * x), int(ratio * y)))
+            (dir_out / file.parent).mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(dir_out / file.with_suffix(f".{file_type}")), img)
         
-    file += 1
+if __name__ == "__main__":
+    typer.run(main)
