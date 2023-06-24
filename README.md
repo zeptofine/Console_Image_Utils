@@ -22,11 +22,15 @@ Used to copy certain images from one folder to another based on prefix.
 
 ### Prefix.DelAll.sh
 
+<details>
 Same as CopyAll but for deletions. (Needs to be translated to Python)
+</details>
 
 ### imgbrd_grabber_gen.py
 
+<details>
 Makes a download list that can be read by <a href="https://github.com/Bionus/imgbrd-grabber">imgbrd-grabber</a>.
+</details>
 
 #### Special Scripts
 
