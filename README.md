@@ -39,10 +39,10 @@ A small collection of aliases I find useful.
 
 ## Special Scripts
 
-- [special/flip_ui.sh](special/flip_ui.sh) : Switches between TTY and GUT
+- [special/flip_ui.sh](special/flip_ui.sh) : Switches between TTY and GUI
 
-- [special/logic.py](special/logic.py) : Simplifies truth tables using logicmin
+- [special/logic.py](special/logic.py) : Simplifies truth tables using [logicmin](https://github.com/dreylago/logicmin)
 
-- [special/MountRam.sh](special/MountRam.sh) : Makes ramdisk
+- [special/MountRam.sh](special/MountRam.sh) : Makes a temporary ramdisk
 
-- [special/val_timelapse.sh](special/val_timelapse.sh) : Goes through folder and makes blended timelapse with the images
+- [special/val_timelapse.sh](special/val_timelapse.sh) : Goes through folder and makes a blended timelapse with the images using `ffmpeg`
