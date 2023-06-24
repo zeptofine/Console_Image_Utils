@@ -22,7 +22,7 @@ Used to copy certain images from one folder to another based on prefix.
 ### [Prefix.DelAll.sh](Prefix.DelAll.sh)
 
 <details>
-Same as CopyAll but for deletions. (Needs to be translated to Python)
+Same as CopyAll but for deletions.
 </details>
 
 ### [imgbrd_grabber_gen.py](imgbrd_grabber_gen.py)
