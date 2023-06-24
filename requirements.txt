@@ -8,3 +8,4 @@ tqdm
 cfg-param-wrapper
 imagehash
 typer[all]
+ffmpeg-python
