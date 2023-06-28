@@ -1,9 +1,10 @@
 import shutil
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
 import typer
+from typer import Option, Argument
 from tqdm import tqdm
 
 
@@ -13,10 +14,12 @@ class CopyType(str, Enum):
 
 
 def main(
-    copy_from: Path,
-    prefix: str,
-    copy_to: Optional[Path] = None,
-    copy_type: CopyType = CopyType.copy,
+    copy_from: Annotated[Path, Argument(help="The path to copy from")],
+    prefix: Annotated[str, Argument(help="the string to search for")],
+    copy_to: Annotated[
+        Optional[Path], Option(help="If present, the files will be copied to this specific folder")
+    ] = None,
+    copy_type: Annotated[CopyType, Option(help="whether to copy or link the files to the output")] = CopyType.copy,
 ):
     if copy_to is None:
         copy_to = copy_from.parent / copy_from.with_name(f"{copy_from.name}-copied-{prefix}")
@@ -26,7 +29,7 @@ def main(
         ignored = 0
         for file in t:
             file: Path = file.relative_to(copy_from)
-            out_file = copy_to / file
+            out_file: Path = copy_to / file
             if prefix in str(file) and not out_file.exists():
                 out_file.parent.mkdir(parents=True, exist_ok=True)
                 match copy_type:
