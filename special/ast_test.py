@@ -1,10 +1,11 @@
 import ast
+import shutil
 import sys
 import warnings
 from pathlib import Path
+
 import cv2
 import numpy as np
-import shutil
 from rich import print as rprint
 
 
@@ -13,8 +14,7 @@ def pre_call_hook(module: ast.Module):
         """
 import time
 _ast_tracker_file = open("ast_tracker.log", "w")
-                                
-                                """,
+""",
         mode="exec",
     ).body
 
@@ -24,7 +24,7 @@ def post_call_callback(module: ast.Module):
         ast.parse(
             """
 _ast_tracker_file.close()
-                                   """,
+""",
             mode="exec",
         ).body
     )
@@ -111,14 +111,14 @@ def main(file):
         txtfile.write(ast.unparse(module))
     try:
         print("running...")
-
         import subprocess
 
         subprocess.run([sys.executable, file, *sys.argv[2:]])
     except KeyboardInterrupt as exc:
         shutil.move(Path(file).with_suffix(".bak"), file)
-        raise exc
-    shutil.move(Path(file).with_suffix(".bak"), file)
+        # raise exc
+    else:
+        shutil.move(Path(file).with_suffix(".bak"), file)
 
     print("reading ast_tracker.log...")
     with open("ast_tracker.log") as ast_tracker:
@@ -135,10 +135,10 @@ def main(file):
                 width,
             )
         )
-        from PIL import ImageDraw, ImageFont, Image
+        from PIL import Image, ImageDraw, ImageFont
 
         lines = data.splitlines()
-        size = 14
+        size = 6
         font = ImageFont.truetype("/usr/share/fonts/TTF/CascadiaCode.ttf", size)
         fontwidth = font.getlength("a")
         pimage = Image.new("L", (int(width * fontwidth), int(height * size)))
@@ -173,4 +173,5 @@ def main(file):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Please give a file to track")
+        sys.exit(1)
     main(sys.argv[1])
