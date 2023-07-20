@@ -32,9 +32,14 @@ def main(
             out_file: Path = copy_to / file
             if prefix in str(file) and not out_file.exists():
                 out_file.parent.mkdir(parents=True, exist_ok=True)
+
                 match copy_type:
                     case CopyType.copy:
-                        shutil.copy(copy_from / file, copy_to / file)
+                        if (copy_from / file).resolve().is_dir():
+                            shutil.copytree(copy_from / file, copy_to / file)
+                        else:
+                            shutil.copy(copy_from / file, copy_to / file)
+
                     case CopyType.link:
                         (copy_to / file).symlink_to(copy_from / file)
                 copied += 1

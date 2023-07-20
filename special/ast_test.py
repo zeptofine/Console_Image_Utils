@@ -1,9 +1,9 @@
 import ast
-import itertools
 import shutil
 import sys
 import warnings
-from ast import Call, expr
+from ast import AST, Call, Module, expr
+from collections import defaultdict
 from collections.abc import Generator
 from pathlib import Path
 
@@ -11,9 +11,16 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from rich import print as rprint
+from tqdm import tqdm
+
+FONT_PATH = "/usr/share/fonts/TTF/CascadiaCode.ttf"
 
 
-def pre_call_hook(module: ast.Module) -> None:
+def round_partial(value, resolution):
+    return round(value / resolution) * resolution
+
+
+def pre_call_hook(module: Module) -> None:
     module.body[:0] = ast.parse(
         """
 import time
@@ -23,7 +30,7 @@ _ast_tracker_file = open("ast_tracker.log", "w")
     ).body
 
 
-def post_call_callback(module: ast.Module) -> None:
+def post_call_callback(module: Module) -> None:
     module.body.extend(
         ast.parse(
             """
@@ -34,7 +41,7 @@ _ast_tracker_file.close()
     )
 
 
-def call_hook(node: ast.Call) -> expr:
+def call_hook(node: Call) -> expr:
     return ast.parse(
         f"""
 _ast_tracker_file.write(
@@ -44,7 +51,7 @@ _ast_tracker_file.write(
     ).body
 
 
-def replace_call(node: ast.Call) -> expr:
+def hook_node(node: Call) -> expr:
     new = ast.Expression(
         body=ast.Subscript(
             value=ast.Tuple(
@@ -62,22 +69,22 @@ def replace_call(node: ast.Call) -> expr:
     return new.body
 
 
-def find_calls(node: ast.AST) -> Generator[Call, None, None]:
-    return (child for child in ast.walk(node) if isinstance(child, ast.Call))
+def find_calls(node: AST) -> Generator[Call, None, None]:
+    return (child for child in ast.walk(node) if isinstance(child, Call))
 
 
-def get_replacement_calls(node: ast.AST) -> dict:
-    return {child: replace_call(child) for child in find_calls(node)}
+def get_replacement_calls(node: AST) -> dict:
+    return {child: hook_node(child) for child in find_calls(node)}
 
 
-def set_parents(node: ast.AST, parent: ast.AST | None = None) -> None:
+def set_parents(node: AST, parent: AST | None = None) -> None:
     if parent is not None:
         node._parent = parent  # type: ignore
     for child in ast.iter_child_nodes(node):
         set_parents(child, node)
 
 
-def replace_from_parents(calls: dict[ast.AST, ast.AST]) -> None:
+def replace_from_parents(calls: dict[AST, AST]) -> None:
     for old, new in list(calls.items()):
         parent = old._parent  # type: ignore
         added = False
@@ -94,8 +101,8 @@ def replace_from_parents(calls: dict[ast.AST, ast.AST]) -> None:
             calls.pop(old)
 
 
-def main(file: str) -> None:
-    data = Path(file).read_text()
+def main(file: Path) -> None:
+    data = file.read_text()
     height = len(data.splitlines())
     width = max(len(line) for line in data.splitlines())
     module = ast.parse(data)
@@ -108,8 +115,8 @@ def main(file: str) -> None:
     if calls:
         warnings.warn(f"Some calls remain unnacounted for: {calls}", stacklevel=2)
 
-    shutil.copy(file, Path(file).with_suffix(".bak"))
-    with Path(file).open("w") as txtfile:
+    shutil.copy(file, file.with_suffix(".bak"))
+    with file.open("w") as txtfile:
         txtfile.write(ast.unparse(module))
     try:
         print("running...")
@@ -117,10 +124,10 @@ def main(file: str) -> None:
 
         subprocess.run([sys.executable, file, *sys.argv[2:]])
     except KeyboardInterrupt:
-        shutil.move(Path(file).with_suffix(".bak"), file)
+        shutil.move(file.with_suffix(".bak"), file)
         # raise exc
     else:
-        shutil.move(Path(file).with_suffix(".bak"), file)
+        shutil.move(file.with_suffix(".bak"), file)
 
     # Run the animation
     box = np.zeros(
@@ -129,13 +136,14 @@ def main(file: str) -> None:
             width,
         ),
     )
-    lines = data.splitlines()
+    lines: list[str] = data.splitlines()
 
-    size = 6
-    font = ImageFont.truetype("/usr/share/fonts/TTF/CascadiaCode.ttf", size)
+    size = 16
+
+    font = ImageFont.truetype(FONT_PATH, size)
     fontwidth = font.getlength("a")
-    pimage = Image.new("L", (int(width * fontwidth), int(height * size)))
-    draw = ImageDraw.Draw(pimage)
+    pimage: Image.Image = Image.new("L", (int(width * fontwidth), int(height * size)))
+    draw: ImageDraw.ImageDraw = ImageDraw.Draw(pimage)
     for idx, line in enumerate(lines):
         draw.text((0, idx * size), line, fill="white", font=font)
 
@@ -145,36 +153,50 @@ def main(file: str) -> None:
 
     print("reading ast_tracker.log...")
     with Path("ast_tracker.log").open() as ast_tracker:
-        splitted = (line.strip().split(":", 1) for line in ast_tracker)
-        evaluated = ((float(line[0]), ast.literal_eval(line[1])) for line in splitted)
+        evaluated: Generator[tuple[float, tuple[int, int, int, int]], None, None] = (
+            (float(line[0]), ast.literal_eval(line[1])) for line in (line.strip().split(":", 1) for line in ast_tracker)
+        )
 
-        speed_maybe = 120
-        multiplier = 8
-        empty_boxes = ((0.0, (0, 0, 0, 0)) for _ in range(speed_maybe))
-        chained = itertools.chain(evaluated, empty_boxes)
-        for perf, selection in chained:
-            rprint(
-                perf,
-                selection,
-                f"{lines[selection[0] - 1][: selection[1]]}[yellow]{lines[selection[0] - 1][selection[1]:selection[3]]}[/yellow]{lines[selection[0] - 1][selection[3]:].strip()}",
-            )
-            box = np.clip(box - ((1 / speed_maybe) * multiplier), 0, None)
-            box[selection[0] - 1 : selection[2], selection[1] : selection[3]] = 1
-            resized: np.ndarray = cv2.resize(
-                box,
-                (int(width * fontwidth), int(height * size)),
-                interpolation=cv2.INTER_NEAREST,
-            )
-            newimg = (np.asarray(pimage) / 255) + (resized)
+        single_call_duration = 0.5  # secs (hopefully)
+        fps = 60
+        timescale = 1024 * 10  # 1/n time
 
-            cv2.imshow("drawn", newimg)
-            cv2.waitKey(1000 // speed_maybe)
-        print("done")
-        cv2.waitKey(0)
+        first_dur, firstplace = next(evaluated)
+        timings = defaultdict(set)
+        timings[0.0].add(firstplace)
+        for duration, rect in evaluated:
+            timings[round_partial((duration - first_dur) * timescale, 1 / fps)].add(rect)
+        print("finished sorting")
+
+        with tqdm(
+            np.arange(
+                0,
+                max(timings.keys()) + (single_call_duration),
+                (1 / fps),
+            )
+        ) as t:
+            for f in t:
+                box = np.clip(box - ((1 / fps) / single_call_duration), 0, None)
+                if f in timings:
+                    rprint(f"{timings[f]}")
+                    for selection in timings[f]:
+                        box[selection[0] - 1 : selection[2], selection[1] : selection[3]] = 1
+                    t.set_description_str(str(f))
+                resized: np.ndarray = cv2.resize(
+                    box,
+                    (int(width * fontwidth), int(height * size)),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+                newimg = abs((np.asarray(pimage) / 255) - resized)
+
+                cv2.imshow("drawn", newimg)
+                cv2.waitKey(1000 // fps)
+            print("Done")
+            cv2.waitKey(0)
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Please give a file to track")
         sys.exit(1)
-    main(sys.argv[1])
+    main(Path(sys.argv[1]))
