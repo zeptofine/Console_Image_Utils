@@ -1,4 +1,5 @@
 import ast
+import itertools
 import shutil
 import sys
 import warnings
@@ -6,6 +7,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 from rich import print as rprint
 
 
@@ -120,45 +122,43 @@ def main(file):
     else:
         shutil.move(Path(file).with_suffix(".bak"), file)
 
+    # Run the animation
+    box = np.zeros(
+        (
+            height,
+            width,
+        )
+    )
+    lines = data.splitlines()
+
+    size = 6
+    font = ImageFont.truetype("/usr/share/fonts/TTF/CascadiaCode.ttf", size)
+    fontwidth = font.getlength("a")
+    pimage = Image.new("L", (int(width * fontwidth), int(height * size)))
+    draw = ImageDraw.Draw(pimage)
+    for idx, line in enumerate(lines):
+        draw.text((0, idx * size), line, fill="white", font=font)
+
+    # start preview and wait for key input
+    cv2.imshow("drawn", np.asarray(pimage))
+    cv2.waitKey(0)
+
     print("reading ast_tracker.log...")
     with open("ast_tracker.log") as ast_tracker:
-        dct: dict[float, tuple[int, int, int, int]] = {}
-        for line in ast_tracker:
-            time_dims: list[str] = line.strip().split(":", 1)
-            time_: float = float(time_dims[0])
-            dims: tuple[int, int, int, int] = ast.literal_eval(time_dims[1])
-            dct[time_] = dims
+        splitted = (line.strip().split(":", 1) for line in ast_tracker)
+        evaluated = ((float(line[0]), ast.literal_eval(line[1])) for line in splitted)
 
-        box = np.zeros(
-            (
-                height,
-                width,
-            )
-        )
-        from PIL import Image, ImageDraw, ImageFont
-
-        lines = data.splitlines()
-        size = 6
-        font = ImageFont.truetype("/usr/share/fonts/TTF/CascadiaCode.ttf", size)
-        fontwidth = font.getlength("a")
-        pimage = Image.new("L", (int(width * fontwidth), int(height * size)))
-        draw = ImageDraw.Draw(pimage)
-        for idx, line in enumerate(lines):
-            draw.text((0, idx * size), line, fill="white", font=font)
-
-        # start preview and wait for key input
-        cv2.imshow("drawn", np.asarray(pimage))
-        cv2.waitKey(0)
-
-        lst = list(dct.items())
-
-        for idx, (perf, selection) in enumerate(lst):
+        speed_maybe = 120
+        multiplier = 8
+        empty_boxes = ((0.0, (0, 0, 0, 0)) for _ in range(speed_maybe))
+        chained = itertools.chain(evaluated, empty_boxes)
+        for idx, (perf, selection) in enumerate(chained):
             rprint(
                 perf,
                 selection,
                 f"{lines[selection[0] - 1][: selection[1]]}[yellow]{lines[selection[0] - 1][selection[1]:selection[3]]}[/yellow]{lines[selection[0] - 1][selection[3]:].strip()}",
             )
-            box = np.clip(box - ((1 / 60) * 4), 0, None)
+            box = np.clip(box - ((1 / speed_maybe) * multiplier), 0, None)
             box[selection[0] - 1 : selection[2], selection[1] : selection[3]] = 1
             resized: np.ndarray = cv2.resize(
                 box, (int(width * fontwidth), int(height * size)), interpolation=cv2.INTER_NEAREST
@@ -166,7 +166,8 @@ def main(file):
             newimg = (np.asarray(pimage) / 255) + (resized)
 
             cv2.imshow("drawn", newimg)
-            cv2.waitKey(1000 // 120)
+            cv2.waitKey(1000 // speed_maybe)
+        print("done")
         cv2.waitKey(0)
 
 
