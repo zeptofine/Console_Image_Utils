@@ -1,22 +1,23 @@
 import importlib
 import io
-from sys import executable
-from subprocess import PIPE, Popen, SubprocessError
 from os import get_terminal_size
+from subprocess import PIPE, Popen, SubprocessError
+from sys import executable
+from typing import Self
 
 
 class PipInstaller:
-    def __init__(self, check_for_pip=False):
+    def __init__(self, check_for_pip: bool = False) -> None:
         self.pip_functions = False
         self.check_for_pip = check_for_pip
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, type: None, value: None, traceback: None) -> None:
         del self
 
-    def available(self, package_name) -> bool:
+    def available(self, package_name: str) -> bool:
         try:
             importlib.import_module(package_name)
         except ImportError:
@@ -25,7 +26,9 @@ class PipInstaller:
             return False
         return True
 
-    def install(self, *packages, post=["pip", "install"]) -> int:
+    def install(self, *packages: str, post: list[str] | None = None) -> int:
+        if post is None:
+            post = ["pip", "install"]
         subprocess_input = [executable, "-m", *post, *packages] if packages else [executable, "-m", *post]
         with Popen(subprocess_input, stdout=PIPE, stderr=PIPE) as import_proc:
             output = []

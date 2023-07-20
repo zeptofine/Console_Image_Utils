@@ -1,8 +1,11 @@
+from pathlib import Path
+
 import logicmin
 
 table = {}
 inlen = outlen = 0
-with open("logic.txt", "r") as txt:
+
+with Path("logic.txt").open() as txt:
     for line in txt:
         line = line.strip().split(":")
         table[line[0]] = line[1]
@@ -17,7 +20,7 @@ sols = t.solve()
 
 
 print("\n".join([f"{key}:{value}" for key, value in table.items()]))
-xnames = ['A', 'B', 'C', 'D'][::-1]
+xnames = ["A", "B", "C", "D"][::-1]
 print(sols.printN(xnames=xnames))
 print()
-print(sols.printN(xnames=xnames, syntax='VHDL'))
+print(sols.printN(xnames=xnames, syntax="VHDL"))
