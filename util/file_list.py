@@ -1,7 +1,7 @@
-from pathlib import Path
+from collections.abc import Generator
 from glob import glob
 from os import sep
-from collections.abc import Generator
+from pathlib import Path
 
 
 def get_file_list(*folders: Path) -> Generator[Path, None, None]:
