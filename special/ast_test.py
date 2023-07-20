@@ -41,7 +41,7 @@ _ast_tracker_file.close()
     )
 
 
-def call_hook(node: Call) -> expr:
+def hook_expr(node: AST) -> expr:
     return ast.parse(
         f"""
 _ast_tracker_file.write(
@@ -51,13 +51,13 @@ _ast_tracker_file.write(
     ).body
 
 
-def hook_node(node: Call) -> expr:
+def hook_node(node: AST) -> expr:
     new = ast.Expression(
         body=ast.Subscript(
             value=ast.Tuple(
                 elts=[
                     node,
-                    call_hook(node),
+                    hook_expr(node),
                 ],
                 ctx=ast.Load(),
             ),
@@ -69,12 +69,14 @@ def hook_node(node: Call) -> expr:
     return new.body
 
 
-def find_calls(node: AST) -> Generator[Call, None, None]:
-    return (child for child in ast.walk(node) if isinstance(child, Call))
+def get_tracked_nodes(node: AST) -> Generator[AST, None, None]:
+    return (
+        child for child in ast.walk(node) if isinstance(child, (ast.Compare, ast.BoolOp, ast.BinOp, ast.UnaryOp, Call))
+    )
 
 
-def get_replacement_calls(node: AST) -> dict:
-    return {child: hook_node(child) for child in find_calls(node)}
+def get_replacements(node: AST) -> dict:
+    return {child: hook_node(child) for child in get_tracked_nodes(node)}
 
 
 def set_parents(node: AST, parent: AST | None = None) -> None:
@@ -107,7 +109,7 @@ def main(file: Path) -> None:
     width = max(len(line) for line in data.splitlines())
     module = ast.parse(data)
 
-    calls = get_replacement_calls(module)
+    calls = get_replacements(module)
     set_parents(module)
     replace_from_parents(calls)
     pre_call_hook(module)
@@ -138,7 +140,7 @@ def main(file: Path) -> None:
     )
     lines: list[str] = data.splitlines()
 
-    size = 16
+    size = 12
 
     font = ImageFont.truetype(FONT_PATH, size)
     fontwidth = font.getlength("a")
@@ -158,8 +160,8 @@ def main(file: Path) -> None:
         )
 
         single_call_duration = 0.5  # secs (hopefully)
-        fps = 60
-        timescale = 1024 * 10  # 1/n time
+        fps = 30
+        timescale = 10  # 1/n time
 
         first_dur, firstplace = next(evaluated)
         timings = defaultdict(set)
