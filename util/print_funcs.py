@@ -74,7 +74,11 @@ def thread_status(pid: int, item: str = "", extra: str = "", item_size: int | No
     print(("\n" * pid) + message + ("\033[A" * pid), end="\r")
 
 
-PRINT_MODES: dict[str, tuple[str, str]] = {"newline": ("", "\n"), "sameline": ("\033[2K", ""), "append": ("", "")}
+PRINT_MODES: dict[str, tuple[str, str]] = {
+    "newline": ("", "\n"),
+    "sameline": ("\033[2K", ""),
+    "append": ("", ""),
+}
 
 
 class Stepper:
@@ -101,7 +105,14 @@ class Stepper:
 
 
 class RichStepper(Stepper):
-    def __init__(self, *args, loglevel: int = 0, stepcolor: str = "cyan", pstepcolor: str = "blue", **kwargs) -> None:
+    def __init__(
+        self,
+        *args,
+        loglevel: int = 0,
+        stepcolor: str = "cyan",
+        pstepcolor: str = "blue",
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.printer = rprint
         self.loglevel = loglevel
@@ -115,9 +126,15 @@ class RichStepper(Stepper):
     def next(self, s: str | None = None, **kwargs) -> Self:
         self.step += 1
         if s:
-            self._print(f"\n[{self.stepcolor}]{self.step}:[/{self.stepcolor}] {s}", **kwargs)
+            self._print(
+                f"\n[{self.stepcolor}]{self.step}:[/{self.stepcolor}] {s}",
+                **kwargs,
+            )
         else:
-            self._print(f"\n[{self.stepcolor}]{self.step}:[/{self.stepcolor}]", **kwargs)
+            self._print(
+                f"\n[{self.stepcolor}]{self.step}:[/{self.stepcolor}]",
+                **kwargs,
+            )
         return self
 
     def print(self, *lines: str, **kwargs) -> Self:
