@@ -16,7 +16,7 @@ from tqdm import tqdm
 FONT_PATH = "/usr/share/fonts/TTF/CascadiaCode.ttf"
 
 
-def round_partial(value: float, resolution: float) -> float:
+def round_partial(value, resolution):
     return round(value / resolution) * resolution
 
 
@@ -71,7 +71,7 @@ def hook_node(node: AST) -> expr:
 
 def get_tracked_nodes(node: AST) -> Generator[AST, None, None]:
     return (
-        child for child in ast.walk(node) if isinstance(child, ast.Compare | ast.BoolOp | ast.BinOp | ast.UnaryOp | Call)
+        child for child in ast.walk(node) if isinstance(child, (ast.Compare, ast.BoolOp, ast.BinOp, ast.UnaryOp, Call))
     )
 
 
@@ -175,7 +175,7 @@ def main(file: Path) -> None:
                 0,
                 max(timings.keys()) + (single_call_duration),
                 (1 / fps),
-            ),
+            )
         ) as t:
             for f in t:
                 box = np.clip(box - ((1 / fps) / single_call_duration), 0, None)
