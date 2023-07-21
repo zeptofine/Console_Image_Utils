@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
-from typer import Option, Argument
 from tqdm import tqdm
+from typer import Argument, Option
 
 
 class CopyType(str, Enum):
@@ -16,11 +16,9 @@ class CopyType(str, Enum):
 def main(
     copy_from: Annotated[Path, Argument(help="The path to copy from")],
     prefix: Annotated[str, Argument(help="the string to search for")],
-    copy_to: Annotated[
-        Optional[Path], Option(help="If present, the files will be copied to this specific folder")
-    ] = None,
+    copy_to: Annotated[Path | None, Option(help="If present, the files will be copied to this specific folder")] = None,
     copy_type: Annotated[CopyType, Option(help="whether to copy or link the files to the output")] = CopyType.copy,
-):
+) -> None:
     if copy_to is None:
         copy_to = copy_from.parent / copy_from.with_name(f"{copy_from.name}-copied-{prefix}")
     file_lst = list(tqdm(copy_from.rglob("*"), "getting files..."))
@@ -46,7 +44,8 @@ def main(
             else:
                 ignored += 1
             t.set_description_str(
-                f"{'copied' if copy_type == CopyType.copy else 'linked'}: {copied}, {ignored = }", refresh=False
+                f"{'copied' if copy_type == CopyType.copy else 'linked'}: {copied}, {ignored = }",
+                refresh=False,
             )
 
 
