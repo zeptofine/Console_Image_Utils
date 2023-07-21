@@ -21,12 +21,13 @@ def main(
         Option(help="If present, the files will be copied to this specific folder"),
     ] = None,
     copy_type: Annotated[
-        CopyType, Option(help="whether to copy or link the files to the output")
+        CopyType,
+        Option(help="whether to copy or link the files to the output"),
     ] = CopyType.copy,
 ):
     if copy_to is None:
         copy_to = copy_from.parent / copy_from.with_name(
-            f"{copy_from.name}-copied-{prefix}"
+            f"{copy_from.name}-copied-{prefix}",
         )
     file_lst = list(tqdm(copy_from.rglob("*"), "getting files..."))
     with tqdm(file_lst) as t:
