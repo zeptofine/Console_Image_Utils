@@ -16,11 +16,18 @@ class CopyType(str, Enum):
 def main(
     copy_from: Annotated[Path, Argument(help="The path to copy from")],
     prefix: Annotated[str, Argument(help="the string to search for")],
-    copy_to: Annotated[Path | None, Option(help="If present, the files will be copied to this specific folder")] = None,
-    copy_type: Annotated[CopyType, Option(help="whether to copy or link the files to the output")] = CopyType.copy,
-) -> None:
+    copy_to: Annotated[
+        Optional[Path],
+        Option(help="If present, the files will be copied to this specific folder"),
+    ] = None,
+    copy_type: Annotated[
+        CopyType, Option(help="whether to copy or link the files to the output")
+    ] = CopyType.copy,
+):
     if copy_to is None:
-        copy_to = copy_from.parent / copy_from.with_name(f"{copy_from.name}-copied-{prefix}")
+        copy_to = copy_from.parent / copy_from.with_name(
+            f"{copy_from.name}-copied-{prefix}"
+        )
     file_lst = list(tqdm(copy_from.rglob("*"), "getting files..."))
     with tqdm(file_lst) as t:
         copied = 0

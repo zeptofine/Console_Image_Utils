@@ -71,7 +71,7 @@ def hook_node(node: AST) -> expr:
 
 def get_tracked_nodes(node: AST) -> Generator[AST, None, None]:
     return (
-        child for child in ast.walk(node) if isinstance(child, ast.Compare | ast.BoolOp | ast.BinOp | ast.UnaryOp | Call)
+        child for child in ast.walk(node) if isinstance(child, (ast.Compare, ast.BoolOp, ast.BinOp, ast.UnaryOp, Call))
     )
 
 
@@ -167,7 +167,9 @@ def main(file: Path) -> None:
         timings = defaultdict(set)
         timings[0.0].add(firstplace)
         for duration, rect in evaluated:
-            timings[round_partial((duration - first_dur) * timescale, 1 / fps)].add(rect)
+            timings[round_partial((duration - first_dur) * timescale, 1 / fps)].add(
+                rect,
+            )
         print("finished sorting")
 
         with tqdm(
@@ -182,7 +184,10 @@ def main(file: Path) -> None:
                 if f in timings:
                     rprint(f"{timings[f]}")
                     for selection in timings[f]:
-                        box[selection[0] - 1 : selection[2], selection[1] : selection[3]] = 1
+                        box[
+                            selection[0] - 1 : selection[2],
+                            selection[1] : selection[3],
+                        ] = 1
                     t.set_description_str(str(f))
                 resized: np.ndarray = cv2.resize(
                     box,
