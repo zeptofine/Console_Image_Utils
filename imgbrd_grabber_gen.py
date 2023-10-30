@@ -1,8 +1,9 @@
 import json
-from pathlib import Path
-import typer
-from cfg_param_wrapper import wrap_config, CfgDict
 from copy import deepcopy
+from pathlib import Path
+
+import typer
+from cfg_param_wrapper import CfgDict, wrap_config
 
 cfg_dct = {  # this does not automatically generate for some reason
     "batchs_template": {
@@ -15,9 +16,10 @@ cfg_dct = {  # this does not automatically generate for some reason
         "site": "e621.net",
         "total": 1000,
         "query": {
-            "tags": ["-watersports", "-urine", "-gore", "-vore", "-loli"],
+            "tags": ["-grabber:alreadyExists","-watersports", "-urine", "-gore", "-vore", "-loli"],
         },
-        "postFiltering": [],
+        "postFiltering": [
+        ],
     }
 }
 cfg_path = Path("imgbrd_grabber.json")
@@ -34,11 +36,12 @@ cfg = CfgDict(
 @wrap_config(cfg)
 def create_imgbrd_lst(
     prefixes_path: Path = Path("prefixes.txt"),
+    out_file: Path = Path("imgbrd_grabbergen.igl"),
 ):
     prefixes = Path(prefixes_path).read_text().splitlines()
     assert prefixes, "Your prefixes.txt is empty. Fill it up with prompts"
 
-    outputJson = {"batchs": [], "uniques": [], "version": 3}
+    output_json = {"batchs": [], "uniques": [], "version": 3}
     for prompt in prefixes:
         print(prompt)
 
@@ -47,10 +50,9 @@ def create_imgbrd_lst(
             dct["query"] = {"tags": [prompt]}
         else:
             dct["query"]["tags"] = [*prompt.split(" "), *dct["query"]["tags"]]
-        outputJson["batchs"].append(dct)
-
-    with open("imgbrd_grabbergen.igl", "w", encoding="utf-8") as outfile:
-        outfile.write(json.dumps(outputJson, indent=4))
+        output_json["batchs"].append(dct)
+    with out_file.open("w", encoding="utf-8") as outfile:
+        outfile.write(json.dumps(output_json, indent=4))
 
 
 if __name__ == "__main__":

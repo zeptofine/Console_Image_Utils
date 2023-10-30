@@ -1,6 +1,7 @@
-import typer
 from pathlib import Path
+
 import cv2
+import typer
 
 
 def main(dir_in: Path, dir_out: Path, file_type: str = "png", scale: int = 0):
