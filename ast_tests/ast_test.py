@@ -71,7 +71,12 @@ def hook_node(node: AST) -> expr:
 
 def get_tracked_nodes(node: AST) -> Generator[AST, None, None]:
     return (
-        child for child in ast.walk(node) if isinstance(child, (ast.Compare, ast.BoolOp, ast.BinOp, ast.UnaryOp, Call))
+        child
+        for child in ast.walk(node)
+        if isinstance(
+            child,
+            ast.Compare | ast.BoolOp | ast.BinOp | ast.UnaryOp | Call,
+        )
     )
 
 
@@ -197,7 +202,7 @@ def main(file: Path) -> None:
                 newimg = abs((np.asarray(pimage) / 255) - resized)
 
                 cv2.imshow("drawn", newimg)
-                cv2.waitKey(1000 // fps)
+                __import__("cv2").waitKey(1000 // fps)
             print("Done")
             cv2.waitKey(0)
 
