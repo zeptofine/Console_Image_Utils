@@ -5,11 +5,11 @@ from collections.abc import Generator
 from itertools import islice
 from queue import Queue
 from threading import Thread
+from typing import Callable
 
 import cv2
 import ffmpeg
 import numpy as np
-from tqdm import tqdm
 
 
 # read `whistle.wav`
@@ -48,30 +48,26 @@ def generate_lines(
     canvas = np.zeros((size, size), dtype=float)
     samplecount = 1
 
-    # print(next(iterator))
-
     def iterate():
-        min_: np.ndarray = 0  # type:ignore
-        max_: np.ndarray = 0  # type:ignore
+        def get_caster(points):
+            info = np.iinfo(points.dtype)
+            mi, ma = info.min, info.max
+
+            def transformer(pts):
+                return (pts - mi) / (ma - mi) * size
+
+            return transformer
+
+        caster: Callable | None = None
         for points in iterate_none_delimited_queue(in_q):
+            if caster is None:
+                caster = get_caster(points)
+
             points = points.astype(float)
             points[:, 1] = -points[:, 1]
-            smallest = points.min()
-            largest = points.max()
-            if smallest < min_:
-                min_ = smallest
-            if largest > max_:
-                max_ = largest
-            diff = max_.astype(np.int64) - min_.astype(np.int64)
-            mid = points - min_
-
-            points = (mid / diff) * size
-            points: np.ndarray = points.astype(np.int32)
+            points: np.ndarray = caster(points).astype(np.int32)
 
             yield from points
-        # for point in (spt for pt in iterate_none_delimited_queue(in_q) for spt in pt):
-        #     print(point)
-        #     yield point
 
     for pts in window(iterate(), 2):
         cv2.line(canvas, pts[0], pts[1], (1, 1, 1), 1)
