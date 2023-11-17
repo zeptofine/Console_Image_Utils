@@ -1,16 +1,14 @@
 import argparse
+import contextlib
 import subprocess
-import tempfile
+from collections.abc import Generator
 from itertools import islice
-from pathlib import Path
 from queue import Queue
 from threading import Thread
 
 import cv2
 import ffmpeg
 import numpy as np
-import psutil
-from scipy.io.wavfile import read
 from tqdm import tqdm
 
 
@@ -33,11 +31,51 @@ def window(iterable, n):
         yield window
 
 
-def generate_lines(arr: np.ndarray, samples_per_frame: int, dissipation: float, out_q: Queue):
+def iterate_none_delimited_queue(q: Queue):
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        yield item
+
+
+def generate_lines(
+    in_q: Queue[np.ndarray],
+    samples_per_frame: int,
+    dissipation: float,
+    out_q: Queue[np.ndarray | None],
+):
     canvas = np.zeros((size, size), dtype=float)
     samplecount = 1
-    for pts in window(tqdm(arr, unit="sample"), 2):
+
+    # print(next(iterator))
+
+    def iterate():
+        min_: np.ndarray = 0  # type:ignore
+        max_: np.ndarray = 0  # type:ignore
+        for points in iterate_none_delimited_queue(in_q):
+            points = points.astype(float)
+            points[:, 1] = -points[:, 1]
+            smallest = points.min()
+            largest = points.max()
+            if smallest < min_:
+                min_ = smallest
+            if largest > max_:
+                max_ = largest
+            diff = max_.astype(np.int64) - min_.astype(np.int64)
+            mid = points - min_
+
+            points = (mid / diff) * size
+            points: np.ndarray = points.astype(np.int32)
+
+            yield from points
+        # for point in (spt for pt in iterate_none_delimited_queue(in_q) for spt in pt):
+        #     print(point)
+        #     yield point
+
+    for pts in window(iterate(), 2):
         cv2.line(canvas, pts[0], pts[1], (1, 1, 1), 1)
+
         samplecount += 1
         if samplecount >= samples_per_frame:
             out_q.put(canvas.copy())
@@ -45,40 +83,34 @@ def generate_lines(arr: np.ndarray, samples_per_frame: int, dissipation: float, 
             samplecount = 0
     out_q.put(None)
 
+    # samples[:, 1] = -samples[:, 1]  # flip the y axis
+    # # map from (-whatever, whatever) to (0, size)
+    # smallest = samples.min()
+    # largest = samples.max()
+    # samples = ((samples - smallest) / (largest - smallest)) * size
+    # samples = samples.astype(np.uint32)
 
-def get_queue_size(read_size: int, gb_target: int):
-    gb_bytes = int(gb_target * (10**9))
 
-    # Example:
-    # free memory before: 18.58 GB
-    # free memory with predicted given usage: -5.45 GB
-    # Chosen memory usage is too large, resizing for a minimum of 1 gb free
-    # using 1.58 GB
-    # estimaged total usage is less than gb usage. Video will likely fit in less space than specified
-    # free with predicted total usage: 12.69 GB
+def chunked_io_reader(stream: subprocess.Popen, chunk_size: int = 10**6) -> Generator[bytes, None, None]:
+    assert stream.stdout is not None
+    while True:
+        chunk = stream.stdout.read(chunk_size)
+        if not chunk:
+            break
+        yield chunk
 
-    # get amount of system memory
-    virtual_memory = psutil.virtual_memory()
 
-    print(f"free memory before: {virtual_memory.available / (10 ** 9):.2f} GB")
-    print(f"free memory with predicted given usage: {(virtual_memory.available - gb_bytes) / (10 ** 9):.2f} GB")
-    if virtual_memory.available - gb_bytes < 10**9:
-        print("Chosen memory usage is too large, resizing for a minimum of 1 gb free")
+def stream_iterator(stream: subprocess.Popen, samplerate=96000):
+    print("started chunking")
+    for chunk in chunked_io_reader(stream, samplerate * 100):
+        yield np.frombuffer(chunk, dtype="int16").reshape((-1, 2))
+    yield None
 
-        while virtual_memory.available - gb_bytes < 10**9:
-            gb_bytes -= 10**9
-        print(f"using {gb_bytes // (10 ** 9):.2f} GB")
 
-    # estimate the total number of bytes in the video
-    total_usage = read_size * total_frames
-
-    # if the total number of bytes in the video is smaller than the allowed ram threshold
-    if total_usage < gb_bytes:
-        print("estimaged total usage is less than given usage. Video will likely fit in less space than specified")
-        print(f"free memory with predicted total usage: {(virtual_memory.available - total_usage) / (10 ** 9):.2f} GB")
-
-    # calculate how many images can fit in a given amount of memory
-    return int(gb_bytes // read_size)
+def stream_handler(ffmpeg_command, samplerate, out_q: Queue[np.ndarray | None]):
+    stream: subprocess.Popen = ffmpeg_command.run_async(pipe_stdout=True)
+    for chunk in stream_iterator(stream, samplerate):
+        out_q.put(chunk)
 
 
 if __name__ == "__main__":
@@ -86,77 +118,67 @@ if __name__ == "__main__":
     parser.add_argument("file")
     parser.add_argument("--output", "-o", default="output.mkv")
     parser.add_argument("--fps", "-r", type=int, default=48)
+    parser.add_argument("--samplerate", type=int, default=96000)
     parser.add_argument("--size", "-s", type=int, default=800)
     parser.add_argument("--dissipation", "-d", type=float, default=0.75)
     parser.add_argument("--preview", action="store_true", default=False)
-    parser.add_argument("--gb_usage", type=float, default=2)
     args = parser.parse_args()
 
-    input_file = args.file
-    output_file = args.output
-    fps = args.fps
-    size = args.size
-    dissipation = args.dissipation
-    preview = args.preview
-    gb_usage = args.gb_usage
+    input_file: str = args.file
+    output_file: str = args.output
+    fps: int = args.fps
+    samplerate: int = args.samplerate
+    size: int = args.size
+    dissipation: int = args.dissipation
+    preview: bool = args.preview
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-        tmpfile = tmpdir / "audio.wav"
-        ffmpeg.output(ffmpeg.input(input_file), str(tmpfile)).run(quiet=True)
+    samples_per_frame = samplerate / fps
+    stream = ffmpeg.output(
+        ffmpeg.input(input_file),
+        "-",
+        f="s16le",
+        acodec="pcm_s16le",
+        ac=2,
+        ar=samplerate,
+    ).global_args("-hide_banner", "-loglevel", "error")
 
-        samplerate: int  # samples / sec
-        samples: np.ndarray  # l/r channel samples
-        samplerate, samples = read(tmpfile)
-        samples_per_frame = samplerate / fps
-        total_frames = len(samples) // samples_per_frame
-        print(
-            f"{samplerate=}, {samples_per_frame=}",
-            f"num of samples={len(samples)} file length={len(samples) / samplerate}",
+    thread_out: subprocess.Popen = (
+        ffmpeg.output(
+            ffmpeg.input("pipe:", format="rawvideo", pix_fmt="rgb24", s=f"{size}x{size}", r=fps).video,
+            ffmpeg.input(input_file).audio,
+            output_file,
+            pix_fmt="yuv420p",
         )
-        print(f"Estimated total frames: {len(samples) // samples_per_frame}")
+        # .global_args("-hide_banner", "-loglevel", "error")
+        .overwrite_output().run_async(pipe_stdin=True)
+    )
+    assert thread_out.stdin
 
-        samples = samples.astype(float)
+    in_q = Queue(100)
 
-        samples[:, 1] = -samples[:, 1]  # flip the y axis
-        # map from (-whatever, whatever) to (0, size)
-        smallest = samples.min()
-        largest = samples.max()
-        samples = ((samples - smallest) / (largest - smallest)) * size
-        samples = samples.astype(np.uint32)
+    frame_queue = Queue(20)
 
-        thread_out: subprocess.Popen = (
-            ffmpeg.output(
-                ffmpeg.input("pipe:", format="rawvideo", pix_fmt="rgb24", s=f"{size}x{size}", r=fps).video,
-                ffmpeg.input(tmpfile).audio,
-                output_file,
-                pix_fmt="yuv420p",
-            )
-            .global_args("-hide_banner", "-loglevel", "error")
-            .overwrite_output()
-            .run_async(pipe_stdin=True)
-        )
-        assert thread_out.stdin
+    reader_thread = Thread(target=stream_handler, args=(stream, samplerate, in_q))
+    reader_thread.daemon = True
+    reader_thread.start()
 
-        frame_queue = Queue(get_queue_size((size**2) * np.zeros((size, size), dtype=float).itemsize, gb_usage))
+    t = Thread(target=generate_lines, args=(in_q, samples_per_frame, dissipation, frame_queue))
+    t.daemon = True
+    t.start()
+    # for chunk in chunked_io_reader(stream, samplerate * 10):
+    #     arr = np.frombuffer(chunk, dtype="int16").reshape((-1, 2))
+    with contextlib.suppress(KeyboardInterrupt):
+        while True:
+            frame = frame_queue.get()
+            if frame is None:
+                break
 
-        t = Thread(target=generate_lines, args=(samples, samples_per_frame, dissipation, frame_queue))
-        t.daemon = True
-        t.start()
-        frame_counter = tqdm(total=len(samples) // samples_per_frame, unit="f")
-        try:
-            while True:
-                frame = frame_queue.get()
-                if frame is None:
-                    break
+            thread_out.stdin.write(cv2.cvtColor((frame * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB).tobytes())
 
-                thread_out.stdin.write(cv2.cvtColor((frame * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB).tobytes())
-                frame_counter.update()
-                if preview:
-                    cv2.imshow("waow", frame)
-                    cv2.waitKey(1)
+            if preview:
+                cv2.imshow("waow", frame)
+                cv2.waitKey(1)
 
-        except KeyboardInterrupt:
-            pass
-        thread_out.stdin.close()
-        thread_out.wait()
+    cv2.destroyAllWindows()
+    thread_out.stdin.close()
+    thread_out.wait()
